@@ -1,0 +1,28 @@
+# Private operating-system, game and firmware media. Never publish these.
+/Disks and CDs (DO NOT PUT INTO GITHUB)/
+/media/
+/roms/
+/private/
+/artifacts/
+**/bin/
+**/obj/
+.vs/
+.idea/
+*.user
+*.suo
+*.iso
+*.img
+*.ima
+*.vhd
+*.vhdx
+*.qcow2
+*.raw
+*.cow
+*.dossav
+*.bin
+*.rom
+*.cue
+*.wav
+*.log
+**/__pycache__/
+*.pyc

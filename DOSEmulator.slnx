@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DOSEmulator.Contracts/DOSEmulator.Contracts.csproj" />
+    <Project Path="src/DOSEmulator.Core/DOSEmulator.Core.csproj" />
+    <Project Path="src/DOSEmulator.Cpu.X86/DOSEmulator.Cpu.X86.csproj" />
+    <Project Path="src/DOSEmulator.Hardware/DOSEmulator.Hardware.csproj" />
+    <Project Path="src/DOSEmulator.Runtime/DOSEmulator.Runtime.csproj" />
+    <Project Path="src/DOSEmulator.Headless/DOSEmulator.Headless.csproj" />
+    <Project Path="src/DOSEmulator/DOSEmulator.csproj" />
+    <Project Path="src/SharpPixels/SharpPixels.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DOSEmulator.Tests/DOSEmulator.Tests.csproj" />
+  </Folder>
+</Solution>

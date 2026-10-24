@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../DOSEmulator.Contracts/DOSEmulator.Contracts.csproj" />
+    <ProjectReference Include="../DOSEmulator.Core/DOSEmulator.Core.csproj" />
+    <ProjectReference Include="../DOSEmulator.Cpu.X86/DOSEmulator.Cpu.X86.csproj" />
+    <ProjectReference Include="../DOSEmulator.Hardware/DOSEmulator.Hardware.csproj" />
+  </ItemGroup>
+</Project>

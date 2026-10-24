@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "virtual486-dev-v1",
+  "name": "Virtual 486 AT - PS/2 two-button mouse development",
+  "cpu": "i486dx-development",
+  "cpuHz": 33000000,
+  "ramMiB": 8,
+  "floppyDriveA": "1440k",
+  "floppyDriveB": "none",
+  "bootDevice": "ide",
+  "soundCard": "none",
+  "mouse": "ps2-two-button"
+}

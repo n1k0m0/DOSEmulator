@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "virtual486-dev-v1",
+  "name": "Virtual 486 AT - SB2 DSP Development (FM pending)",
+  "cpu": "i486dx-development",
+  "cpuHz": 33000000,
+  "ramMiB": 8,
+  "floppyDriveA": "none",
+  "floppyDriveB": "none",
+  "bootDevice": "ide",
+  "soundCard": "sb2-dsp-development"
+}
