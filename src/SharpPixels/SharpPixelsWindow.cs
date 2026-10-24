@@ -832,8 +832,9 @@ namespace SharpPixels
             base.OnRenderFrame(frameEventArgs);
         }
 
-        /// <summary>Runs with the complete back buffer available, before presentation. Used for reliable local frame capture.</summary>
-        protected virtual void OnFrameReady() { }
+        /// <summary>Raised on the render thread with the complete back buffer available, before presentation.</summary>
+        public event Action FrameReady;
+        protected virtual void OnFrameReady() { FrameReady?.Invoke(); }
 
         /// <summary>
         /// Presents the traditional full-window CPU pixel buffer.
