@@ -9,7 +9,12 @@ public sealed class DevelopmentBoardPorts(MemoryBus memory) : IIoPortDevice
     private byte _port92 = 2;
     public string DebugText => _debug.ToString();
     public byte PostCode { get; private set; }
-    public bool ResetRequested { get; set; }
+    public long Post10Count { get; private set; }
+    public bool ResetRequested { get; private set; }
+    public bool ConsumeResetRequest()
+    {
+        bool requested = ResetRequested; ResetRequested = false; return requested;
+    }
     public uint Read(ushort port, int width) => port == 0x92 ? _port92 : 0xffu;
     public void Write(ushort port, uint value, int width)
     {
@@ -18,12 +23,12 @@ public sealed class DevelopmentBoardPorts(MemoryBus memory) : IIoPortDevice
         {
             if (_debug.Length < 8192) _debug.Append((char)(value & 255));
         }
-        else if (port == 0x80) PostCode = (byte)value;
+        else if (port == 0x80) { PostCode = (byte)value; if (PostCode == 0x10) Post10Count++; }
         else if (port == 0x92)
         {
-            _port92 = (byte)(value & 0xfe);
+            if ((value & 1) != 0 && (_port92 & 1) == 0) ResetRequested = true;
+            _port92 = (byte)value;
             memory.A20Enabled = (value & 2) != 0;
-            if ((value & 1) != 0) ResetRequested = true;
         }
     }
 }

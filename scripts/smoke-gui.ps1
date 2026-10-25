@@ -1,5 +1,7 @@
+#requires -Version 7.4
+[CmdletBinding()]
 param([switch]$SkipBuild)
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'common.ps1')
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'build.ps1') }
 $captureDirectory = Join-Path $workspaceRoot ('artifacts\gui-' + [guid]::NewGuid().ToString('N'))

@@ -1,3 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup><ProjectReference Include="../DOSEmulator.Core/DOSEmulator.Core.csproj" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="../../firmware/fonts/cp437-8x8.txt" LogicalName="DOSEmulator.Cp437Artwork" /></ItemGroup>
 </Project>

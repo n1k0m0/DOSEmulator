@@ -1,12 +1,14 @@
+#requires -Version 7.4
+[CmdletBinding()]
 param([switch]$SkipBuild, [switch]$Gui, [string]$OutputRoot = 'artifacts\m1-build')
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'common.ps1')
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
-$buildRoot = [IO.Path]::GetFullPath((Join-Path $workspaceRoot $OutputRoot))
+$buildRoot = Get-DosBuildRoot -OutputRoot $OutputRoot
 if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'build.ps1') -OutputRoot $buildRoot }
 $runner = Join-Path $buildRoot 'Release\net10.0\DOSEmulator.Headless.dll'
 $assembler = Join-Path $workspaceRoot 'artifacts\tools\nasm-3.02\nasm-3.02\nasm.exe'
 $baseImage = Join-Path $workspaceRoot 'artifacts\freedos-m1\FD14LITE-minimal.img'
-$baseHash = (Get-FileHash -LiteralPath $baseImage -Algorithm SHA256).Hash
+$baseHash = (Get-DosFileHash -LiteralPath $baseImage -Algorithm SHA256).Hash
 $testRoot = Join-Path $workspaceRoot ('artifacts\freedos-m2\sb2-' + [guid]::NewGuid().ToString('N'))
 $programs = Join-Path $testRoot 'programs'
 New-Item -ItemType Directory -Path $programs -Force | Out-Null
@@ -17,7 +19,7 @@ $profile = Join-Path $testRoot 'profile.json'
 $image = Join-Path $testRoot 'private-sb2.img'
 dotnet $runner --prepare-test-programs $baseImage --program-dir $programs --output $image | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Private SB2 probe disk preparation failed.' }
-$imageHash = (Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash
+$imageHash = (Get-DosFileHash -LiteralPath $image -Algorithm SHA256).Hash
 $commands = Join-Path $testRoot 'commands.txt'
 [IO.File]::WriteAllText($commands,"sb2test`r`necho M2-SB2-END`r`n")
 $results = @()
@@ -83,7 +85,7 @@ if ($Gui) {
     if ($normal -lt 0.05 -or $ratio -lt 0.2 -or $ratio -gt 0.45 -or $hostAudio.settings.audioMuted -or
         $hostAudio.settings.masterVolume -ne 50 -or $hostAudio.settings.digitalVolume -ne 50 -or $hostAudio.settings.speakerVolume -ne 0) { throw "Independent digital volume incorrect: RMS ratio $ratio" }
 }
-if ((Get-FileHash -LiteralPath $baseImage -Algorithm SHA256).Hash -ne $baseHash -or (Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash -ne $imageHash) { throw 'Read-only test media changed.' }
+if ((Get-DosFileHash -LiteralPath $baseImage -Algorithm SHA256).Hash -ne $baseHash -or (Get-DosFileHash -LiteralPath $image -Algorithm SHA256).Hash -ne $imageHash) { throw 'Read-only test media changed.' }
 $summary = [pscustomobject]@{passed=$true;directory=$testRoot;coldBoots=2;pcmSha256=$results[0].audio.dataSha256;recordedFrames=$results[0].audio.recordedFrames;
     transferredSamples=$results[0].soundBlaster.transferredSamples;completedBlocks=$results[0].soundBlaster.completedBlocks;gui=[bool]$Gui;
     hostAudioAvailable=$hostAudio.audio.available;liveMuteTested=[bool]$Gui;independentDigitalVolumeTested=[bool]$Gui;hostRmsRatio=$ratio;mediaUnchanged=$true;fmImplemented=$false}

@@ -1,0 +1,262 @@
+# DOSEmulator original CP437 pixel artwork, Apache-2.0, 2026.
+# Each record: byte code, eight hexadecimal scanlines, descriptive comment.
+# Bit 7 is the left pixel. This is project artwork, not an IBM/OS ROM dump.
+# 00/20/FF are intentional blanks. 01..1F/7F are video glyphs, not controls.
+# The repertoire follows CP437; its shapes intentionally differ from IBM fonts.
+# 8x14/8x16 resize text, repeat shades, and extend box/block edges in Cp437Font.
+00 00 00 00 00 00 00 00 00 # NUL: blank video glyph
+01 3C 42 A5 81 A5 99 42 3C # white smiling face
+02 C3 BD 5A 7E 5A 66 BD C3 # black smiling face
+03 00 6C FE FE 7C 38 10 00 # heart
+04 10 38 7C FE 7C 38 10 00 # diamond
+05 10 38 10 6C FE 6C 10 38 # club
+06 10 38 7C FE 7C 10 10 38 # spade
+07 00 00 18 3C 3C 18 00 00 # bullet
+08 FF FF E7 C3 C3 E7 FF FF # inverse bullet
+09 00 3C 42 42 42 3C 00 00 # circle
+0A FF C3 BD BD BD C3 FF FF # inverse circle
+0B 0E 06 0A 30 48 48 30 00 # male
+0C 38 44 44 38 10 7C 10 00 # female
+0D 0C 0E 0A 08 38 78 30 00 # eighth note
+0E 1E 12 12 12 76 F6 60 00 # beamed eighth notes
+0F 10 92 54 38 54 92 10 00 # sun with rays
+10 80 C0 E0 F0 E0 C0 80 00 # right pointer
+11 02 06 0E 1E 0E 06 02 00 # left pointer
+12 10 38 54 10 54 38 10 00 # up down arrow
+13 28 28 28 28 28 00 28 00 # double exclamation
+14 3C 54 54 34 14 14 14 00 # pilcrow
+15 18 24 50 28 14 48 30 00 # section
+16 00 00 00 7E 7E 7E 00 00 # black rectangle
+17 10 38 54 10 54 38 10 7C # up down arrow with base
+18 10 38 54 10 10 10 10 00 # up arrow
+19 10 10 10 10 54 38 10 00 # down arrow
+1A 00 10 08 FC 08 10 00 00 # right arrow
+1B 00 20 40 FC 40 20 00 00 # left arrow
+1C 00 00 40 40 7E 00 00 00 # right angle
+1D 00 24 42 FF 42 24 00 00 # left right arrow
+1E 10 38 38 7C 7C FE FE 00 # up triangle
+1F FE FE 7C 7C 38 38 10 00 # down triangle
+20 00 00 00 00 00 00 00 00 #
+21 10 10 10 10 10 00 10 00 # !
+22 28 28 28 00 00 00 00 00 # "
+23 28 28 7C 28 7C 28 28 00 # #
+24 10 3C 50 38 14 78 10 00 # $
+25 60 64 08 10 20 4C 0C 00 # %
+26 30 48 50 20 54 48 34 00 # &
+27 10 10 20 00 00 00 00 00 # '
+28 08 10 20 20 20 10 08 00 # (
+29 20 10 08 08 08 10 20 00 # )
+2A 00 54 38 7C 38 54 00 00 # *
+2B 00 10 10 7C 10 10 00 00 # +
+2C 00 00 00 00 00 10 20 00 # ,
+2D 00 00 00 7C 00 00 00 00 # -
+2E 00 00 00 00 00 30 30 00 # .
+2F 04 08 08 10 20 20 40 00 # /
+30 38 44 4C 54 64 44 38 00 # 0
+31 10 30 10 10 10 10 38 00 # 1
+32 38 44 04 08 10 20 7C 00 # 2
+33 78 04 04 38 04 04 78 00 # 3
+34 08 18 28 48 7C 08 08 00 # 4
+35 7C 40 40 78 04 04 78 00 # 5
+36 38 40 40 78 44 44 38 00 # 6
+37 7C 04 08 10 20 20 20 00 # 7
+38 38 44 44 38 44 44 38 00 # 8
+39 38 44 44 3C 04 04 38 00 # 9
+3A 00 10 10 00 10 10 00 00 # :
+3B 00 10 10 00 10 10 20 00 # ;
+3C 08 10 20 40 20 10 08 00 # <
+3D 00 7C 00 7C 00 00 00 00 # =
+3E 20 10 08 04 08 10 20 00 # >
+3F 38 44 04 08 10 00 10 00 # ?
+40 38 44 5C 54 5C 40 38 00 # @
+41 38 44 44 7C 44 44 44 00 # A
+42 78 44 44 78 44 44 78 00 # B
+43 38 44 40 40 40 44 38 00 # C
+44 78 44 44 44 44 44 78 00 # D
+45 7C 40 40 78 40 40 7C 00 # E
+46 7C 40 40 78 40 40 40 00 # F
+47 38 44 40 5C 44 44 3C 00 # G
+48 44 44 44 7C 44 44 44 00 # H
+49 38 10 10 10 10 10 38 00 # I
+4A 1C 08 08 08 48 48 30 00 # J
+4B 44 48 50 60 50 48 44 00 # K
+4C 40 40 40 40 40 40 7C 00 # L
+4D 44 6C 54 54 44 44 44 00 # M
+4E 44 64 54 4C 44 44 44 00 # N
+4F 38 44 44 44 44 44 38 00 # O
+50 78 44 44 78 40 40 40 00 # P
+51 38 44 44 44 54 48 34 00 # Q
+52 78 44 44 78 50 48 44 00 # R
+53 3C 40 40 38 04 04 78 00 # S
+54 7C 10 10 10 10 10 10 00 # T
+55 44 44 44 44 44 44 38 00 # U
+56 44 44 44 44 44 28 10 00 # V
+57 44 44 44 54 54 54 28 00 # W
+58 44 44 28 10 28 44 44 00 # X
+59 44 44 28 10 10 10 10 00 # Y
+5A 7C 04 08 10 20 40 7C 00 # Z
+5B 38 20 20 20 20 20 38 00 # [
+5C 40 20 20 10 08 08 04 00 # \
+5D 38 08 08 08 08 08 38 00 # ]
+5E 10 28 44 00 00 00 00 00 # ^
+5F 00 00 00 00 00 00 7C 00 # _
+60 20 10 00 00 00 00 00 00 # `
+61 00 00 38 04 3C 44 3C 00 # a
+62 40 40 78 44 44 44 78 00 # b
+63 00 00 38 44 40 44 38 00 # c
+64 04 04 3C 44 44 44 3C 00 # d
+65 00 00 38 44 7C 40 38 00 # e
+66 18 24 20 70 20 20 20 00 # f
+67 00 00 3C 44 44 3C 04 38 # g
+68 40 40 78 44 44 44 44 00 # h
+69 10 00 30 10 10 10 38 00 # i
+6A 08 00 18 08 08 08 48 30 # j
+6B 40 40 48 50 60 50 48 00 # k
+6C 30 10 10 10 10 10 38 00 # l
+6D 00 00 68 54 54 44 44 00 # m
+6E 00 00 78 44 44 44 44 00 # n
+6F 00 00 38 44 44 44 38 00 # o
+70 00 00 78 44 44 78 40 40 # p
+71 00 00 3C 44 44 3C 04 04 # q
+72 00 00 58 64 40 40 40 00 # r
+73 00 00 3C 40 38 04 78 00 # s
+74 20 20 70 20 20 24 18 00 # t
+75 00 00 44 44 44 44 3C 00 # u
+76 00 00 44 44 44 28 10 00 # v
+77 00 00 44 44 54 54 28 00 # w
+78 00 00 44 28 10 28 44 00 # x
+79 00 00 44 44 44 3C 04 38 # y
+7A 00 00 7C 08 10 20 7C 00 # z
+7B 0C 10 10 20 10 10 0C 00 # {
+7C 10 10 10 10 10 10 10 00 # |
+7D 60 10 10 08 10 10 60 00 # }
+7E 00 00 24 58 00 00 00 00 # ~
+7F 10 28 44 FE 82 92 FE 00 # house
+80 38 44 40 40 44 38 10 20 # C cedilla
+81 28 00 44 44 44 44 3C 00 # u diaeresis
+82 08 10 38 44 7C 40 38 00 # e acute
+83 10 28 38 04 3C 44 3C 00 # a circumflex
+84 28 00 38 04 3C 44 3C 00 # a diaeresis
+85 20 10 38 04 3C 44 3C 00 # a grave
+86 10 28 10 38 04 3C 44 3C # a ring
+87 00 00 38 40 44 38 10 20 # c cedilla
+88 10 28 38 44 7C 40 38 00 # e circumflex
+89 28 00 38 44 7C 40 38 00 # e diaeresis
+8A 20 10 38 44 7C 40 38 00 # e grave
+8B 28 00 30 10 10 10 38 00 # i diaeresis
+8C 10 28 30 10 10 10 38 00 # i circumflex
+8D 20 10 30 10 10 10 38 00 # i grave
+8E 28 00 38 44 7C 44 44 00 # A diaeresis
+8F 10 28 10 38 44 7C 44 44 # A ring
+90 08 10 7C 40 78 40 7C 00 # E acute
+91 00 00 6C 12 7E 90 6E 00 # ae ligature
+92 3E 50 90 FE 90 90 9E 00 # AE ligature
+93 10 28 38 44 44 44 38 00 # o circumflex
+94 28 00 38 44 44 44 38 00 # o diaeresis
+95 20 10 38 44 44 44 38 00 # o grave
+96 10 28 44 44 44 44 3C 00 # u circumflex
+97 20 10 44 44 44 44 3C 00 # u grave
+98 28 00 44 44 3C 04 38 00 # y diaeresis
+99 28 00 38 44 44 44 38 00 # O diaeresis
+9A 28 00 44 44 44 44 38 00 # U diaeresis
+9B 10 38 54 50 54 38 10 00 # cent
+9C 18 24 20 78 20 20 7C 00 # pound
+9D 44 28 10 7C 10 7C 10 00 # yen
+9E C0 A0 CE 84 87 85 86 00 # peseta: Pt monogram
+9F 18 20 20 70 20 20 20 40 # f hook
+A0 08 10 38 04 3C 44 3C 00 # a acute
+A1 08 10 30 10 10 10 38 00 # i acute
+A2 08 10 38 44 44 44 38 00 # o acute
+A3 08 10 44 44 44 44 3C 00 # u acute
+A4 24 58 78 44 44 44 44 00 # n tilde
+A5 24 58 44 64 54 4C 44 00 # N tilde
+A6 38 04 3C 44 3C 00 7C 00 # feminine ordinal
+A7 38 44 44 44 38 00 7C 00 # masculine ordinal
+A8 10 00 10 20 40 44 38 00 # inverted question
+A9 00 00 7C 40 40 00 00 00 # reversed not
+AA 00 00 7C 04 04 00 00 00 # not
+AB 80 80 88 90 26 42 04 0E # one half
+AC 80 80 88 90 2A 4E 02 02 # one quarter
+AD 10 00 10 10 10 10 10 00 # inverted exclamation
+AE 00 14 28 50 28 14 00 00 # left double angle
+AF 00 50 28 14 28 50 00 00 # right double angle
+B0 88 22 88 22 88 22 88 22 # shade 1/4
+B1 CC 33 CC 33 CC 33 CC 33 # shade 2/4
+B2 EE BB EE BB EE BB EE BB # shade 3/4
+B3 10 10 10 10 10 10 10 10 # box U1 D1 L0 R0
+B4 10 10 10 10 F0 10 10 10 # box U1 D1 L1 R0
+B5 10 10 10 F0 10 F0 10 10 # box U1 D1 L2 R0
+B6 24 24 24 24 FC 24 24 24 # box U2 D2 L1 R0
+B7 00 00 00 00 FC 24 24 24 # box U0 D2 L1 R0
+B8 00 00 00 F0 10 F0 10 10 # box U0 D1 L2 R0
+B9 24 24 24 FC 24 FC 24 24 # box U2 D2 L2 R0
+BA 24 24 24 24 24 24 24 24 # box U2 D2 L0 R0
+BB 00 00 00 FC 04 E4 24 24 # box U0 D2 L2 R0
+BC 24 24 24 E4 04 FC 00 00 # box U2 D0 L2 R0
+BD 24 24 24 24 FC 00 00 00 # box U2 D0 L1 R0
+BE 10 10 10 F0 10 F0 00 00 # box U1 D0 L2 R0
+BF 00 00 00 00 F0 10 10 10 # box U0 D1 L1 R0
+C0 10 10 10 10 1F 00 00 00 # box U1 D0 L0 R1
+C1 10 10 10 10 FF 00 00 00 # box U1 D0 L1 R1
+C2 00 00 00 00 FF 10 10 10 # box U0 D1 L1 R1
+C3 10 10 10 10 1F 10 10 10 # box U1 D1 L0 R1
+C4 00 00 00 00 FF 00 00 00 # box U0 D0 L1 R1
+C5 10 10 10 10 FF 10 10 10 # box U1 D1 L1 R1
+C6 10 10 10 1F 10 1F 10 10 # box U1 D1 L0 R2
+C7 24 24 24 24 3F 24 24 24 # box U2 D2 L0 R1
+C8 24 24 24 27 20 3F 00 00 # box U2 D0 L0 R2
+C9 00 00 00 3F 20 27 24 24 # box U0 D2 L0 R2
+CA 24 24 24 FF 24 FF 00 00 # box U2 D0 L2 R2
+CB 00 00 00 FF 24 FF 24 24 # box U0 D2 L2 R2
+CC 24 24 24 3F 24 3F 24 24 # box U2 D2 L0 R2
+CD 00 00 00 FF 00 FF 00 00 # box U0 D0 L2 R2
+CE 24 24 24 FF 24 FF 24 24 # box U2 D2 L2 R2
+CF 10 10 10 FF 10 FF 00 00 # box U1 D0 L2 R2
+D0 24 24 24 24 FF 00 00 00 # box U2 D0 L1 R1
+D1 00 00 00 FF 10 FF 10 10 # box U0 D1 L2 R2
+D2 00 00 00 00 FF 24 24 24 # box U0 D2 L1 R1
+D3 24 24 24 24 3F 00 00 00 # box U2 D0 L0 R1
+D4 10 10 10 1F 10 1F 00 00 # box U1 D0 L0 R2
+D5 00 00 00 1F 10 1F 10 10 # box U0 D1 L0 R2
+D6 00 00 00 00 3F 24 24 24 # box U0 D2 L0 R1
+D7 24 24 24 24 FF 24 24 24 # box U2 D2 L1 R1
+D8 10 10 10 FF 10 FF 10 10 # box U1 D1 L2 R2
+D9 10 10 10 10 F0 00 00 00 # box U1 D0 L1 R0
+DA 00 00 00 00 1F 10 10 10 # box U0 D1 L0 R1
+DB FF FF FF FF FF FF FF FF # full block
+DC 00 00 00 00 FF FF FF FF # lower half block
+DD F0 F0 F0 F0 F0 F0 F0 F0 # left half block
+DE 0F 0F 0F 0F 0F 0F 0F 0F # right half block
+DF FF FF FF FF 00 00 00 00 # upper half block
+E0 00 00 34 48 48 4C 34 00 # alpha
+E1 30 48 48 70 48 48 70 40 # sharp s
+E2 7C 40 40 40 40 40 40 00 # Gamma
+E3 00 00 7C 28 28 28 2C 00 # pi
+E4 7C 40 20 10 20 40 7C 00 # Sigma
+E5 00 00 3C 48 48 48 30 00 # sigma
+E6 00 00 44 44 44 78 40 40 # micro
+E7 00 00 7C 10 10 10 0C 00 # tau
+E8 10 38 54 54 54 38 10 00 # Phi
+E9 38 44 44 7C 44 44 38 00 # Theta
+EA 38 44 44 44 28 28 6C 00 # Omega
+EB 18 20 10 38 44 44 38 00 # delta
+EC 00 00 66 99 99 66 00 00 # infinity
+ED 00 08 38 54 54 38 20 20 # phi
+EE 00 00 3C 40 78 40 3C 00 # epsilon
+EF 00 00 38 44 44 44 44 00 # intersection
+F0 00 7C 00 7C 00 7C 00 00 # identical
+F1 10 10 7C 10 00 7C 00 00 # plus minus
+F2 40 20 10 20 40 00 7C 00 # greater equal
+F3 04 08 10 08 04 00 7C 00 # less equal
+F4 18 24 20 20 20 20 20 20 # top integral
+F5 08 08 08 08 08 08 48 30 # bottom integral
+F6 00 10 00 7C 00 10 00 00 # division
+F7 00 24 58 00 24 58 00 00 # almost equal
+F8 30 48 48 30 00 00 00 00 # degree
+F9 00 00 00 30 30 00 00 00 # bullet operator
+FA 00 00 00 10 00 00 00 00 # middle dot
+FB 1C 10 10 50 30 10 10 00 # square root
+FC 00 38 24 24 24 00 00 00 # superscript n
+FD 38 04 18 20 3C 00 00 00 # superscript 2
+FE 00 7C 7C 7C 7C 7C 00 00 # black square
+FF 00 00 00 00 00 00 00 00 # no break space

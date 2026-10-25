@@ -1,5 +1,7 @@
+#requires -Version 7.4
+[CmdletBinding()]
 param([switch]$NoBuild, [switch]$Writable, [string]$Overlay)
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'common.ps1')
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 $outputRoot = Join-Path $workspaceRoot 'artifacts\m1-build'
 if (-not $NoBuild) { & (Join-Path $PSScriptRoot 'build.ps1') -OutputRoot $outputRoot }
@@ -13,5 +15,5 @@ if ($Writable -or $Overlay) {
         New-Item -ItemType Directory -Path $overlayDirectory -Force | Out-Null
         $Overlay = Join-Path $overlayDirectory 'freedos.cow'
     }
-    & $emulatorExe --disk $image --overlay ([IO.Path]::GetFullPath($Overlay))
+    & $emulatorExe --disk $image --overlay (Resolve-DosPath -Path $Overlay)
 } else { & $emulatorExe --disk $image }

@@ -18,12 +18,23 @@ public sealed class Keyboard8042 : IIoPortDevice
         this.memory = memory; this.irq = irq; _mouse = mouse; _auxIrq = auxiliaryIrq;
         if (mouse is not null) { _commandByte |= 0x20; mouse.ConnectOutput(EnqueueAux); }
     }
-    public bool ResetRequested { get; private set; }
+    private bool _resetPulse;
+    public bool ResetLineAsserted => (_outputPort & 1) == 0;
+    public bool ResetRequested => _resetPulse || ResetLineAsserted;
+    public bool ConsumeResetPulse()
+    {
+        bool pulse = _resetPulse; _resetPulse = false; return pulse;
+    }
     public bool UnsupportedCommand { get; private set; }
     public int OutputByteCount => _output.Count;
     public void InjectTranslatedSet1(byte scanCode)
     {
-        if (_enabled && _scanning && (_commandByte & 0x40) != 0) Enqueue(scanCode);
+        TryInjectTranslatedSet1(scanCode);
+    }
+    public bool TryInjectTranslatedSet1(byte scanCode)
+    {
+        if (!_enabled || !_scanning || (_commandByte & 0x40) == 0 || _output.Count >= 64) return false;
+        Enqueue(scanCode); return true;
     }
     private void Enqueue(byte value)
     {
@@ -68,7 +79,7 @@ public sealed class Keyboard8042 : IIoPortDevice
                 case 0xa8: _commandByte &= 0xdf; UpdateIrq(); break;
                 case 0xa9: Enqueue(_mouse is null ? (byte)1 : (byte)0); break;
                 case 0xd0: Enqueue(_outputPort); break;
-                case 0xfe: ResetRequested = true; break;
+                case >= 0xf0: if ((b & 1) == 0) _resetPulse = true; break;
                 default: UnsupportedCommand = true; break;
             }
             return;
@@ -79,11 +90,12 @@ public sealed class Keyboard8042 : IIoPortDevice
             if (_expectedController == 0x60) { _commandByte = b; _enabled = (b & 0x10) == 0; UpdateIrq(); }
             else if (_expectedController == 0xd4) _mouse?.Write(b);
             else if (_expectedController == 0xd3) EnqueueAux([b]);
-            else { _outputPort = b; memory.A20Enabled = (b & 2) != 0; ResetRequested = (b & 1) == 0; }
+            else { _outputPort = b; memory.A20Enabled = (b & 2) != 0; }
             _expectedController = 0; return;
         }
         if (_expectedKeyboard != 0)
         {
+            if (b == 0xff) { _expectedKeyboard = 0; _scanning = true; Enqueue(0xfa); Enqueue(0xaa); return; }
             if (_expectedKeyboard == 0xf0 && b == 0) { Enqueue(0xfa); Enqueue(2); }
             else Enqueue(0xfa);
             _expectedKeyboard = 0; return;

@@ -89,10 +89,29 @@ internal static partial class Opl2Tests
             var r = new Rig(); ConfigureCsm(r); FirstCsmEdge(r); r.Opl.Reset(); r.Advance(100000000);
             Check(r.Opl.CsmKeyPulses == 1 && !r.Opl.CsmEnabled && !r.Opl.CsmPulseActive && r.Opl.ActiveOperators == 0 && r.RmsTail() < 1e-8);
         });
-        test("CSM zero attack remains silent and its incomplete accuracy stays diagnosed", () =>
+        test("CSM zero attack remains silent without misreporting supported programming", () =>
         {
             var r = new Rig(); ConfigureCsm(r); r.Write(0x63, 0); r.Advance(100000000);
-            Check(r.Opl.CsmKeyPulses > 0 && r.Samples().All(x => x == 0) && r.Opl.UnsupportedCsm && r.Opl.UnsupportedProgramming);
+            Check(r.Opl.CsmKeyPulses > 0 && r.Samples().All(x => x == 0) && !r.Opl.UnsupportedCsm && !r.Opl.UnsupportedProgramming);
+        });
+        test("CSM latches all 18 total levels at timer one, not at register write or timer two", () =>
+        {
+            var r = new Rig(); ConfigureCsm(r,64,0);
+            int[] offsets=[0,3,1,4,2,5,8,11,9,12,10,13,16,19,17,20,18,21];
+            for (int i=0;i<18;i++) r.Write((byte)(0x40+offsets[i]),(byte)(i+1));
+            for (int i=0;i<18;i++) Check(r.Opl.InspectOperator(i/2,(i&1)!=0).TotalLevelDb==0,$"pending slot {i}");
+            r.Write(3,255); r.Write(4,2); r.Advance(1000000);
+            Check(r.Opl.InspectOperator(0,true).TotalLevelDb==0 && r.Opl.CsmKeyPulses==0);
+            r.Write(4,0x41); r.Advance(16000000);
+            for (int i=0;i<18;i++) Check(r.Opl.InspectOperator(i/2,(i&1)!=0).TotalLevelDb==(i+1)*0.75,$"latched slot {i} level {r.Opl.InspectOperator(i/2,(i&1)!=0).TotalLevelDb} pulses {r.Opl.CsmKeyPulses}");
+        });
+        test("CSM disable flushes pending total levels and normal writes become immediate", () =>
+        {
+            var r = new Rig(); ConfigureCsm(r,control:0); r.Write(0x43,32);
+            Check(r.Opl.InspectRegister(0x43)==32 && r.Opl.InspectOperator(0,true).TotalLevelDb==0);
+            r.Write(8,0); Check(r.Opl.InspectOperator(0,true).TotalLevelDb==24);
+            r.Write(0x43,16); Check(r.Opl.InspectOperator(0,true).TotalLevelDb==12);
+            r.Opl.Reset(); Check(r.Opl.InspectOperator(0,true).TotalLevelDb==0);
         });
     }
 }

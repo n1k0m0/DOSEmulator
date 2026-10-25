@@ -57,6 +57,16 @@ internal static class FloppyTests
     }
     public static void AddTo(Action<string, Action> test)
     {
+        test("floppy BIOS DMA and CPU bounce copies follow a memory-manager-relocated EBDA",()=>
+        {
+            using var m=new PcMachine(new(){FloppyDriveA="1440k"},new MemoryDisk(DevelopmentFirmware.CreateDemoDisk(),"own boot"),new MemoryDisk(Image(),"own floppy"));
+            m.RunSteps(100000);Check(m.Fault is null && m.Cpu.Halted);
+            m.Memory.Ram.AsSpan(0x9fc00,1024).CopyTo(m.Memory.Ram.AsSpan(0xe920));
+            m.Memory.Ram.AsSpan(0x9fc00,1024).Fill(0xa5);m.Memory.WriteWord(0x40e,0x0e92);m.Memory.WriteWord(0x413,640);
+            m.Cpu.SetSegment(Segment.Es,0x5000);m.Cpu.SetRegister(Register.Bx,0);m.Cpu.SetRegister(Register.Cx,2);m.Cpu.SetRegister(Register.Dx,0);
+            Bios(m,0x0201);Check((m.Cpu.Eflags&1)==0 && m.Memory.Ram.AsSpan(0x50000,512).ToArray().All(b=>b==1));
+            Check(m.Memory.Ram.AsSpan(0x9fc00,1024).ToArray().All(b=>b==0xa5) && m.Memory.Ram.AsSpan(0xeb20,512).ToArray().All(b=>b==1));
+        });
         test("FDC reset IRQ exposes four sense statuses then invalid-command status", () =>
         {
             using var r = new Rig(); r.Fdc.Write(0x3f2, 0, 1); Check(r.Fdc.Read(0x3f4, 1) == 0);
@@ -158,6 +168,19 @@ internal static class FloppyTests
             Check(!GuestKeyboard.TryInjectForBios(m, 0x1e) && m.Keyboard.OutputByteCount == 0);
             m.Memory.WriteWord(0x41c, 0x1e); Check(GuestKeyboard.TryInjectForBios(m, 0x1e)); Check(m.Keyboard.OutputByteCount == 1);
             Check(!GuestKeyboard.TryInjectForBios(m, 0x9e));
+        });
+        foreach(string pause in new[]{"controller","scanning","translation"})
+        test($"acceptance keyboard retains input while guest pauses {pause}",()=>
+        {
+            using var m=PcMachine.CreateDemo();m.RunSteps(100000);
+            if(pause=="controller")m.Keyboard.Write(0x64,0xad,1);
+            else if(pause=="scanning"){m.Keyboard.Write(0x60,0xf5,1);m.Keyboard.Read(0x60,1);}
+            else{m.Keyboard.Write(0x64,0x60,1);m.Keyboard.Write(0x60,0x05,1);}
+            Check(!GuestKeyboard.TryInjectForBios(m,0x2a) && m.Keyboard.OutputByteCount==0);
+            if(pause=="controller")m.Keyboard.Write(0x64,0xae,1);
+            else if(pause=="scanning"){m.Keyboard.Write(0x60,0xf4,1);m.Keyboard.Read(0x60,1);}
+            else{m.Keyboard.Write(0x64,0x60,1);m.Keyboard.Write(0x60,0x45,1);}
+            Check(GuestKeyboard.TryInjectForBios(m,0x2a) && m.Keyboard.Read(0x60,1)==0x2a);
         });
         test("FDC completion reaches PIC IRQ6 and acknowledges on result read", () =>
         {

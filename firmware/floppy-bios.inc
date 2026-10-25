@@ -1,5 +1,49 @@
 ; Original PC/AT floppy BIOS services, Apache-2.0.
 ; All transfers pass through FDC ports and DMA2; one bounce sector uses reserved EBDA.
+; The polling transfer path also has a real IRQ6 completion handler. A V86
+; monitor may unmask IRQ6 even though the reference POST leaves it masked.
+irq_floppy:
+    push ax
+    push ds
+    xor ax,ax
+    mov ds,ax
+    or byte [0x43e],0x80
+    mov al,0x20
+    out 0x20,al
+    pop ds
+    pop ax
+    iret
+
+fdc_dma_bounce:
+    push eax
+    call bios_ebda_segment
+    movzx eax,ax
+    shl eax,4
+    add eax,0x200
+    out 4,al
+    shr eax,8
+    out 4,al
+    shr eax,8
+    out 0x81,al
+    pop eax
+    ret
+
+; CX=actual DMA byte count. A relocated EBDA need not be 64-KiB safe.
+; Reject a wrapping bounce region before copying caller data or starting I/O.
+; The 8237 page latch deliberately does not carry when its address wraps.
+fdc_check_bounce:
+    push eax
+    call bios_ebda_segment
+    movzx eax,ax
+    shl eax,4
+    add eax,0x200
+    movzx eax,ax
+    dec cx
+    add ax,cx
+    inc cx                 ; INC preserves the carry returned by ADD.
+    pop eax
+    ret
+
 int_floppy:
     enter_service
     and rFLAGS,0xfffe
@@ -344,6 +388,9 @@ floppy_sectors:
     push ds
     push es
     mov esi,eax
+    mov cx,512
+    call fdc_check_bounce
+    jc .dma_boundary
     sti
 .sector:
     movzx bx,byte [ss:bp-12]
@@ -393,12 +440,7 @@ floppy_sectors:
     mov al,0x4a
 .dma_direction:
     out 0x0b,al
-    xor al,al
-    out 4,al
-    mov al,0xfe
-    out 4,al
-    mov al,9
-    out 0x81,al
+    call fdc_dma_bounce
     mov al,0xff
     out 5,al
     mov al,1
@@ -469,6 +511,10 @@ floppy_sectors:
     mov al,0x80
     stc
     jmp .done
+.dma_boundary:
+    mov al,9
+    stc
+    jmp .done
 .device_error:
     mov al,4
     test bl,2
@@ -489,7 +535,7 @@ floppy_sectors:
 .copy_buffer:
     push ds
     push esi
-    mov ax,0x9fc0
+    call bios_ebda_segment
     mov ds,ax
     mov si,0x200
     mov cx,512
@@ -615,7 +661,11 @@ floppy_format:
     mov [ss:bp-16],ax
     mov ax,[si+7]
     mov [ss:bp-18],ax
-    mov ax,0x9fc0
+    mov cx,[ss:bp-16]
+    shl cx,2
+    call fdc_check_bounce
+    jc .dma_boundary
+    call bios_ebda_segment
     mov ds,ax
     mov si,0x200
     mov cx,[ss:bp-16]
@@ -642,12 +692,7 @@ floppy_format:
     out 0x0c,al
     mov al,0x4a            ; DMA2 memory -> device, single, no auto-init
     out 0x0b,al
-    xor al,al
-    out 4,al
-    mov al,0xfe
-    out 4,al
-    mov al,9
-    out 0x81,al
+    call fdc_dma_bounce
     mov ax,[ss:bp-16]
     shl ax,2
     dec ax
@@ -693,6 +738,10 @@ floppy_format:
     jmp .done
 .invalid:
     mov al,1
+    stc
+    jmp .done
+.dma_boundary:
+    mov al,9
     stc
     jmp .done
 .timeout:

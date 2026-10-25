@@ -9,11 +9,18 @@ public sealed class RtcCmos(DeviceScheduler scheduler, int ramMiB, byte floppyTy
     private readonly DateTime _epoch = new(2026, 10, 24, 12, 0, 0, DateTimeKind.Utc);
     private byte _index;
     private byte _statusB = 2;
+    private ulong _batteryNanoseconds;
+    public void CarryBatteryStateTo(RtcCmos poweredOn)
+    {
+        ArgumentNullException.ThrowIfNull(poweredOn);
+        _nvram.CopyTo(poweredOn._nvram, 0); poweredOn._statusB = _statusB;
+        poweredOn._batteryNanoseconds = checked(_batteryNanoseconds + scheduler.Now);
+    }
     public uint Read(ushort port, int width)
     {
         if (port == 0x70) return _index;
         if (port != 0x71 || width != 1) return 0xff;
-        DateTime now = _epoch.AddSeconds(scheduler.Now / 1_000_000_000);
+        DateTime now = _epoch.AddSeconds(checked(_batteryNanoseconds + scheduler.Now) / 1_000_000_000);
         byte Encode(int value) => (_statusB & 4) != 0 ? (byte)value : (byte)((value / 10 << 4) | value % 10);
         return (_index & 127) switch
         {

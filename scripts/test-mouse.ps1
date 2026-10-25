@@ -1,7 +1,9 @@
+#requires -Version 7.4
+[CmdletBinding()]
 param([switch]$SkipBuild, [switch]$Gui, [string]$OutputRoot = 'artifacts\m1-build', [string]$MsdosDisk, [string]$MsdosOverlay)
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'common.ps1')
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
-$buildRoot = [IO.Path]::GetFullPath((Join-Path $workspaceRoot $OutputRoot))
+$buildRoot = Get-DosBuildRoot -OutputRoot $OutputRoot
 if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'build.ps1') -OutputRoot $buildRoot }
 $runner = Join-Path $buildRoot 'Release\net10.0\DOSEmulator.Headless.dll'
 $assembler = Join-Path $workspaceRoot 'artifacts\tools\nasm-3.02\nasm-3.02\nasm.exe'
@@ -20,10 +22,10 @@ $profile = Join-Path $workspaceRoot 'profiles\virtual486-ps2-dev-v1.json'
 $protected = @($original,$freeDos,$floppy,$profile)
 if ($MsdosDisk -or $MsdosOverlay) {
     if (-not ($MsdosDisk -and $MsdosOverlay)) { throw 'Supply both private MS-DOS base and pristine installed overlay.' }
-    $MsdosDisk = [IO.Path]::GetFullPath($MsdosDisk); $MsdosOverlay = [IO.Path]::GetFullPath($MsdosOverlay)
+    $MsdosDisk = (Resolve-DosPath -Path $MsdosDisk); $MsdosOverlay = (Resolve-DosPath -Path $MsdosOverlay)
     $protected += @($MsdosDisk,$MsdosOverlay)
 }
-$hashes = @{}; foreach ($path in $protected) { $hashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
+$hashes = @{}; foreach ($path in $protected) { $hashes[$path] = (Get-DosFileHash -LiteralPath $path -Algorithm SHA256).Hash }
 $stages = @()
 foreach ($guest in @('freedos-1','freedos-2') + $(if ($MsdosDisk) { @('msdos622') } else { @() })) {
     $prefix = Join-Path $testRoot $guest
@@ -49,7 +51,7 @@ foreach ($guest in @('freedos-1','freedos-2') + $(if ($MsdosDisk) { @('msdos622'
     python (Join-Path $workspaceRoot 'tests\verify-mouse.py') ($prefix+'.json') ($prefix+'.io.jsonl') | Set-Content -LiteralPath ($prefix+'.verified.json')
     if ($LASTEXITCODE -ne 0) { throw "Independent KBC/IRQ mouse verification failed: $guest" }
     $result = Get-Content -Raw -LiteralPath ($prefix+'.json') | ConvertFrom-Json
-    if ($guest -eq 'msdos622' -and (Get-FileHash -LiteralPath $privateCow).Hash -ne $hashes[$MsdosOverlay]) { throw 'MS-DOS read-only mouse acceptance modified installed overlay.' }
+    if ($guest -eq 'msdos622' -and (Get-DosFileHash -LiteralPath $privateCow).Hash -ne $hashes[$MsdosOverlay]) { throw 'MS-DOS read-only mouse acceptance modified installed overlay.' }
     $stages += [pscustomobject]@{guest=$guest;instructions=$result.status.instructions;nanoseconds=$result.status.virtualNanoseconds;frameHash=$result.frameHash;ataRead=$result.ataSectorsRead;floppyRead=$result.floppySectorsRead;packets=$result.ps2Mouse.packetCount}
 }
 if ($stages[0].frameHash -ne $stages[1].frameHash -or $stages[0].nanoseconds -ne $stages[1].nanoseconds) { throw 'Mouse cold boots differ.' }
@@ -84,7 +86,7 @@ if ($Gui) {
         Copy-Item -LiteralPath (Join-Path $guiRoot '00-frame.png') -Destination (Join-Path $guiRoot ('ps2-native-mode'+$mode+'.png'))
     }
 }
-foreach ($path in $protected) { if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $hashes[$path]) { throw 'Protected mouse test input changed.' } }
+foreach ($path in $protected) { if ((Get-DosFileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $hashes[$path]) { throw 'Protected mouse test input changed.' } }
 $summary = [pscustomobject]@{passed=$true;directory=$testRoot;guests=$stages;negativeDetection=$true;nativeGui=[bool]$Gui;ps2Id=0;buttons=2;wheel=$false;protectedHashes=$hashes;
     limitations='Byte-level PS/2; no electrical serial timing. Native capture is wired to OpenTK, relative/release state unit-tested; automated GUI scenarios exercise guest hardware and rendering, not physical OS pointer capture.'}
 $summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $testRoot 'acceptance-summary.json')

@@ -2,7 +2,12 @@ namespace DOSEmulator.Cpu.X86;
 
 public sealed partial class X86Cpu
 {
-    private sealed class CpuFaultException(byte vector) : Exception { public byte Vector { get; } = vector; }
+    private sealed class CpuFaultException(byte vector, uint? errorCode = null, bool trap = false) : Exception
+    {
+        public byte Vector { get; } = vector;
+        public uint? ErrorCode { get; } = errorCode;
+        public bool Trap { get; } = trap;
+    }
     private static long Signed(uint value, int width) => width switch { 1 => (sbyte)value, 2 => (short)value, _ => (int)value };
 
     private bool ExecuteExtended(byte opcode)
@@ -10,7 +15,9 @@ public sealed partial class X86Cpu
         int w = Width;
         switch (opcode)
         {
+            case 0x63: AdjustRpl(); return true;
             case 0x0f: ExecuteTwoByte(); return true;
+            case >= 0xd8 and <= 0xdf: ExecuteX87(opcode); X87Instructions++; return true;
             case 0x27: case 0x2f: // DAA / DAS
             {
                 byte old = (byte)ReadRegister(0, 1); bool oldCarry = (Eflags & Carry) != 0;
@@ -35,10 +42,12 @@ public sealed partial class X86Cpu
             }
             case 0x9a:
             {
-                uint target = Immediate(w); ushort segment = (ushort)Immediate(2); CheckLimit(target, 1);
-                Push(GetSegment(Segment.Cs), w); Push(Eip, w); SetSegment(Segment.Cs, segment); Eip = target; return true;
+                uint target = Immediate(w); ushort segment = (ushort)Immediate(2);
+                FarTransfer(segment, target, true, w); return true;
             }
-            case 0x9b: return true; // WAIT with an idle, not-yet-executing FPU has no pending exception.
+            case 0x9b:
+                if ((Cr0 & 0x0a) == 0x0a) throw new CpuFaultException(7);
+                CheckFpuPending(); return true;
             case 0xc0: case 0xc1: case 0xd0: case 0xd1: case 0xd2: case 0xd3:
             {
                 int size = (opcode & 1) == 0 ? 1 : w; byte m = FetchByte(); Operand rm = DecodeOperand(m);
@@ -49,17 +58,17 @@ public sealed partial class X86Cpu
             case 0xc8:
             {
                 uint allocation = Immediate(2); int nesting = FetchByte() & 31;
-                Push(ReadRegister(5, w), w); uint frame = ReadRegister(4, 2);
+                Push(ReadRegister(5, w), w); uint frame = StackPointer;
                 if (nesting > 0)
                 {
-                    uint bp = ReadRegister(5, 2);
-                    for (int i = 1; i < nesting; i++) { bp = (bp - (uint)w) & 0xffff; CheckLimit(bp, w); Push(ReadMemory(GetSegmentBase(Segment.Ss) + bp, w), w); }
+                    uint bp = ReadRegister(5, w);
+                    for (int i = 1; i < nesting; i++) { bp = unchecked(bp - (uint)w) & Mask(w); CheckSegment(Segment.Ss, bp, w); Push(ReadMemory(unchecked(GetSegmentBase(Segment.Ss) + bp), w), w); }
                     Push(frame, w);
                 }
-                WriteRegister(5, w, frame); WriteRegister(4, 2, ReadRegister(4, 2) - allocation); return true;
+                WriteRegister(5, w, frame); SetStackPointer(unchecked(StackPointer - allocation)); return true;
             }
-            case 0xc9: WriteRegister(4, 2, ReadRegister(5, 2)); WriteRegister(5, w, Pop(w)); return true;
-            case 0xce: if ((Eflags & Overflow) != 0) EnterRealModeInterrupt(4); return true;
+            case 0xc9: SetStackPointer(ReadRegister(5, StackAddressWidth)); WriteRegister(5, w, Pop(w)); return true;
+            case 0xce: if ((Eflags & Overflow) != 0) DispatchInterrupt(4, true); return true;
             case 0xd4:
             {
                 uint radix = FetchByte(); if (radix == 0) throw new CpuFaultException(0);
@@ -73,7 +82,7 @@ public sealed partial class X86Cpu
             case 0xd7:
             {
                 uint offset = unchecked(ReadRegister(3, _address32 ? 4 : 2) + ReadRegister(0, 1)); if (!_address32) offset &= 0xffff;
-                CheckLimit(offset, 1); WriteRegister(0, 1, ReadMemory(GetSegmentBase(_override ?? Segment.Ds) + offset, 1)); return true;
+                CheckSegment(_override ?? Segment.Ds, offset, 1); WriteRegister(0, 1, ReadMemory(unchecked(GetSegmentBase(_override ?? Segment.Ds) + offset), 1)); return true;
             }
             case 0xf6: case 0xf7: MultiplyDivide(opcode == 0xf6 ? 1 : w); return true;
             default: return false;
@@ -84,8 +93,9 @@ public sealed partial class X86Cpu
     {
         byte m = FetchByte(); Operand rm = DecodeOperand(m);
         if (rm.IsRegister) throw Unsupported("Far pointer requires a memory operand.");
-        CheckLimit(rm.Offset, width + 2); uint offset = Read(rm, width); ushort selector = _memory.ReadWord(rm.Address + (uint)width);
-        WriteRegister((m >> 3) & 7, width, offset); SetSegment(segment, selector);
+        CheckOperand(rm, width + 2); CheckAlignment(rm.Address, width); ProbeMemory(rm.Address, width + 2);
+        uint offset = Read(rm, width); ushort selector = (ushort)ReadMemory(unchecked(rm.Address + (uint)width), 2);
+        SetSegment(segment, selector); WriteRegister((m >> 3) & 7, width, offset);
         if (segment == Segment.Ss) _interruptShadow = 1;
     }
 
@@ -93,24 +103,44 @@ public sealed partial class X86Cpu
     {
         int count = rawCount & 31;
         if (operation is 2 or 3 && width < 4) count %= width * 8 + 1;
+        uint mask = Mask(width), sign = 1u << (width * 8 - 1), original = Read(rm, width, true), value = original;
         if (count == 0) return;
-        uint mask = Mask(width), sign = 1u << (width * 8 - 1), original = Read(rm, width), value = original;
         bool carry = (Eflags & Carry) != 0;
-        for (int i = 0; i < count; i++)
+        int bits = width * 8;
+        switch (operation)
         {
-            bool high = (value & sign) != 0, low = (value & 1) != 0;
-            value = operation switch
+            case 0: // ROL: retain a nonzero full rotation's CF and old undefined OF.
             {
-                0 => ((value << 1) | (high ? 1u : 0)) & mask,
-                1 => (value >> 1) | (low ? sign : 0),
-                2 => ((value << 1) | (carry ? 1u : 0)) & mask,
-                3 => (value >> 1) | (carry ? sign : 0),
-                4 or 6 => (value << 1) & mask,
-                5 => value >> 1,
-                7 => (value >> 1) | (value & sign),
-                _ => throw new InvalidOperationException()
-            };
-            carry = operation is 0 or 2 or 4 or 6 ? high : low;
+                int rotation = count & (bits - 1);
+                value = ((original << rotation) | (original >> (bits - rotation))) & mask;
+                carry = (value & 1) != 0; break;
+            }
+            case 1:
+            {
+                int rotation = count & (bits - 1);
+                value = ((original >> rotation) | (original << (bits - rotation))) & mask;
+                carry = (value & sign) != 0; break;
+            }
+            case 2: case 3:
+            {
+                int ringBits = bits + 1;
+                ulong ringMask = (1UL << ringBits) - 1;
+                ulong ring = ((ulong)original << 1) | (carry ? 1UL : 0);
+                ring = operation == 2
+                    ? ((ring << count) | (ring >> (ringBits - count))) & ringMask
+                    : ((ring >> count) | (ring << (ringBits - count))) & ringMask;
+                value = (uint)(ring >> 1); carry = (ring & 1) != 0; break;
+            }
+            case 4: case 6:
+                value = count < bits ? (original << count) & mask : 0;
+                carry = count <= bits && ((original >> (bits - count)) & 1) != 0; break;
+            case 5:
+                value = count < bits ? original >> count : 0;
+                carry = count <= bits && ((original >> (count - 1)) & 1) != 0; break;
+            case 7:
+                value = (uint)(Signed(original, width) >> Math.Min(count, bits - 1)) & mask;
+                carry = ((original >> (Math.Min(count, bits) - 1)) & 1) != 0; break;
+            default: throw new InvalidOperationException();
         }
         Write(rm, width, value); SetFlag(Carry, carry);
         if (operation >= 4) SetSzp(value, width);
@@ -129,7 +159,8 @@ public sealed partial class X86Cpu
 
     private void MultiplyDivide(int width)
     {
-        byte m = FetchByte(); int operation = (m >> 3) & 7; Operand rm = DecodeOperand(m); uint value = Read(rm, width);
+        byte m = FetchByte(); int operation = (m >> 3) & 7; ValidateLockOperand(m, operation is 2 or 3);
+        Operand rm = DecodeOperand(m); uint value = Read(rm, width, operation is 2 or 3);
         if (operation == 0) { Alu(4, value, Immediate(width), width); return; }
         if (operation == 2) { Write(rm, width, ~value); return; }
         if (operation == 3) { Write(rm, width, Alu(5, 0, value, width)); return; }
@@ -178,6 +209,7 @@ public sealed partial class X86Cpu
     private void ExecuteTwoByte()
     {
         byte opcode = FetchByte(); int w = Width;
+        ValidateLockOpcode(opcode, true);
         if (opcode is >= 0x80 and <= 0x8f)
         {
             int displacement = w == 2 ? (short)Immediate(2) : unchecked((int)Immediate(4));
@@ -191,9 +223,9 @@ public sealed partial class X86Cpu
         switch (opcode)
         {
             case 0xa0: Push(GetSegment(Segment.Fs), w); return;
-            case 0xa1: SetSegment(Segment.Fs, (ushort)Pop(w)); return;
+            case 0xa1: PopSegment(Segment.Fs, w); return;
             case 0xa8: Push(GetSegment(Segment.Gs), w); return;
-            case 0xa9: SetSegment(Segment.Gs, (ushort)Pop(w)); return;
+            case 0xa9: PopSegment(Segment.Gs, w); return;
             case 0xaf:
             {
                 byte m = FetchByte(); Operand rm = DecodeOperand(m); int reg = (m >> 3) & 7;
@@ -208,19 +240,18 @@ public sealed partial class X86Cpu
                 int size = (opcode & 1) == 0 ? 1 : 2; byte m = FetchByte(); Operand rm = DecodeOperand(m); uint value = Read(rm, size);
                 WriteRegister((m >> 3) & 7, w, opcode < 0xbe ? value : unchecked((uint)Signed(value, size))); return;
             }
-            case 0x01:
-            {
-                byte m = FetchByte(); Operand rm = DecodeOperand(m); int op = (m >> 3) & 7;
-                if (op == 4) { Write(rm, rm.IsRegister ? w : 2, Cr0 & 0xffff); return; }
-                throw Unsupported("This system descriptor/control operation is not implemented yet.");
-            }
-            case 0x20: case 0x22:
-            {
-                byte m = FetchByte(); if (m < 0xc0 || ((m >> 3) & 7) != 0) throw Unsupported("Only real-mode CR0 access is implemented.");
-                if (opcode == 0x20) WriteRegister(m & 7, 4, Cr0);
-                else { uint value = ReadRegister(m & 7, 4); if ((value & 0x80000001) != 0) throw Unsupported("Protected mode and paging are not implemented yet."); Cr0 = value; }
-                return;
-            }
+            case 0x00: ExecuteSystemSegmentGroup(); return;
+            case 0x01: ExecuteSystemGroup(); return;
+            case 0x02: QueryDescriptor(false); return;
+            case 0x03: QueryDescriptor(true); return;
+            case 0xa3: case 0xab: case 0xb3: case 0xbb: case 0xba: BitTest(opcode); return;
+            case 0xb0: case 0xb1: case 0xc0: case 0xc1: ExchangeAddCompare(opcode); return;
+            case 0xa4: case 0xa5: case 0xac: case 0xad: DoubleShift(opcode); return;
+            case 0xbc: case 0xbd: BitScan(opcode == 0xbd); return;
+            case 0x06: RequirePrivilegeZero(); Cr0 &= ~0x08u; return;
+            case 0x20: case 0x22: MoveControlRegister(opcode); return;
+            case 0x21: case 0x23: MoveDebugRegister(opcode); return;
+            case 0xa2: throw new CpuFaultException(6); // Not present on this early 486DX.
             default: throw Unsupported($"Two-byte opcode 0F {opcode:X2} is not implemented.");
         }
     }

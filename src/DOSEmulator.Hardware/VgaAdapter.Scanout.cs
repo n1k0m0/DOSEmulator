@@ -53,18 +53,26 @@ public sealed partial class VgaAdapter
         else
         {
             int characterHeight = (_crtc[9] & 31) + 1;
-            int cursor = _crtc[14] << 8 | _crtc[15]; bool blinkOff = ((now / 500_000_000) & 1) != 0;
+            // VGA font blocks are interleaved 0,4,1,5,2,6,3,7 in plane 2.
+            // Attribute bit 3 selects A/B when different maps are enabled; otherwise it is intensity.
+            int fontA = ((_seq[3] & 12) << 12) | ((_seq[3] & 32) << 8);
+            int fontB = ((_seq[3] & 3) << 14) | ((_seq[3] & 16) << 9);
+            bool twoFonts = (_seq[4] & 2) != 0 && fontA != fontB;
+            int cursor = ((_crtc[14] << 8 | _crtc[15]) + ((_crtc[11] >> 5) & 3)) & 65535;
+            ulong rasterFrame = now / FramePeriod;
+            bool cursorOff = (rasterFrame & 16) != 0, blinkOff = (rasterFrame & 32) != 0;
             for (int y = 0; y < height; y++)
                 for (int x = 0; x < width; x++)
                 {
                     int address = (Start + y / characterHeight * Stride + x / CharacterWidth) & 65535;
                     int character = _planes[0][address], attribute = _planes[1][address];
                     int row = y % characterHeight, column = x % CharacterWidth;
-                    byte glyph = _planes[2][(character * 32 + row) & 65535];
+                    int font = twoFonts && (attribute & 8) != 0 ? fontA : fontB;
+                    byte glyph = _planes[2][font + character * 32 + row];
                     bool foreground = column < 8 ? (glyph & (128 >> column)) != 0 : character is >= 0xc0 and <= 0xdf && (_attr[0x10] & 4) != 0 && (glyph & 1) != 0;
                     if ((_attr[0x10] & 8) != 0 && (attribute & 128) != 0 && blinkOff) foreground = false;
-                    bool cursorPixel = address == cursor && (_crtc[10] & 32) == 0 && !blinkOff && row >= (_crtc[10] & 31) && row <= (_crtc[11] & 31);
-                    int color = cursorPixel ? 15 : foreground ? attribute & 15 : (attribute >> 4) & ((_attr[0x10] & 8) != 0 ? 7 : 15);
+                    bool cursorPixel = address == cursor && (_crtc[10] & 32) == 0 && !cursorOff && row >= (_crtc[10] & 31) && row <= (_crtc[11] & 31);
+                    int color = cursorPixel || foreground ? attribute & (twoFonts ? 7 : 15) : (attribute >> 4) & ((_attr[0x10] & 8) != 0 ? 7 : 15);
                     pixels[y * width + x] = _rgb[PaletteIndex(color)];
                 }
         }

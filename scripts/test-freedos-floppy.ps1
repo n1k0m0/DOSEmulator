@@ -1,14 +1,17 @@
+#requires -Version 7.4
+[CmdletBinding()]
 param([switch]$SkipBuild, [string]$Runner)
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'common.ps1')
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
+if ($Runner) { $Runner = (Resolve-Path -LiteralPath $Runner).Path }
 $outputRoot = Join-Path $workspaceRoot 'artifacts\m1-build'
 if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'build.ps1') -OutputRoot $outputRoot }
 if (-not $Runner) { $Runner = Join-Path $outputRoot 'Release\net10.0\DOSEmulator.Headless.dll' }
 & (Join-Path $PSScriptRoot 'prepare-freedos-floppy.ps1') -Runner $Runner | Out-Host
 $image = Join-Path $workspaceRoot 'artifacts\freedos-m2\floppy\FD14-minimal.img'
 $original = Join-Path $workspaceRoot 'artifacts\freedos-floppy-original\FD14BOOT144.img'
-$baseHash = (Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash
-$originalHash = (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash
+$baseHash = (Get-DosFileHash -LiteralPath $image -Algorithm SHA256).Hash
+$originalHash = (Get-DosFileHash -LiteralPath $original -Algorithm SHA256).Hash
 $directory = Join-Path $workspaceRoot ('artifacts\freedos-m2\floppy-acceptance-' + [Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $directory | Out-Null
 $overlayA = Join-Path $directory 'a.cow'
@@ -49,7 +52,7 @@ $swap = @('--floppy-b',$image,'--swap-floppy','b','--swap-image',$image,'--swap-
 $result = Run-Guest 'live-media-change' $commands @('M2-SWAP-EMPTY','M2-SWAP-CONTENT','M2-SWAP-OK') $swap
 if (-not $result.mediaSwapApplied) { throw 'Live floppy change did not run.' }
 $results += [pscustomobject]@{name='live-media-change';read=$result.floppySectorsRead;write=$result.floppySectorsWritten}
-if ((Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash -ne $baseHash -or (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash -ne $originalHash) { throw 'Floppy base/original changed.' }
+if ((Get-DosFileHash -LiteralPath $image -Algorithm SHA256).Hash -ne $baseHash -or (Get-DosFileHash -LiteralPath $original -Algorithm SHA256).Hash -ne $originalHash) { throw 'Floppy base/original changed.' }
 $summary = [pscustomobject]@{passed=$true;coldBoots=6;twoDrives=$true;fdcDmaPath=$true;persistentWrites=$true;liveMediaChange=$true;originalUnchanged=$true;baseUnchanged=$true;directory=$directory;stages=$results}
 $summary | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $directory 'acceptance-summary.json') -Encoding utf8
 $summary | ConvertTo-Json -Depth 5

@@ -16,7 +16,7 @@ using MouseState = OpenTK.Input.MouseState;
 
 namespace DOSEmulator;
 
-public sealed class DosWindow : SharpPixelsWindow
+public sealed partial class DosWindow : SharpPixelsWindow
 {
     private readonly MachineSession _session;
     private readonly IpcServer _ipc;
@@ -52,7 +52,7 @@ public sealed class DosWindow : SharpPixelsWindow
     private readonly List<object> _audioMeasurements = [];
     private readonly GuestTestScenario? _scenario;
 
-    public DosWindow(PcMachine machine, HostSettings settings, string settingsPath, string? smokeDirectory, bool freeDosAcceptance = false, string? automaticText = null, string? captureAfter = null, string? audioOutPath = null, bool audioAcceptance = false, GuestTestScenario? scenario = null)
+    public DosWindow(PcMachine machine, HostSettings settings, string settingsPath, string? smokeDirectory, bool freeDosAcceptance = false, string? automaticText = null, string? captureAfter = null, string? audioOutPath = null, bool audioAcceptance = false, GuestTestScenario? scenario = null, bool resourceAcceptance = false, bool nativeMouseAcceptance = false)
         : base(960, 720, "DOSEmulator - 486 Development")
     {
         _session = new(machine); _settings = settings with { MasterVolume = Math.Clamp(settings.MasterVolume, 0, 100),
@@ -64,6 +64,10 @@ public sealed class DosWindow : SharpPixelsWindow
         _audioOutPath = audioOutPath; _audioAcceptance = audioAcceptance;
         _automaticKeys = automaticText is null ? [] : GuestKeyboard.Encode(automaticText);
         _scenario = scenario;
+        _resourceAcceptance = resourceAcceptance;
+        _nativeMouseAcceptance = nativeMouseAcceptance;
+        if (nativeMouseAcceptance && (smokeDirectory is null || machine.Mouse is null || resourceAcceptance || audioAcceptance))
+            throw new ArgumentException("Native mouse acceptance requires a PS/2 profile and its own acceptance directory.");
         if (scenario is not null && automaticText is not null) throw new ArgumentException("Choose scenario or automatic text.");
         if (smokeDirectory is not null) Directory.CreateDirectory(smokeDirectory);
         _ipc = new(_session, instanceDirectory: Path.Combine(Path.GetDirectoryName(settingsPath)!, "ipc", "instances"));
@@ -76,7 +80,7 @@ public sealed class DosWindow : SharpPixelsWindow
         if (audio.Fault is { } audioFault) _notices.Enqueue("AUDIO UNAVAILABLE: " + audioFault);
         PresentationVSyncEnabled = _settings.VSync;
         CursorState = CursorState.Normal;
-        FocusedChanged += e => { if (!e.IsFocused) { ReleaseMouse(); ReleaseGuestKeys(); } };
+        FocusedChanged += e => { if (!e.IsFocused) { if (_mouseInput.Captured) _nativeCapturedFocusLosses++; ReleaseMouse(); ReleaseGuestKeys(); } };
         MouseMove += e => SendMouse(_mouseInput.Move(e.DeltaX, e.DeltaY));
         MouseDown += e => NativeMouseButton(e.Button, true);
         MouseUp += e => NativeMouseButton(e.Button, false);
@@ -217,17 +221,24 @@ public sealed class DosWindow : SharpPixelsWindow
         var profile = status?.Configuration ?? new MachineProfile();
         _items = _page switch
         {
-        "MAIN MENU" => ["CONTINUE", "VIDEO SETTINGS", "MACHINE / HARDWARE", "MEDIA", "REMOTE PLAY / NETWORK", "AUDIO SETTINGS", "RESTART CURRENT MACHINE", "EXIT"],
+        "MAIN MENU" => ["CONTINUE", "VIDEO SETTINGS", "MACHINE / HARDWARE", "MEDIA", "REMOTE PLAY / NETWORK", "AUDIO SETTINGS", "RESET / POWER", "EXIT"],
+        "RESET / POWER" => ["SEND CTRL+ALT+DEL TO GUEST", "HARDWARE RESET / CPU, RAM RETAINED", "POWER CYCLE / RAM CLEARED", "BACK"],
         "VIDEO SETTINGS" => [$"FILTER          {_settings.Filter.ToUpperInvariant()}", $"UPSCALE         {_settings.Upscale.ToUpperInvariant()}",
             $"ASPECT          {(_settings.CorrectAspect ? "4:3" : "SOURCE PIXELS")}", $"VSYNC           {(_settings.VSync ? "ON" : "OFF")}", "BACK"],
         "MACHINE / HARDWARE" => ["CPU: 486 REAL-MODE DEVELOPMENT SUBSET", $"RAM: {profile.RamMiB} MIB (CHANGE RESTARTS)",
             $"FLOPPY A: {profile.FloppyDriveA.ToUpperInvariant()} (CHANGE RESTARTS)", $"FLOPPY B: {profile.FloppyDriveB.ToUpperInvariant()} (CHANGE RESTARTS)",
             $"BOOT: {profile.BootDevice.ToUpperInvariant()} (CHANGE RESTARTS)",
             profile.SoundCard switch { "adlib-opl2-development" => "SOUND: ADLIB OPL2 MELODIC DEV (RESTART)",
-                "sb2-opl2-development" => "SOUND: SB2+OPL2 DEV A220 I5 D1 (RESTART)",
-                "sb2-dsp-development" => "SOUND: SB2 DSP DEV / A220 I5 D1 (RESTART)", _ => "SOUND: SPEAKER (CHANGE RESTARTS)" },
+                "sb2-opl2-development" => $"SOUND: SB2+OPL2 A{profile.SoundBlasterBasePort:X3} I{profile.SoundBlasterIrq} D1 (RESTART)",
+                "sb2-dsp-development" => $"SOUND: SB2 DSP A{profile.SoundBlasterBasePort:X3} I{profile.SoundBlasterIrq} D1 (RESTART)", _ => "SOUND: SPEAKER (CHANGE RESTARTS)" },
+            "SOUND CARD RESOURCES...",
             $"MOUSE: {profile.Mouse.ToUpperInvariant()} (CHANGE RESTARTS)",
             $"VGA: {frame?.Width}X{frame?.Height} / IDE: LBA28 PIO", "BACK"],
+        "SOUND CARD RESOURCES" => profile.SoundCard is "sb2-dsp-development" or "sb2-opl2-development"
+            ? [$"SB2 PORT: {profile.SoundBlasterBasePort:X3}H (CHANGE RESTARTS)",
+                $"SB2 IRQ: {profile.SoundBlasterIrq} (CHANGE RESTARTS)", "SB2 DMA: 1 (FIXED ON THIS CARD)",
+                $"DOS: SET BLASTER={profile.GetBlasterEnvironment()}", "BACK"]
+            : ["SELECT AN SB2 CARD IN HARDWARE FIRST", "BACK"],
         "MEDIA" => [status?.DiskWritable == true ? "IDE: WRITES TO PRIVATE OVERLAY" : "IDE: READ-ONLY", "OPEN RAW IDE IMAGE... (READ-ONLY)", "OPEN IDE + PRIVATE OVERLAY...",
             $"FLOPPY A: {ShortName(status?.FloppyAMedia)}", $"FLOPPY B: {ShortName(status?.FloppyBMedia)}", "BOOT BUILT-IN TEST SECTOR", "BACK"],
         "FLOPPY A" or "FLOPPY B" => [$"DRIVE TYPE: {(_page == "FLOPPY A" ? profile.FloppyDriveA : profile.FloppyDriveB).ToUpperInvariant()}",
@@ -242,7 +253,7 @@ public sealed class DosWindow : SharpPixelsWindow
     private void CloseMenu() { _page = ""; Command("Resume"); }
     private void Command(string command, object? payload = null)
     {
-        _ = _session.Enqueue(new(1, Guid.NewGuid().ToString("N"), command, JsonSerializer.SerializeToElement(payload ?? new { })))
+        _ = _session.Enqueue(IpcProtocol.CreateRequest(command, payload))
             .ContinueWith(task => { if (task.IsCompletedSuccessfully && !task.Result.Success) _notices.Enqueue($"{task.Result.ErrorCode}: {task.Result.Payload}"); }, TaskScheduler.Default);
     }
 
@@ -258,8 +269,18 @@ public sealed class DosWindow : SharpPixelsWindow
                 case 3: OpenPage("MEDIA"); break;
                 case 4: OpenPage("NETWORK"); break;
                 case 5: OpenPage("AUDIO SETTINGS"); break;
-                case 6: Command("PowerCycleCurrent"); CloseMenu(); break;
+                case 6: OpenPage("RESET / POWER"); break;
                 case 7: Close(); break;
+            }
+        }
+        else if (_page == "RESET / POWER")
+        {
+            switch (_selected)
+            {
+                case 0: Command("SendCtrlAltDel"); CloseMenu(); break;
+                case 1: Command("HardwareReset"); CloseMenu(); break;
+                case 2: Command("PowerCycleCurrent"); CloseMenu(); break;
+                case 3: OpenPage("MAIN MENU"); break;
             }
         }
         else if (_page == "VIDEO SETTINGS")
@@ -330,8 +351,22 @@ public sealed class DosWindow : SharpPixelsWindow
                     string[] cards = ["none", "adlib-opl2-development", "sb2-dsp-development", "sb2-opl2-development"];
                     return p with { SoundCard = cards[(Array.IndexOf(cards, p.SoundCard) + delta + cards.Length) % cards.Length] };
                 }); break;
-                case 6: ChangeProfile(p => p with { Mouse = p.Mouse == "none" ? "ps2-two-button" : "none" }); break;
-                case 8: OpenPage("MAIN MENU"); break;
+                case 6: OpenPage("SOUND CARD RESOURCES"); break;
+                case 7: ChangeProfile(p => p with { Mouse = p.Mouse == "none" ? "ps2-two-button" : "none" }); break;
+                case 9: OpenPage("MAIN MENU"); break;
+            }
+        }
+        else if (_page == "SOUND CARD RESOURCES")
+        {
+            if (_selected == _items.Length - 1) OpenPage("MACHINE / HARDWARE");
+            else if (Volatile.Read(ref _status)?.Configuration?.SoundCard is "sb2-dsp-development" or "sb2-opl2-development")
+            {
+                if (_selected == 0) ChangeProfile(p => p with { SoundBlasterBasePort = p.SoundBlasterBasePort == 0x220 ? 0x240 : 0x220 });
+                else if (_selected == 1) ChangeProfile(p =>
+                {
+                    int[] irqs = [3, 5, 7, 9];
+                    return p with { SoundBlasterIrq = irqs[(Array.IndexOf(irqs, p.SoundBlasterIrq) + delta + irqs.Length) % irqs.Length] };
+                });
             }
         }
         else if (_page is "FLOPPY A" or "FLOPPY B")
@@ -418,6 +453,7 @@ public sealed class DosWindow : SharpPixelsWindow
     }
     private void SendMouse(RelativeMouseInput.Input? input)
     {
+        if (_nativeMouseAcceptance && input is not null && _nativeGuestMouseEvents.Count < 64) _nativeGuestMouseEvents.Add(input);
         if (input is not null) Command("SendMouseInput", input);
     }
     private void ReleaseMouse()
@@ -461,7 +497,9 @@ public sealed class DosWindow : SharpPixelsWindow
 
     private void AdvanceSmokeTest()
     {
+        if (_nativeMouseAcceptance) { AdvanceNativeMouseAcceptance(); return; }
         if (_audioAcceptance) { AdvanceAudioAcceptance(); return; }
+        if (_resourceAcceptance) { AdvanceSoundResourceAcceptance(); return; }
         if (_smokeStage == 0)
         {
             var current = Volatile.Read(ref _status);
@@ -584,6 +622,8 @@ public sealed class DosWindow : SharpPixelsWindow
 
     protected override void OnUnload()
     {
+        ReleaseMouse();
+        FinishNativeMouseInput();
         _stop.Cancel(); _worker?.GetAwaiter().GetResult();
         _audio?.Dispose();
         _ipc.DisposeAsync().AsTask().GetAwaiter().GetResult();

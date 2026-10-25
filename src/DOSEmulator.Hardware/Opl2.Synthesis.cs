@@ -46,7 +46,8 @@ public sealed partial class Opl2
         byte control = _registers[0x20 + offset], level = _registers[0x40 + offset];
         op.Multiple = TwiceMultiples[control & 15]; op.Am = (control & 0x80) != 0;
         op.Vibrato = (control & 0x40) != 0; op.Sustain = (control & 0x20) != 0;
-        op.TotalLevel = (level & 63) * 0.75; op.SustainLevel = (_registers[0x80 + offset] >> 4) == 15 ? 93 : (_registers[0x80 + offset] >> 4) * 3;
+        if (!CsmEnabled) op.TotalLevel = (level & 63) * 0.75;
+        op.SustainLevel = (_registers[0x80 + offset] >> 4) == 15 ? 93 : (_registers[0x80 + offset] >> 4) * 3;
         op.AttackRate = _registers[0x60 + offset] >> 4; op.DecayRate = _registers[0x60 + offset] & 15;
         op.ReleaseRate = _registers[0x80 + offset] & 15; op.Wave = _registers[0xe0 + offset] & 3;
     }
@@ -82,16 +83,23 @@ public sealed partial class Opl2
     }
     private void GenerateSample()
     {
+        // Free-running 23-bit percussion noise, even when the mixer is muted or
+        // no voice is keyed. Polynomial/phase wiring follows the YMFM research
+        // reference; envelope, waveform and mixing remain our mathematical model.
+        uint shifted = _noise << 1;
+        _noise = (shifted | (((shifted >> 23) ^ (shifted >> 9) ^ (shifted >> 8) ^ (shifted >> 1)) & 1)) & 0x7fffff;
         if (ActiveOperators == 0) { _output = 0; return; }
         // Manual LFO rates, referenced to the chip clock. The precise die LFO sequence is pending.
         static double Triangle(ulong phase, ulong period) => 1 - 4 * Math.Abs(phase / (double)period - 0.5);
         ulong sample = (ulong)GeneratedSamples;
         double am = (Triangle(sample * 37 % 500000, 500000) + 1) / 2 * ((_registers[0xbd] & 0x80) != 0 ? 4.8 : 1);
         double vibrato = Math.Pow(2, Triangle(sample * 64 % 500000, 500000) * ((_registers[0xbd] & 0x40) != 0 ? 14 : 7) / 1200);
+        foreach (Operator op in _operators)
+            op.Phase = (op.Phase + (uint)Math.Round(op.Increment * (op.Vibrato ? vibrato : 1))) & PhaseMask;
         double sum = 0;
         for (int channel = 0; channel < 9; channel++)
         {
-            if (UnsupportedRhythm && channel >= 6) continue;
+            if (RhythmEnabled && channel >= 6) continue;
             Channel ch = _channels[channel]; Operator modulator = _operators[channel * 2], carrier = _operators[channel * 2 + 1];
             double feedback = (modulator.Previous + modulator.Older) * 0.5 * FeedbackCycles[ch.Feedback];
             double modulation = OperatorSample(modulator, feedback, am, vibrato);
@@ -100,10 +108,11 @@ public sealed partial class Opl2
             double output = OperatorSample(carrier, ch.Additive ? 0 : modulation * 2, am, vibrato);
             sum += output + (ch.Additive ? modulation : 0);
         }
+        if (RhythmEnabled) sum += RhythmSample(am, vibrato);
         _output = (short)Math.Round(Math.Clamp(sum / 4, -1, 1) * 32767);
         if (_csmReleaseSample is { } release && GeneratedSamples + 1 >= release) ReleaseCsmKey();
     }
-    private double OperatorSample(Operator op, double phaseOffset, double am, double vibrato)
+    private double OperatorSample(Operator op, double phaseOffset, double am, double vibrato, int? rhythmPhase = null)
     {
         switch (op.Stage)
         {
@@ -122,9 +131,8 @@ public sealed partial class Opl2
         }
         if (op.Attenuation >= 96 && op.Stage is OplEnvelopeStage.Release or OplEnvelopeStage.Sustain)
         { op.Attenuation = 96; op.Stage = OplEnvelopeStage.Off; }
-        op.Phase = (op.Phase + (uint)Math.Round(op.Increment * (op.Vibrato ? vibrato : 1))) & PhaseMask;
         if (op.Stage == OplEnvelopeStage.Off || op.Attenuation >= 96) return 0;
-        int phase = ((int)(op.Phase >> 11) + (int)Math.Round(phaseOffset * 1024)) & 1023;
+        int phase = rhythmPhase ?? (((int)(op.Phase >> 11) + (int)Math.Round(phaseOffset * 1024)) & 1023);
         int wave = (_registers[1] & 0x20) != 0 ? op.Wave : 0;
         int attenuation = Math.Clamp((int)Math.Round((op.Attenuation + op.TotalLevel + op.KeyScaleLevel + (op.Am ? am : 0)) / 0.1875), 0, 1023);
         return Waves[wave][phase] * AttenuationGain[attenuation];

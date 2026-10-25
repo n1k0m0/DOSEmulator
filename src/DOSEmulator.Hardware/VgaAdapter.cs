@@ -23,10 +23,12 @@ public sealed partial class VgaAdapter : IMemoryDevice, IIoPortDevice
     private int ScanlineRepeat => ((_crtc[9] & 31) + 1) * ((_crtc[9] & 0x80) != 0 ? 2 : 1);
     private int VerticalLines => _crtc[0x12] + ((_crtc[7] & 2) << 7) + ((_crtc[7] & 0x40) << 3) + 1;
     public int Width => (_crtc[1] + 1) * (GraphicsMode ? 8 : CharacterWidth) / (Indexed256 ? 2 : 1);
-    public int Height => GraphicsMode ? Math.Max(1, VerticalLines / ScanlineRepeat) : VerticalLines;
+    public int Height => Math.Max(1, GraphicsMode ? VerticalLines / ScanlineRepeat : VerticalLines / ((_crtc[9] & 0x80) != 0 ? 2 : 1));
     public int ModeGeneration => _generation;
     private int Start => _crtc[12] << 8 | _crtc[13];
     private int Stride => _crtc[0x13] * 2;
+    // Same approximate raster family as status-1 polling, independent of host captures.
+    private ulong FramePeriod => VerticalLines >= 480 ? 16_666_667UL : 14_285_714UL;
 
     public VgaAdapter(DeviceScheduler? clock = null)
     {
@@ -36,8 +38,9 @@ public sealed partial class VgaAdapter : IMemoryDevice, IIoPortDevice
         _crtc[1] = 79; _crtc[7] = 2; _crtc[9] = 15; _crtc[0x12] = 0x8f; _crtc[0x13] = 40; _crtc[0x0a] = 0x20;
         new byte[] { 0,1,2,3,4,5,0x14,7,0x38,0x39,0x3a,0x3b,0x3c,0x3d,0x3e,0x3f }.CopyTo(_attr, 0);
         _attr[0x10] = 0x0c; _attr[0x12] = 15;
+        ReadOnlySpan<byte> font = Cp437Font.Table(16);
         for (int character = 0; character < 256; character++)
-            for (int row = 1; row < 15; row++) _planes[2][character * 32 + row] = (byte)(BitmapFont.Row((char)character, (row - 1) / 2) << 2);
+            font.Slice(character * 16, 16).CopyTo(_planes[2].AsSpan(character * 32, 16));
         for (int i = 0; i < 256; i++) UpdateColor(i);
         _modeKey = (GraphicsMode, Indexed256, Width, Height);
     }

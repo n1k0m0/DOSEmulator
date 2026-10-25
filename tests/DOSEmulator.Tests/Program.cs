@@ -8,6 +8,14 @@ using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
 
+if (args.Length == 3 && args[0] == "--x87-native-vectors") return X87NumericTests.VerifyNativeVectors(args[1], args[2]);
+if (args.Length == 3 && args[0] == "--x87-compare-native") return X87ComparisonTests.VerifyNativeVectors(args[1], args[2]);
+if (args.Length == 3 && args[0] == "--x87-round-native") return X87RoundingTests.VerifyNativeVectors(args[1], args[2]);
+
+if (args.Length == 3 && args[0] == "--x87-sqrt-native") return X87SquareRootTests.VerifyNativeVectors(args[1], args[2]);
+
+if (args.Length == 3 && args[0] == "--x87-constant-native") return X87ConstantTests.VerifyNativeVectors(args[1], args[2]);
+
 var tests = new List<(string Name, Func<Task> Run)>();
 void Test(string name, Action action) => tests.Add((name, () => { action(); return Task.CompletedTask; }));
 void AsyncTest(string name, Func<Task> action) => tests.Add((name, action));
@@ -51,6 +59,21 @@ Test("first far jump clears reset CS base", () => { using var m = PcMachine.Crea
 Test("RAM mapping conflicts rejected before mutation", () => { var m = new MemoryBus(1048576); m.Map(0x1000, 16, new RomDevice([1]), "a"); Throws<InvalidOperationException>(() => m.Map(0x100f, 4, new RomDevice([2]), "b")); });
 Test("A20 masks only bit 20", () => { var m = new MemoryBus(4 * 1048576); m.A20Enabled = false; m.WriteByte(0x100123, 0x42); Equal((byte)0x42, m.Ram[0x123]); m.WriteByte(0x300123, 0x71); Equal((byte)0x71, m.Ram[0x200123]); });
 Test("unmapped bus reads are all ones", () => { var m = new MemoryBus(1048576); Equal(0xffffffffu, m.ReadDword(0xf0000000)); Equal(0xffffu, new IoPortBus().Read(123, 2)); });
+foreach (int ramMiB in new[] { 4, 8, 16 })
+    Test($"ISA option window has no DRAM with {ramMiB} MiB installed", () =>
+    {
+        using var machine = PcMachine.CreateDemo(new MachineProfile { RamMiB = ramMiB });
+        foreach (uint address in new uint[] { 0xc0000, 0xc7fff, 0xc8000, 0xd0000, 0xe0000, 0xeffff })
+        {
+            machine.Memory.Ram[address] = 0x12;
+            machine.Memory.WriteByte(address, 0x34);
+            Equal((byte)0xff, machine.Memory.ReadByte(address));
+            Equal((byte)0x12, machine.Memory.Ram[address]);
+            True(machine.Memory.TryPeekByte(address, out byte peek)); Equal((byte)0xff, peek);
+        }
+        machine.Memory.WriteDword(0x100000, 0x13579bdf); Equal(0x13579bdfu, machine.Memory.ReadDword(0x100000));
+        Equal((byte)0xea, machine.Memory.ReadByte(0xffff0));
+    });
 Test("I/O conflicts do not partially install a mapping", () => { var io = new IoPortBus(); var board = new DevelopmentBoardPorts(new(1048576)); io.Map(0x92, 1, board); Throws<InvalidOperationException>(() => io.Map(0x90, 4, board)); Equal(0xffu, io.Read(0x91, 1)); });
 Test("scheduler preserves ordering of simultaneous events", () => { var c = new DeviceScheduler(); var result = new List<int>(); c.ScheduleAfter(3, () => result.Add(1)); c.ScheduleAfter(3, () => result.Add(2)); c.AdvanceTo(3); Equal("1,2", string.Join(',', result)); });
 Test("scheduler carries fractional CPU clocks without drift", () => { var c = new DeviceScheduler(); for (int i = 0; i < 33; i++) c.AdvanceCycles(1, 33); Equal(1_000_000_000UL, c.Now); });
@@ -152,9 +175,9 @@ Test("stale configuration commit cannot change machine", () => { using var s=new
 Test("invalid disk change leaves current machine intact", () => { using var s=new MachineSession(PcMachine.CreateDemo()); var old=s.Machine; var t=s.Enqueue(new(1,"c","PowerCycleReadOnlyDisk",JsonSerializer.SerializeToElement(new{path="bad.iso"}))); s.PumpCommands(); True(!t.Result.Success); True(ReferenceEquals(old,s.Machine)); });
 Test("disposed session completes queued and subsequent requests", () => { var s=new MachineSession(PcMachine.CreateDemo()); var a=s.Enqueue(new(1,"a","Pause",default)); s.Dispose(); var b=s.Enqueue(new(1,"b","Ping",default)); Equal("SessionStopped",a.Result.ErrorCode); Equal("SessionStopped",b.Result.ErrorCode); });
 
-Test("32-bit address cannot silently bypass real-mode segment limit", () => { var (c,_,_)=Rig(0x67,0xa1,0,0,1,0); Throws<UnsupportedInstructionException>(()=>c.Step()); });
-Test("32-bit near branch cannot silently truncate EIP", () => { var (c,_,_)=Rig(0x66,0xe9,0,0,1,0); Throws<UnsupportedInstructionException>(()=>c.Step()); });
-Test("word access crossing segment end stops before writing", () => { var (c,m,_)=Rig(0xa3,0xff,0xff); c.SetRegister(Register.Ax,0xbeef); Throws<UnsupportedInstructionException>(()=>c.Step()); Equal((byte)0,m.ReadByte(0xffff)); });
+Test("32-bit address over real-mode limit enters guest GP at original IP", () => { var (c,m,_)=Rig(0x67,0xa1,0,0,1,0); m.WriteWord(52,0x2000); c.Step(); Equal(0x2000u,c.Eip); Equal((ushort)0x1000,m.ReadWord(0x8ffa)); });
+Test("32-bit near branch over real-mode limit enters guest GP instead of truncating", () => { var (c,m,_)=Rig(0x66,0xe9,0,0,1,0); m.WriteWord(52,0x2000); c.Step(); Equal(0x2000u,c.Eip); Equal((ushort)0x1000,m.ReadWord(0x8ffa)); });
+Test("word access crossing segment end faults before writing", () => { var (c,m,_)=Rig(0xa3,0xff,0xff); m.WriteWord(52,0x2000); c.SetRegister(Register.Ax,0xbeef); c.Step(); Equal(0x2000u,c.Eip); Equal((byte)0,m.ReadByte(0xffff)); });
 
 Test("SHL sets carry overflow and zero",()=>{var(c,_,_)=Rig(0xb0,0x80,0xd0,0xe0,0xf4);Run(c);Equal(0u,c.GetRegister(Register.Ax)&255);True((c.Eflags&(X86Cpu.Carry|X86Cpu.Overflow|X86Cpu.Zero))==(X86Cpu.Carry|X86Cpu.Overflow|X86Cpu.Zero));});
 Test("SAR retains the sign bit",()=>{var(c,_,_)=Rig(0xb0,0x80,0xc0,0xf8,4,0xf4);Run(c);Equal(0xf8u,c.GetRegister(Register.Ax)&255);});
@@ -191,7 +214,7 @@ Test("guest BIOS INT12 reports reserved conventional memory",()=>{using var m=Bi
 Test("guest BIOS INT15 reports actual extended RAM",()=>{using var m=BiosMachine();BiosCall(m,0x15,0x8800);Equal(7168u,m.Cpu.GetRegister(Register.Ax));True((m.Cpu.Eflags&X86Cpu.Carry)==0);});
 Test("guest BIOS unsupported INT15 returns error carry",()=>{using var m=BiosMachine();BiosCall(m,0x15,0xff00);Equal(0x8600u,m.Cpu.GetRegister(Register.Ax));True((m.Cpu.Eflags&X86Cpu.Carry)!=0);});
 Test("guest BIOS teletype updates text memory and cursor",()=>{using var m=BiosMachine();BiosCall(m,0x10,3);BiosCall(m,0x10,0x0e41);Equal((byte)'A',m.Memory.ReadByte(0xb8000));Equal((ushort)1,m.Memory.ReadWord(0x450));BiosCall(m,0x10,0x0e0d);BiosCall(m,0x10,0x0e0a);Equal((ushort)0x100,m.Memory.ReadWord(0x450));});
-Test("guest BIOS font query returns BP and ES",()=>{using var m=BiosMachine();BiosCall(m,0x10,0x1130);Equal(0xc000u,m.Cpu.GetRegister(Register.Bp)&0xffff);Equal((ushort)0xf000,m.Cpu.GetSegment(Segment.Es));Equal(16u,m.Cpu.GetRegister(Register.Cx));});
+Test("guest BIOS ROM 8x16 font query returns BP and ES",()=>{using var m=BiosMachine();m.Cpu.SetRegister(Register.Bx,0x0600);BiosCall(m,0x10,0x1130);Equal(0xc000u,m.Cpu.GetRegister(Register.Bp)&0xffff);Equal((ushort)0xf000,m.Cpu.GetSegment(Segment.Es));Equal(16u,m.Cpu.GetRegister(Register.Cx));});
 Test("guest BIOS keyboard store peek and get share BDA queue",()=>{using var m=BiosMachine();m.Cpu.SetRegister(Register.Cx,0x1e61);BiosCall(m,0x16,0x0500);BiosCall(m,0x16,0x0100);Equal(0x1e61u,m.Cpu.GetRegister(Register.Ax));True((m.Cpu.Eflags&X86Cpu.Zero)==0);BiosCall(m,0x16,0);Equal(0x1e61u,m.Cpu.GetRegister(Register.Ax));BiosCall(m,0x16,0x0100);True((m.Cpu.Eflags&X86Cpu.Zero)!=0);});
 Test("guest BIOS EDD read uses ATA and returns original sector",()=>{using var m=BiosMachine();m.Cpu.SetRegister(Register.Dx,0x80);m.Cpu.SetRegister(Register.Si,0x3000);m.Cpu.SetSegment(Segment.Ds,0);m.Memory.WriteWord(0x3000,16);m.Memory.WriteWord(0x3002,1);m.Memory.WriteWord(0x3004,0x4000);m.Memory.WriteWord(0x3006,0);m.Memory.WriteDword(0x3008,0);m.Memory.WriteDword(0x300c,0);long before=m.Ata.ReadSectorCount;BiosCall(m,0x13,0x4200);True((m.Cpu.Eflags&X86Cpu.Carry)==0);Equal(before+1,m.Ata.ReadSectorCount);Equal((ushort)0xaa55,m.Memory.ReadWord(0x41fe));});
 
@@ -201,18 +224,50 @@ Test("8237 auto-init reloads address and count",()=>{var m=new MemoryBus(1048576
 Test("8237 memory-to-device and master disable",()=>{var m=new MemoryBus(1048576);m.WriteByte(0x2000,0xab);var d=new Dma8237(m);d.Write(0x0c,0,1);d.Write(2,0,1);d.Write(2,0x20,1);d.Write(3,0,1);d.Write(3,0,1);d.Write(0x0b,0x49,1);d.Write(0x0a,1,1);d.Write(8,4,1);byte[] buffer=new byte[1];Equal(0,d.Transfer(1,buffer,false));d.Write(8,0,1);Equal(1,d.Transfer(1,buffer,false));Equal((byte)0xab,buffer[0]);});
 
 StorageTests.AddTo(Test);
+MemoryBusFastPathTests.AddTo(Test);
+ShiftOptimizationTests.AddTo(Test);
+CpuSystemTests.AddTo(Test);
+ProtectedModeTests.AddTo(Test);
+PrivilegeTests.AddTo(Test);
+CallGateTests.AddTo(Test);
+HardwareTaskTests.AddTo(Test);
+LockAlignmentTests.AddTo(Test);
+        DebugTests.AddTo(Test);
+PagingTests.AddTo(Test);
+Virtual8086Tests.AddTo(Test);
+BitDescriptorTests.AddTo(Test);
+X87ControlTests.AddTo(Test);
+X87StateTests.AddTo(Test);
+X87NumericTests.AddTo(Test);
+X87ErrorTests.AddTo(Test);
+X87ComparisonTests.AddTo(Test);
+X87RoundingTests.AddTo(Test);
+X87SquareRootTests.AddTo(Test);
+X87ConstantTests.AddTo(Test);
+BiosBlockMoveTests.AddTo(Test);
 FloppyTests.AddTo(Test);
 FloppyFormatBiosTests.AddTo(Test);
+FloppyDmaBoundaryTests.AddTo(Test);
 VgaTests.AddTo(Test);
+VgaFontTests.AddTo(Test);
+Cp437FontTests.AddTo(Test);
+CursorEmulationTests.AddTo(Test);
+VgaTextTests.AddTo(Test);
+VgaGraphicsTextTests.AddTo(Test);
 SpeakerTests.AddTo(Test);
 SoundBlasterTests.AddTo(Test);
 SoundBlasterTests.AddHighSpeedTo(Test);
+SoundBlasterTests.AddRecordingTo(Test);
+SoundBlasterTests.AddAdpcmTo(Test);
+SoundBlasterResourceTests.AddTo(Test);
 Opl2Tests.AddTo(Test);
 Opl2Tests.AddCsmTo(Test);
+Opl2Tests.AddRhythmTo(Test);
 IoTimingTests.AddTo(Test);
 RealtimePacerTests.AddTo(Test);
 GuestScenarioTests.AddTo(Test);
 MouseTests.AddTo(Test);
+ResetTests.AddTo(Test);
 
 var results=new List<object>(); int failed=0;
 foreach(var test in tests)

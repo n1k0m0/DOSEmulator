@@ -1,0 +1,7 @@
+{
+  "name": "Virtual 486 AT - SB2 plus OPL2 A240 IRQ9 DMA1 development",
+  "soundCard": "sb2-opl2-development",
+  "soundBlasterBasePort": 576,
+  "soundBlasterIrq": 9,
+  "soundBlasterDmaChannel": 1
+}

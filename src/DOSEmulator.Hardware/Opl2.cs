@@ -3,10 +3,10 @@ using DOSEmulator.Core;
 namespace DOSEmulator.Hardware;
 
 public enum OplEnvelopeStage { Off, Attack, Decay, Sustain, Release }
-public sealed record OplOperatorStatus(OplEnvelopeStage Stage, double AttenuationDb, uint Phase, bool Keyed);
+public sealed record OplOperatorStatus(OplEnvelopeStage Stage, double AttenuationDb, uint Phase, bool Keyed, double TotalLevelDb);
 
-/// <summary>Own YM3812 development model. Nine melodic two-operator voices; analog/die-exact output,
-/// rhythm and exact CSM pipeline/TL latching are pending. Timer-driven CSM key pulses are modeled.
+/// <summary>YM3812 development model with melodic/rhythm voices and timer-driven CSM keys/TL latches.
+/// Synthesis uses native-sample timing; envelope microsteps, analog output and die pipelines remain approximate.
 /// The FM clock is independent of the host mixer.</summary>
 public sealed partial class Opl2 : IIoPortDevice
 {
@@ -16,6 +16,7 @@ public sealed partial class Opl2 : IIoPortDevice
     private readonly DeviceScheduler _clock;
     private readonly PcAudioMixer _audio;
     private readonly PcAudioMixer.Input _input;
+    private readonly ushort? _aliasBase;
     private readonly byte[] _registers = new byte[256];
     private readonly Timer[] _timers = [new(288), new(1152)];
     private readonly Operator[] _operators = Enumerable.Range(0, 18).Select(_ => new Operator()).ToArray();
@@ -24,6 +25,7 @@ public sealed partial class Opl2 : IIoPortDevice
     private ulong _busyUntil, _position, _nextSample = SampleTime(1);
     private long? _csmReleaseSample;
     private short _output;
+    private uint _noise = 1;
     public long GeneratedSamples { get; private set; }
     public long RegisterWrites { get; private set; }
     public long RejectedWrites { get; private set; }
@@ -32,18 +34,21 @@ public sealed partial class Opl2 : IIoPortDevice
     public long Timer1Overflows => _timers[0].Overflows;
     public long Timer2Overflows => _timers[1].Overflows;
     public bool TimerInterruptAsserted => _timers.Any(t => t.Flag);
-    public bool UnsupportedRhythm => (_registers[0xbd] & 0x20) != 0;
+    public bool RhythmEnabled => (_registers[0xbd] & 0x20) != 0;
+    public uint NoiseState => _noise;
+    public bool UnsupportedRhythm => false;
     public bool CsmEnabled => (_registers[8] & 0x80) != 0;
     public bool CsmPulseActive => _csmReleaseSample.HasValue;
-    // The keying path works; full CSM accuracy still needs independent silicon evidence.
-    public bool UnsupportedCsm => CsmEnabled;
+    public bool UnsupportedCsm => false;
     public bool UnsupportedTest => (_registers[1] & ~0x20) != 0;
     public bool UnsupportedProgramming => UnsupportedRhythm || UnsupportedCsm || UnsupportedTest;
     public int ActiveOperators => _operators.Count(o => o.Stage != OplEnvelopeStage.Off);
     public short Output => _output;
     public double Volume { get => _input.Gain; set => _input.Gain = value; }
-    public Opl2(DeviceScheduler clock, PcAudioMixer audio)
+    public Opl2(DeviceScheduler clock, PcAudioMixer audio, ushort? aliasBase = 0x228)
     {
+        if (aliasBase is not (null or 0x228 or 0x248)) throw new ArgumentOutOfRangeException(nameof(aliasBase));
+        _aliasBase = aliasBase;
         _clock = clock; _audio = audio; _input = audio.AddSource(Integrate, 0.5);
     }
     public byte InspectRegister(byte register) => _registers[register];
@@ -51,16 +56,16 @@ public sealed partial class Opl2 : IIoPortDevice
     {
         if ((uint)channel >= 9) throw new ArgumentOutOfRangeException(nameof(channel));
         Operator op = _operators[channel * 2 + (carrier ? 1 : 0)];
-        return new(op.Stage, op.Attenuation, op.Phase, op.Keyed);
+        return new(op.Stage, op.Attenuation, op.Phase, op.Keyed, op.TotalLevel);
     }
     public uint Read(ushort port, int width)
     {
-        if (width != 1 || port is not (0x388 or 0x228)) return 0xff;
+        if (width != 1 || (port != 0x388 && port != _aliasBase)) return 0xff;
         return (uint)(0x06 | (_timers[0].Flag ? 0x40 : 0) | (_timers[1].Flag ? 0x20 : 0) | (TimerInterruptAsserted ? 0x80 : 0));
     }
     public void Write(ushort port, uint value, int width)
     {
-        if (width != 1 || port is not (0x388 or 0x389 or 0x228 or 0x229)) return;
+        if (width != 1 || (port is not (0x388 or 0x389) && port != _aliasBase && port != _aliasBase + 1)) return;
         if (_clock.Now < _busyUntil) { RejectedWrites++; return; }
         if ((port & 1) == 0) { _address = (byte)value; _busyUntil = checked(_clock.Now + AddressWaitNanoseconds); return; }
         _busyUntil = checked(_clock.Now + DataWaitNanoseconds);
@@ -71,20 +76,20 @@ public sealed partial class Opl2 : IIoPortDevice
         if (address is 2 or 3) { _timers[address - 2].Preset = data; return; }
         if (address == 8)
         {
-            if (!CsmEnabled) ReleaseCsmKey();
+            if (!CsmEnabled) { ReleaseCsmKey(); LatchCsmLevels(); }
             for (int i = 0; i < 9; i++) UpdateChannel(i);
             return;
         }
         if (address == 0xbd)
         {
-            for (int i = 6; i < 9; i++) SetKey(i, !UnsupportedRhythm && (_registers[0xb0 + i] & 0x20) != 0);
+            UpdateRhythmKeys();
             return;
         }
         if (address is >= 0xa0 and <= 0xa8) { UpdateChannel(address - 0xa0); return; }
         if (address is >= 0xb0 and <= 0xb8)
         {
             int channel = address - 0xb0; UpdateChannel(channel);
-            if (((previous ^ data) & 0x20) != 0) SetKey(channel, (data & 0x20) != 0 && (!UnsupportedRhythm || channel < 6));
+            if (((previous ^ data) & 0x20) != 0) SetKey(channel, (data & 0x20) != 0 && (!RhythmEnabled || channel < 6));
             return;
         }
         if (address is >= 0xc0 and <= 0xc8)
@@ -105,7 +110,7 @@ public sealed partial class Opl2 : IIoPortDevice
         }
         for (int i = 0; i < 18; i++) _operators[i] = new();
         for (int i = 0; i < 9; i++) _channels[i] = new();
-        _output = 0; _csmReleaseSample = null;
+        _output = 0; _csmReleaseSample = null; _noise = 1;
     }
     private sealed class Timer(uint unitClocks)
     {
@@ -144,9 +149,10 @@ public sealed partial class Opl2 : IIoPortDevice
             if (ReferenceEquals(timer, _timers[0]) && CsmEnabled)
             {
                 // Preserve the old waveform up to the timer edge. The model holds the CSM
-                // key source through one native sample, then releases it. Exact slot-level
-                // pulse latency/width and CSM total-level latching are not calibrated yet.
+                // key source through one native sample, then releases it. TL changes
+                // become audible at the CSM edge. Subsample slot latency is not modeled.
                 _audio.AdvanceTo(_clock.Now);
+                LatchCsmLevels();
                 foreach (Operator op in _operators) SetKeySource(op, 2, true);
                 _csmReleaseSample = GeneratedSamples + 1; CsmKeyPulses++;
             }
@@ -158,6 +164,10 @@ public sealed partial class Opl2 : IIoPortDevice
     {
         foreach (Operator op in _operators) SetKeySource(op, 2, false);
         _csmReleaseSample = null;
+    }
+    private void LatchCsmLevels()
+    {
+        for (int i = 0; i < 18; i++) _operators[i].TotalLevel = (_registers[0x40 + OperatorOffsets[i]] & 63) * 0.75;
     }
     private static ulong SampleTime(long sample) => (ulong)(((UInt128)(ulong)sample * ClocksPerSample * 1_000_000_000 + MasterFrequency - 1) / MasterFrequency);
     private Int128 Integrate(ulong start, ulong end)

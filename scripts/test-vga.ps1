@@ -1,14 +1,16 @@
+#requires -Version 7.4
+[CmdletBinding()]
 param([switch]$SkipBuild, [switch]$Gui, [string]$OutputRoot = 'artifacts\m1-build')
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'common.ps1')
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
-$buildRoot = [IO.Path]::GetFullPath((Join-Path $workspaceRoot $OutputRoot))
+$buildRoot = Get-DosBuildRoot -OutputRoot $OutputRoot
 if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'build.ps1') -OutputRoot $buildRoot }
 $runner = Join-Path $buildRoot 'Release\net10.0\DOSEmulator.Headless.dll'
 $assembler = Join-Path $workspaceRoot 'artifacts\tools\nasm-3.02\nasm-3.02\nasm.exe'
 if (-not (Test-Path -LiteralPath $assembler)) { throw 'NASM is required to assemble our original DOS probes.' }
 $baseImage = Join-Path $workspaceRoot 'artifacts\freedos-m1\FD14LITE-minimal.img'
 if (-not (Test-Path -LiteralPath $baseImage)) { throw 'Prepare the verified FreeDOS minimal IDE test image first.' }
-$baseHash = (Get-FileHash -LiteralPath $baseImage -Algorithm SHA256).Hash
+$baseHash = (Get-DosFileHash -LiteralPath $baseImage -Algorithm SHA256).Hash
 $testRoot = Join-Path $workspaceRoot ('artifacts\freedos-m2\vga-' + [guid]::NewGuid().ToString('N'))
 $programs = Join-Path $testRoot 'programs'
 New-Item -ItemType Directory -Path $programs -Force | Out-Null
@@ -19,7 +21,7 @@ foreach ($mode in @('12','13')) {
 $image = Join-Path $testRoot 'private-probes.img'
 dotnet $runner --prepare-test-programs $baseImage --program-dir $programs --output $image | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Private program disk preparation failed.' }
-$imageHash = (Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash
+$imageHash = (Get-DosFileHash -LiteralPath $image -Algorithm SHA256).Hash
 $results = @()
 foreach ($mode in @('13','12')) {
     $commands = Join-Path $testRoot ('mode'+$mode+'-commands.txt')
@@ -65,7 +67,7 @@ foreach ($marker in @('VGA13-DOS-RETURN-OK','VGA12-DOS-RETURN-OK',"`r`nM2-VGA-RE
     if (-not $returned.status.debugOutput.Contains($marker)) { throw "Missing DOS return result: $marker" }
 }
 if ($returned.graphicsMode -or $returned.width -ne 640 -or $returned.height -ne 400 -or $returned.inputBytesSent -ne $returned.inputBytesTotal -or $returned.status.debugOutput.Contains('-FAILED')) { throw 'DOS text-mode return evidence incomplete.' }
-if ((Get-FileHash -LiteralPath $baseImage -Algorithm SHA256).Hash -ne $baseHash -or (Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash -ne $imageHash) { throw 'Read-only test media changed.' }
+if ((Get-DosFileHash -LiteralPath $baseImage -Algorithm SHA256).Hash -ne $baseHash -or (Get-DosFileHash -LiteralPath $image -Algorithm SHA256).Hash -ne $imageHash) { throw 'Read-only test media changed.' }
 $summary = [pscustomobject]@{passed=$true;directory=$testRoot;modes=$results;dosReturn=$true;coldBoots=5;gui=[bool]$Gui;baseUnchanged=$true;probeImageUnchanged=$true}
 $summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $testRoot 'acceptance-summary.json') -Encoding utf8
 $summary | ConvertTo-Json -Depth 6

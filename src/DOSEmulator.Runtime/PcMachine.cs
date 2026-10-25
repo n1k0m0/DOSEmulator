@@ -13,6 +13,7 @@ public sealed class PcMachine : IDisposable
     public IoPortBus Ports { get; } = new();
     public DeviceScheduler Scheduler { get; } = new();
     public X86Cpu Cpu { get; }
+    public FpuErrorLatch FpuError { get; }
     public VgaAdapter Video { get; }
     public AtaPioController Ata { get; }
     public DevelopmentBoardPorts Board { get; }
@@ -30,6 +31,14 @@ public sealed class PcMachine : IDisposable
     public Fdc82077 Floppy { get; }
     public string? Fault { get; private set; }
     public bool Running { get; set; }
+    private bool _keyboardResetWasAsserted;
+    private ulong _resetPulseUntil;
+    public long HardwareResetCount { get; private set; }
+    public string? LastResetSource { get; private set; }
+    public ulong LastResetTime { get; private set; }
+    public ushort LastWarmBootFlag { get; private set; }
+    public bool CpuResetHeld => Keyboard.ResetLineAsserted || Scheduler.Now < _resetPulseUntil;
+    public event Action? HardwareResetOccurred;
 
     public PcMachine(MachineProfile profile, IReadOnlyBlockDevice? disk, IReadOnlyBlockDevice? floppyA = null, IReadOnlyBlockDevice? floppyB = null)
     {
@@ -42,7 +51,13 @@ public sealed class PcMachine : IDisposable
         var rom = new RomDevice(bios);
         Memory.Map(0x000f0000, 65536, rom, "System BIOS");
         Memory.Map(0xffff0000, 65536, rom, "486 reset ROM alias");
+        // This reference board also decodes its reset ROM when address line 20 is masked.
+        Memory.Map(0xffef0000, 65536, rom, "A20-masked reset ROM alias");
         Memory.Map(0x000a0000, 131072, Video, "VGA memory aperture");
+        // Installed DRAM is not decoded in the ISA option-memory window.
+        // This board has no option ROMs or shadow RAM here. EMM386 supplies
+        // UMB/EMS backing by paging real extended RAM into these addresses.
+        Memory.Map(0x000c0000, 196608, new OpenBusMemory(), "Unclaimed ISA option-memory window");
         Ata = new(Scheduler, disk); Board = new(Memory);
         Pit = new(Scheduler, () => { Pic.SetLine(0, true); Pic.SetLine(0, false); });
         Audio = new(Scheduler); Speaker = new(Scheduler, Pit.SpeakerCounter, Audio);
@@ -52,14 +67,15 @@ public sealed class PcMachine : IDisposable
         Dma = new(Memory);
         if (profile.SoundCard is "sb2-dsp-development" or "sb2-opl2-development")
         {
-            SoundBlaster = new(Scheduler, Dma, Audio, high => Pic.SetLine(SoundBlasterDsp.Irq, high));
-            foreach (ushort offset in new ushort[] { 6, 0x0a, 0x0c, 0x0e }) Ports.Map((ushort)(SoundBlasterDsp.BasePort + offset), 1, SoundBlaster);
+            SoundBlaster = new(Scheduler, Dma, Audio, high => Pic.SetLine(profile.SoundBlasterIrq, high), (ushort)profile.SoundBlasterBasePort);
+            foreach (ushort offset in new ushort[] { 6, 0x0a, 0x0c, 0x0e }) Ports.Map((ushort)(profile.SoundBlasterBasePort + offset), 1, SoundBlaster);
         }
         if (profile.SoundCard is "adlib-opl2-development" or "sb2-opl2-development")
         {
             FmIoTiming = new(Scheduler);
-            Opl = new(Scheduler, Audio); Ports.Map(0x388, 2, Opl, FmIoTiming);
-            if (profile.SoundCard == "sb2-opl2-development") Ports.Map(0x228, 2, Opl, FmIoTiming);
+            ushort? alias = profile.SoundCard == "sb2-opl2-development" ? (ushort)(profile.SoundBlasterBasePort + 8) : null;
+            Opl = new(Scheduler, Audio, alias); Ports.Map(0x388, 2, Opl, FmIoTiming);
+            if (alias is { } fmBase) Ports.Map(fmBase, 2, Opl, FmIoTiming);
         }
         Floppy = new(Scheduler, Dma, high => Pic.SetLine(6, high), geometryA, geometryB, floppyA, floppyB);
         Ports.Map(0x1f0, 8, Ata); Ports.Map(0x3f6, 1, Ata);
@@ -74,6 +90,9 @@ public sealed class PcMachine : IDisposable
         Ports.Map(0, 16, Dma); Ports.Map(0xc0, 32, Dma);
         foreach (ushort port in new ushort[] { 0x81, 0x82, 0x83, 0x87, 0x89, 0x8a, 0x8b, 0x8f }) Ports.Map(port, 1, Dma);
         Cpu = new(Memory, Ports);
+        FpuError = new(high => Pic.SetLine(13, high), high => Cpu.IgnoreNumericError = high);
+        Ports.Map(0xf0, 1, FpuError);
+        Cpu.FpuErrorChanged += FpuError.SetFerr;
     }
 
     public static PcMachine CreateDemo(MachineProfile? profile = null) => new(profile ?? new(), new MemoryDisk(DevelopmentFirmware.CreateDemoDisk(), "Built-in test sector (not DOS)"));
@@ -85,13 +104,42 @@ public sealed class PcMachine : IDisposable
         while (executed < maximum && Fault is null)
         {
             if (untilVirtualNanoseconds is { } deadline && Scheduler.Now >= deadline) break;
-            if (Board.ResetRequested || Keyboard.ResetRequested) { Fault = "Guest requested a hardware reset; coordinated reset is not implemented yet."; break; }
-            Pic.SetLine(14, Ata.InterruptAsserted);
-            if (Cpu.CanAcceptMaskableInterrupt && Pic.HasPending && Pic.Acknowledge() is { } vector)
-                Cpu.EnterRealModeInterrupt(vector);
-            if (Cpu.Halted)
+            bool fastReset = Board.ConsumeResetRequest(), keyboardPulse = Keyboard.ConsumeResetPulse();
+            bool keyboardLine = Keyboard.ResetLineAsserted;
+            if (fastReset || keyboardPulse || (keyboardLine && !_keyboardResetWasAsserted))
             {
-                // A host time slice still clocks devices while the CPU is halted, even under CLI.
+                var sources = new List<string>();
+                if (fastReset) sources.Add("port92");
+                if (keyboardPulse) sources.Add("kbc-pulse");
+                if (keyboardLine && !_keyboardResetWasAsserted) sources.Add("kbc-output-port");
+                if (keyboardPulse) _resetPulseUntil = checked(Scheduler.Now + 6_000);
+                ResetCpu(string.Join("+", sources));
+            }
+            _keyboardResetWasAsserted = keyboardLine;
+            if (CpuResetHeld)
+            {
+                if (Scheduler.Now < _resetPulseUntil)
+                {
+                    ulong release = untilVirtualNanoseconds is { } slice ? Math.Min(_resetPulseUntil, slice) : _resetPulseUntil;
+                    Scheduler.AdvanceTo(release); executed++; continue;
+                }
+                if (untilVirtualNanoseconds is { } heldDeadline) Scheduler.AdvanceTo(heldDeadline);
+                break;
+            }
+            Pic.SetLine(14, Ata.InterruptAsserted);
+            if (Cpu.TripleFaulted) { ResetCpu("triple-fault"); }
+            try
+            {
+                if (Cpu.CanAcceptMaskableInterrupt && Pic.HasPending && Pic.Acknowledge() is { } vector)
+                    Cpu.EnterHardwareInterrupt(vector);
+            }
+            catch (Exception ex) when (ex is UnsupportedInstructionException or InvalidOperationException or IOException)
+            {
+                Fault = ex.Message; Running = false; break;
+            }
+            if (Cpu.Halted || Cpu.WaitingForNumericError)
+            {
+                // HLT and external numeric-error waits still clock devices, even under CLI.
                 // Without a time target, CLI/HLT remains a useful headless test-program stop.
                 if (!Cpu.CanAcceptMaskableInterrupt || Scheduler.NextEventTime is not { } next)
                 {
@@ -117,15 +165,32 @@ public sealed class PcMachine : IDisposable
     }
 
     public MachineStatus GetStatus() => new(Profile.Id, Profile.Name,
-        Fault is not null ? MachineRunState.Faulted : Cpu.Halted ? MachineRunState.Halted : Running ? MachineRunState.Running : MachineRunState.Paused,
+        Fault is not null ? MachineRunState.Faulted : CpuResetHeld ? MachineRunState.ResetHeld : Cpu.Halted ? MachineRunState.Halted : Running ? MachineRunState.Running : MachineRunState.Paused,
         Cpu.Instructions, Scheduler.Now, Cpu.Position, Fault, _disk?.Name ?? "No disk", Board.DebugText, _disk is IWritableBlockDevice,
-        Profile, Floppy.MediaName(0), Floppy.MediaName(1));
+        Profile, Floppy.MediaName(0), Floppy.MediaName(1), new(HardwareResetCount, LastResetSource, LastResetTime, LastWarmBootFlag, CpuResetHeld, Board.Post10Count));
+
+    /// <summary>Emulation owner only, between instruction batches. CPU hot reset; powered devices and media keep running.</summary>
+    public void HardwareReset() => ResetCpu("host-hardware");
+
+    private void ResetCpu(string source)
+    {
+        LastWarmBootFlag = Memory.ReadWord(0x472);
+        Cpu.Reset(); Fault = null;
+        HardwareResetCount++; LastResetSource = source; LastResetTime = Scheduler.Now;
+        HardwareResetOccurred?.Invoke();
+    }
     public VideoFrame CaptureFrame() => Video.Capture(Scheduler.Now);
     public PcMachine CreatePowerCycle(MachineProfile profile)
     {
         profile.Validate();
         IReadOnlyBlockDevice? copy = null, a = null, b = null;
-        try { copy = _disk?.Reopen(); a = Floppy.ReopenMedia(0); b = Floppy.ReopenMedia(1); return new PcMachine(profile, copy, a, b); }
+        try
+        {
+            copy = _disk?.Reopen(); a = Floppy.ReopenMedia(0); b = Floppy.ReopenMedia(1);
+            var poweredOn = new PcMachine(profile, copy, a, b);
+            Rtc.CarryBatteryStateTo(poweredOn.Rtc);
+            return poweredOn;
+        }
         catch { copy?.Dispose(); a?.Dispose(); b?.Dispose(); throw; }
     }
     public void Dispose() { Floppy.Dispose(); _disk?.Dispose(); }

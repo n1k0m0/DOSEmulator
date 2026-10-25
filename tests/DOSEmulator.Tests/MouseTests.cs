@@ -3,6 +3,7 @@ using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
 using System.Text.Json;
+using DOSEmulator.Contracts;
 
 internal static class MouseTests
 {
@@ -133,9 +134,12 @@ internal static class MouseTests
             Check(Call(m, 4) == 0 && (m.Cpu.GetRegister(Register.Bx) >> 8) == 0);
             Check(Call(m, 1) == 0 && m.Cpu.GetRegister(Register.Bx) == 0xaa && m.Mouse!.SampleRate == 100 && m.Mouse.Resolution == 2);
         });
-        test("BIOS IRQ12 far callback receives four IBM words and preserves guest registers", () =>
+        foreach(bool relocated in new[]{false,true})
+        test($"BIOS IRQ12 far callback preserves guest registers with {(relocated?"relocated":"initial")} EBDA", () =>
         {
-            using var m = Machine(); Check(Call(m, 5, 0x300) == 0);
+            using var m = Machine();
+            if(relocated){m.Memory.Ram.AsSpan(0x9fc00,1024).CopyTo(m.Memory.Ram.AsSpan(0xe920));m.Memory.Ram.AsSpan(0x9fc00,1024).Fill(0xa5);m.Memory.WriteWord(0x40e,0x0e92);}
+            Check(Call(m, 5, 0x300) == 0);
             // Original far callback: copy status/X/Y/Z from its real stack to DS=0 test RAM.
             byte[] callback = [0x55,0x89,0xe5,0x50,0x1e,0x31,0xc0,0x8e,0xd8,
                 0x8b,0x46,12,0xa3,0,0x30,0x8b,0x46,10,0xa3,2,0x30,0x8b,0x46,8,0xa3,4,0x30,
@@ -150,6 +154,7 @@ internal static class MouseTests
             Check(m.Memory.ReadWord(0x3000) == 0x29 && m.Memory.ReadWord(0x3002) == 200 && m.Memory.ReadWord(0x3004) == 251 && m.Memory.ReadWord(0x3006) == 0, $"Callback words {Convert.ToHexString(m.Memory.Ram.AsSpan(0x3000, 8))}");
             Check(m.Cpu.GetRegister(Register.Ax) == 0x12345678 && m.Cpu.GetSegment(Segment.Ds) == 0x1234 && m.Cpu.GetRegister(Register.Sp) == sp, $"Registers AX={m.Cpu.GetRegister(Register.Ax):X} DS={m.Cpu.GetSegment(Segment.Ds):X} SP={m.Cpu.GetRegister(Register.Sp):X}, expected {sp:X}");
             Check(Call(m, 0) == 0 && !m.Mouse.Enabled && (m.Pic.Read(0xa1, 1) & 0x10) != 0);
+            if(relocated)Check(m.Memory.Ram.AsSpan(0x9fc00,1024).ToArray().All(b=>b==0xa5));
         });
         test("BIOS Aux commands preserve pending keyboard characters and ignore stale IRQ1", () =>
         {
@@ -178,6 +183,24 @@ internal static class MouseTests
             using var none = new MachineSession(Machine(false));
             var absent = none.Enqueue(new(1, "mouse", "SendMouseInput", JsonSerializer.SerializeToElement(new { x = 0, y = 0, buttons = 0 })));
             none.PumpCommands(); Check(!absent.Result.Success);
+        });
+        test("GUI record payloads reach real PS2 packets using the canonical IPC naming policy", () =>
+        {
+            using var session = new MachineSession(Machine());
+            var m = session.Machine;
+            m.Keyboard.Write(0x64,0xa8,1); m.Mouse!.Write(0xf4); Drain(m.Keyboard);
+            var input = new RelativeMouseInput(); input.Capture();
+            foreach (var eventData in new[] { input.Button(1,true)!,input.Move(40,-25)! })
+            {
+                var request = IpcProtocol.CreateRequest("SendMouseInput",eventData);
+                Check(request.Payload.GetProperty("x").GetInt32()==eventData.X);
+                var response=session.Enqueue(request); session.PumpCommands(); Check(response.Result.Success);
+            }
+            m.Scheduler.AdvanceTo(m.Scheduler.Now+10000000);
+            Check(Drain(m.Keyboard).AsSpan().SequenceEqual(new byte[] {9,40,25}));
+            var release=session.Enqueue(IpcProtocol.CreateRequest("SendMouseInput",input.Release()));
+            session.PumpCommands(); Check(release.Result.Success); m.Scheduler.AdvanceTo(m.Scheduler.Now+10000000);
+            Check(Drain(m.Keyboard).AsSpan().SequenceEqual(new byte[] {8,0,0}));
         });
         test("mouse scenarios use guest debug markers in graphics and validate bounded input", () =>
         {

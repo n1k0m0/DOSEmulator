@@ -1,6 +1,9 @@
+#requires -Version 7.4
+[CmdletBinding()]
 param([switch]$SkipBuild, [string]$Runner)
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'common.ps1')
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
+if ($Runner) { $Runner = (Resolve-Path -LiteralPath $Runner).Path }
 $outputRoot = Join-Path $workspaceRoot 'artifacts\m1-build'
 if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'build.ps1') -OutputRoot $outputRoot }
 if (-not $Runner) { $Runner = Join-Path $outputRoot 'Release\net10.0\DOSEmulator.Headless.dll' }
@@ -10,8 +13,8 @@ New-Item -ItemType Directory -Path $testDirectory | Out-Null
 $image = Join-Path $workspaceRoot 'artifacts\freedos-m1\FD14LITE-minimal.img'
 $original = Join-Path $workspaceRoot 'artifacts\freedos-original\FD14LITE.img'
 $overlay = Join-Path $testDirectory 'session.cow'
-$imageHash = (Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash
-$originalHash = (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash
+$imageHash = (Get-DosFileHash -LiteralPath $image -Algorithm SHA256).Hash
+$originalHash = (Get-DosFileHash -LiteralPath $original -Algorithm SHA256).Hash
 $stages = @(
     [pscustomobject]@{
         name='create'
@@ -52,7 +55,7 @@ foreach ($stage in $stages) {
     if ($result.status.debugOutput.Contains("`r`nM2-ERROR`r`n")) { throw "Deleted guest file survived: $report" }
     $results += [pscustomobject]@{name=$stage.name;passed=$true;sectorsRead=$result.ataSectorsRead;sectorsWritten=$result.ataSectorsWritten;inputBytes=$result.inputBytesSent}
 }
-if ((Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash -ne $imageHash -or (Get-FileHash -LiteralPath $original -Algorithm SHA256).Hash -ne $originalHash) { throw 'Base media changed during write acceptance.' }
+if ((Get-DosFileHash -LiteralPath $image -Algorithm SHA256).Hash -ne $imageHash -or (Get-DosFileHash -LiteralPath $original -Algorithm SHA256).Hash -ne $originalHash) { throw 'Base media changed during write acceptance.' }
 $summary = [pscustomobject]@{passed=$true;coldBoots=3;createReadCopyRenameDelete=$true;originalUnchanged=$true;baseUnchanged=$true;overlay=$overlay;stages=$results}
 $summary | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $testDirectory 'acceptance-summary.json') -Encoding utf8
 $summary | ConvertTo-Json -Depth 5

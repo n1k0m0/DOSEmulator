@@ -1,18 +1,20 @@
+#requires -Version 7.4
+[CmdletBinding()]
 param([switch]$SkipBuild, [switch]$Gui, [string]$OutputRoot = 'artifacts\m1-build')
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'common.ps1')
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
-$buildRoot = [IO.Path]::GetFullPath((Join-Path $workspaceRoot $OutputRoot))
+$buildRoot = Get-DosBuildRoot -OutputRoot $OutputRoot
 if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'build.ps1') -OutputRoot $buildRoot }
 $runner = Join-Path $buildRoot 'Release\net10.0\DOSEmulator.Headless.dll'
 $mediaRoot = Join-Path $workspaceRoot 'Disks and CDs (DO NOT PUT INTO GITHUB)\Microsoft MS-DOS 6.22 [German] (3.5-1.44mb)'
 $disks = @(1..3 | ForEach-Object { Join-Path $mediaRoot ('Disk0'+$_+'.img') })
-$originalHashes = @($disks | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash })
+$originalHashes = @($disks | ForEach-Object { (Get-DosFileHash -LiteralPath $_ -Algorithm SHA256).Hash })
 $testRoot = Join-Path $workspaceRoot ('artifacts\msdos-m2\install-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
 $image = Join-Path $testRoot 'private-blank-32m.img'; $cow = Join-Path $testRoot 'private-install.cow'
 $file = [IO.File]::Open($image,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write)
 try { $file.SetLength(33554432) } finally { $file.Dispose() }
-$baseHash = (Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash
+$baseHash = (Get-DosFileHash -LiteralPath $image -Algorithm SHA256).Hash
 $stages = @()
 function Scenario([string]$Name, [object[]]$Plan) {
     $path = Join-Path $testRoot ($Name+'.scenario.json')
@@ -62,9 +64,9 @@ function Dos-Scenario([string]$Name, [string]$Commands) {
 $bootResults = @()
 foreach ($number in 1..2) {
     $plan = Dos-Scenario "cold-$number" "ver`r`ndir c:\`r`ntype c:\config.sys`r`necho M2-MSDOS-COLD-OK`r`n"
-    $oldHash = (Get-FileHash -LiteralPath $cow).Hash
+    $oldHash = (Get-DosFileHash -LiteralPath $cow).Hash
     $result = Guest "cold-$number" @('--steps','30000000','--scenario',$plan) @('MS-DOS Version 6.22','DEVICE=C:\DOS\SETVER.EXE',"`r`nM2-MSDOS-COLD-OK`r`n")
-    if ($result.ataSectorsWritten -ne 0 -or $result.floppySectorsRead -ne 0 -or $result.floppySectorsWritten -ne 0 -or -not $result.status.debugOutput.EndsWith('C:\>') -or (Get-FileHash -LiteralPath $cow).Hash -ne $oldHash) { throw 'HDD-only cold boot changed the installed medium or did not return.' }
+    if ($result.ataSectorsWritten -ne 0 -or $result.floppySectorsRead -ne 0 -or $result.floppySectorsWritten -ne 0 -or -not $result.status.debugOutput.EndsWith('C:\>') -or (Get-DosFileHash -LiteralPath $cow).Hash -ne $oldHash) { throw 'HDD-only cold boot changed the installed medium or did not return.' }
     $bootResults += $result
 }
 if ($bootResults[0].frameHash -ne $bootResults[1].frameHash -or $bootResults[0].status.virtualNanoseconds -ne $bootResults[1].status.virtualNanoseconds) { throw 'Independent MS-DOS HDD boots differ.' }
@@ -90,16 +92,16 @@ if ($Gui) {
     $exe = Join-Path $buildRoot 'Release\net10.0-windows\DOSEmulator.exe'
     $arguments = @('--disk',('"{0}"' -f $image),'--overlay',('"{0}"' -f $cow),'--data-dir',('"{0}"' -f (Join-Path $guiRoot 'settings')),
         '--acceptance-test',('"{0}"' -f $guiRoot),'--type-file',('"{0}"' -f $commands),'--capture-after','"MS-DOS Version 6.22"')
-    $oldHash = (Get-FileHash -LiteralPath $cow).Hash
+    $oldHash = (Get-DosFileHash -LiteralPath $cow).Hash
     $process = Start-Process -FilePath $exe -ArgumentList $arguments -PassThru -WindowStyle Hidden
     if (-not $process.WaitForExit(45000)) { $process.Kill(); throw 'MS-DOS native GUI acceptance timed out.' }
     if ($process.ExitCode -ne 0) { throw 'MS-DOS native GUI failed.' }
     $guiResult = Get-Content -Raw -LiteralPath (Join-Path $guiRoot 'smoke-result.json') | ConvertFrom-Json
-    if ($guiResult.status.fault -or $guiResult.captures.Count -ne 6 -or $guiResult.inputBytesSent -ne $guiResult.inputBytesTotal -or -not $guiResult.status.debugOutput.Contains('MS-DOS Version 6.22') -or (Get-FileHash -LiteralPath $cow).Hash -ne $oldHash) { throw 'MS-DOS GUI or read-only guest commands failed.' }
+    if ($guiResult.status.fault -or $guiResult.captures.Count -ne 6 -or $guiResult.inputBytesSent -ne $guiResult.inputBytesTotal -or -not $guiResult.status.debugOutput.Contains('MS-DOS Version 6.22') -or (Get-DosFileHash -LiteralPath $cow).Hash -ne $oldHash) { throw 'MS-DOS GUI or read-only guest commands failed.' }
     foreach ($capture in $guiResult.captures) { $graphics = Get-Content -Raw -LiteralPath ($capture+'.json') | ConvertFrom-Json; if ($graphics.error -ne 'NoError' -or $graphics.footerBrightPixels -lt 100) { throw 'MS-DOS OpenGL capture incomplete.' } }
 }
-foreach ($number in 0..2) { if ((Get-FileHash -LiteralPath $disks[$number] -Algorithm SHA256).Hash -ne $originalHashes[$number]) { throw 'Original MS-DOS floppy changed.' } }
-if ((Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash -ne $baseHash) { throw 'Blank base image changed.' }
+foreach ($number in 0..2) { if ((Get-DosFileHash -LiteralPath $disks[$number] -Algorithm SHA256).Hash -ne $originalHashes[$number]) { throw 'Original MS-DOS floppy changed.' } }
+if ((Get-DosFileHash -LiteralPath $image -Algorithm SHA256).Hash -ne $baseHash) { throw 'Blank base image changed.' }
 $summary = [pscustomobject]@{passed=$true;directory=$testRoot;source='Local German MS-DOS 6.22 disks 1..3';coldBoots=7;hostColdBootAtPartitionBoundary=$true;
     originalSetup=$true;sourceMediaUnchanged=$true;baseUnchanged=$true;privateOverlay=$true;hddOnlyBoots=5;guestWritesAndPersistence=$true;
     installedStartupUnmodified=$true;himemEmm386Tested=$false;allRealModeProgramsSupported=$false;gui=[bool]$Gui;stages=$stages}

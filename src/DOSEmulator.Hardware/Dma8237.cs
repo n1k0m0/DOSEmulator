@@ -35,6 +35,16 @@ public sealed class Dma8237(MemoryBus memory) : IIoPortDevice
         if (Transfer(channel, data, false) != 1) return DmaReadResult.Blocked;
         value = data[0]; return DmaReadResult.Transferred;
     }
+    /// <summary>One device-paced byte into RAM. Verify/read/cascade never become a device write.</summary>
+    public DmaReadResult TryWriteByte(int channel, byte value)
+    {
+        if ((uint)channel >= 4) throw new ArgumentOutOfRangeException(nameof(channel));
+        Channel c = _channels[channel];
+        if (c.Masked || (_command[0] & 4) != 0) return DmaReadResult.Blocked;
+        if (((c.Mode >> 2) & 3) != 1 || (c.Mode & 0xc0) == 0xc0) return DmaReadResult.InvalidMode;
+        Span<byte> data = stackalloc byte[1]; data[0] = value;
+        return Transfer(channel, data, true) == 1 ? DmaReadResult.Transferred : DmaReadResult.Blocked;
+    }
     public uint Read(ushort port, int width)
     {
         if (width != 1) return 0xff;

@@ -1,5 +1,7 @@
+#requires -Version 7.4
+[CmdletBinding()]
 param([switch]$SkipBuild, [switch]$WriteOverlay, [switch]$Floppy)
-$ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'common.ps1')
 $workspaceRoot=Split-Path -Parent $PSScriptRoot
 $outputRoot=Join-Path $workspaceRoot 'artifacts\m1-build'
 if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'build.ps1') -OutputRoot $outputRoot }

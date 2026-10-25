@@ -1,5 +1,7 @@
+#requires -Version 7.4
+[CmdletBinding()]
 param([switch]$NoBuild, [switch]$Writable, [switch]$TwoDrives)
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'common.ps1')
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 $outputRoot = Join-Path $workspaceRoot 'artifacts\m1-build'
 if (-not $NoBuild) { & (Join-Path $PSScriptRoot 'build.ps1') -OutputRoot $outputRoot }

@@ -107,7 +107,7 @@ assert len(pulses) == report["opl"]["csmKeyPulses"] > 100
 assert report["opl"]["keyOnCount"] == len(pulses) * 18 + 2
 assert all(value & 0x20 == 0 for time, reg, value in writes if 0xb0 <= reg <= 0xb8 and time < marker("OPL2-CSM-STOPPED") * 1e9)
 assert not report["opl"]["unsupportedProgramming"] and not report["opl"]["csmEnabled"] and not report["opl"]["csmPulseActive"]
-assert report["opl"]["csmKeying"] and not report["opl"]["csm"] and not report["opl"]["siliconExact"]
+assert report["opl"]["csmKeying"] and report["opl"]["csm"] and report["opl"]["csmTotalLevelLatch"] and not report["opl"]["siliconExact"]
 
 t2 = marker("OPL2-CSM-TIMER2-SILENT")
 assert max(map(abs, extract(t2 + .03, t2 + .17))) == 0, "Timer 2 incorrectly keyed CSM"

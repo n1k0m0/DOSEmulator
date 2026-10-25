@@ -1,2 +1,2 @@
 @echo off
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\run-freedos-floppy.ps1" %*
+"%~dp0scripts\invoke-powershell.cmd" "%~dp0scripts\run-freedos-floppy.ps1" %*

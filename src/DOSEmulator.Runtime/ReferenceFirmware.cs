@@ -23,8 +23,9 @@ public static partial class ReferenceFirmware
         rom[0xe024] = (byte)(floppyA?.SectorsPerTrack ?? 18); rom[0xe034] = (byte)(floppyB?.SectorsPerTrack ?? 18);
         rom[0xe027] = FormatGap(floppyA); rom[0xe037] = FormatGap(floppyB);
         VgaPalette.Planar().CopyTo(rom, 0xe100); VgaPalette.Indexed().CopyTo(rom, 0xe400);
-        for (int character = 0; character < 256; character++)
-            for (int row = 1; row < 15; row++) rom[0xc000 + character * 16 + row] = (byte)(BitmapFont.Row((char)character, (row - 1) / 2) << 2);
+        Cp437Font.Table(8).CopyTo(rom.AsSpan(0xa000));
+        Cp437Font.Table(14).CopyTo(rom.AsSpan(0xa800));
+        Cp437Font.Table(16).CopyTo(rom.AsSpan(0xc000));
         return rom;
     }
     private static byte FormatGap(FloppyGeometry? geometry) => geometry?.CmosType switch

@@ -17,7 +17,7 @@ public sealed partial class VgaAdapter
         {
             if (!ActiveCrtc(port)) return 255;
             _attributeData = false;
-            ulong period = VerticalLines >= 480 ? 16_666_667UL : 14_285_714UL;
+            ulong period = FramePeriod;
             ulong position = _clock.Now % period, linePeriod = period / (ulong)(VerticalLines + 40);
             bool retrace = position >= period * 95 / 100;
             bool blank = retrace || position % linePeriod >= linePeriod * 4 / 5;

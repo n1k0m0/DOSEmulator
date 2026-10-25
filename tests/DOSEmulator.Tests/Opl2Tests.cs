@@ -213,11 +213,11 @@ internal static partial class Opl2Tests
             ulong time = r.Clock.Now; r.Opl.Reset(); Check(r.Clock.Now == time && r.Opl.ActiveOperators == 0 && !r.Opl.TimerInterruptAsserted);
             r.Advance(200000000); Check(r.Opl.Timer1Overflows == count && r.RmsTail() < 1e-8);
         });
-        test("OPL unsupported rhythm CSM and test programming stays explicit", () =>
+        test("OPL rhythm and CSM modes are supported while Yamaha test programming stays explicit", () =>
         {
             var r = new Rig(); r.Tone(8); r.Write(0xbd, 0x20); r.Advance(100000000);
-            Check(r.Opl.UnsupportedRhythm && r.Opl.UnsupportedProgramming && r.RmsTail(1000) < 1e-5);
-            r.Write(0xbd, 0); r.Write(8, 0x80); Check(r.Opl.UnsupportedCsm); r.Write(8, 0); r.Write(1, 1); Check(r.Opl.UnsupportedTest);
+            Check(r.Opl.RhythmEnabled && !r.Opl.UnsupportedRhythm && !r.Opl.UnsupportedProgramming && r.RmsTail(1000) < 1e-5);
+            r.Write(0xbd, 0); r.Write(8, 0x80); Check(!r.Opl.UnsupportedCsm); r.Write(8, 0); r.Write(1, 1); Check(r.Opl.UnsupportedTest);
         });
         test("OPL profiles map AdLib and shared SB aliases without coupling DSP reset", () =>
         {

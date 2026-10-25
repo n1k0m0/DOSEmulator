@@ -10,7 +10,8 @@ public sealed class GuestTestScenario
     public sealed record FloppyInsertion(int Drive, string Path, string? OverlayPath = null);
     public sealed record MouseMotion(int X, int Y, int Buttons);
     public sealed record Step(string WaitForScreen = "", string? Text = null, int[]? ScanCodes = null,
-        FloppyInsertion? InsertFloppy = null, ulong SettleNanoseconds = 100_000_000, MouseMotion? Mouse = null, string? WaitForDebug = null);
+        FloppyInsertion? InsertFloppy = null, ulong SettleNanoseconds = 100_000_000, MouseMotion? Mouse = null, string? WaitForDebug = null,
+        long MinimumResetCount = 0, long MinimumPost10Count = 0);
     private readonly Step[] _steps;
     private readonly byte[][] _keys;
     private int _keyIndex;
@@ -37,6 +38,8 @@ public sealed class GuestTestScenario
                 step.WaitForScreen?.Length > 1000 || step.WaitForDebug?.Length > 1000)
                 throw new ArgumentException("Each scenario step requires either actual VGA text or a guest debug-port marker.");
             if (step.SettleNanoseconds > 5_000_000_000) throw new ArgumentException("Screen settling must be at most five virtual seconds.");
+            if (step.MinimumResetCount is < 0 or > 1_000_000) throw new ArgumentException("Invalid minimum hardware reset count.");
+            if (step.MinimumPost10Count is < 0 or > 1_000_000) throw new ArgumentException("Invalid minimum POST count.");
             if (step.Text is not null && step.ScanCodes is not null) throw new ArgumentException("Choose text or scanCodes.");
             if (step.InsertFloppy is { } media && (media.Drive is < 0 or > 1 || !System.IO.Path.IsPathFullyQualified(media.Path) ||
                 (media.OverlayPath is not null && !System.IO.Path.IsPathFullyQualified(media.OverlayPath))))
@@ -56,6 +59,7 @@ public sealed class GuestTestScenario
     {
         if (Complete) return;
         Step step = _steps[CompletedSteps];
+        if (machine.HardwareResetCount < step.MinimumResetCount || machine.Board.Post10Count < step.MinimumPost10Count) { _candidateScreen = null; return; }
         if (!_started)
         {
             string screen = step.WaitForDebug is null ? machine.Video.ReadText() : machine.Board.DebugText;

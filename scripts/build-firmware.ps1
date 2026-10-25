@@ -1,11 +1,14 @@
-$ErrorActionPreference = 'Stop'
+#requires -Version 7.4
+[CmdletBinding()]
+param()
+. (Join-Path $PSScriptRoot 'common.ps1')
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 $assembler = Join-Path $workspaceRoot 'artifacts\tools\nasm-3.02\nasm-3.02\nasm.exe'
 $sourcePath = Join-Path $workspaceRoot 'firmware\reference-bios.asm'
 $generatedPath = Join-Path $workspaceRoot 'src\DOSEmulator.Runtime\ReferenceFirmware.Image.g.cs'
 $firmwareDirectory = Join-Path $workspaceRoot 'firmware'
 $sourceManifest = (Get-ChildItem -LiteralPath $firmwareDirectory -File | Where-Object { $_.Extension -in '.asm','.inc' } | Sort-Object Name | ForEach-Object {
-    $_.Name + ':' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+    $_.Name + ':' + (Get-DosFileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
 }) -join "`n"
 $sourceHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($sourceManifest)))
 if (-not (Test-Path -LiteralPath $assembler)) {
@@ -34,4 +37,6 @@ public static partial class ReferenceFirmware
     private const string CompressedImage = "$base64";
 }
 "@
-[IO.File]::WriteAllText($generatedPath,$code)
+if (-not (Test-Path -LiteralPath $generatedPath) -or [IO.File]::ReadAllText($generatedPath) -cne $code) {
+    [IO.File]::WriteAllText($generatedPath,$code)
+}

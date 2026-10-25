@@ -1,6 +1,9 @@
+#requires -Version 7.4
+[CmdletBinding()]
 param([switch]$SkipBuild, [string]$Runner)
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'common.ps1')
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
+if ($Runner) { $Runner = (Resolve-Path -LiteralPath $Runner).Path }
 $outputRoot = Join-Path $workspaceRoot 'artifacts\m1-build'
 if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'build.ps1') -OutputRoot $outputRoot }
 if (-not $Runner) { $Runner = Join-Path $outputRoot 'Release\net10.0\DOSEmulator.Headless.dll' }
@@ -9,8 +12,8 @@ $testDirectory = Join-Path $workspaceRoot 'artifacts\freedos-m1'
 $image = Join-Path $testDirectory 'FD14LITE-minimal.img'
 $commands = Join-Path $testDirectory 'acceptance-commands.txt'
 [IO.File]::WriteAllText($commands,"ver`r`ndir`r`ntype fdconfig.sys`r`necho M1-INTERACTIVE-OK`r`n")
-$originalHash = (Get-FileHash -LiteralPath (Join-Path $workspaceRoot 'artifacts\freedos-original\FD14LITE.img') -Algorithm SHA256).Hash
-$imageHash = (Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash
+$originalHash = (Get-DosFileHash -LiteralPath (Join-Path $workspaceRoot 'artifacts\freedos-original\FD14LITE.img') -Algorithm SHA256).Hash
+$imageHash = (Get-DosFileHash -LiteralPath $image -Algorithm SHA256).Hash
 $results = @()
 foreach ($number in 1..2) {
     $report = Join-Path $testDirectory "cold-boot-$number.json"
@@ -25,7 +28,7 @@ foreach ($number in 1..2) {
     $results += $result
 }
 if ($results[0].frameHash -ne $results[1].frameHash -or $results[0].status.virtualNanoseconds -ne $results[1].status.virtualNanoseconds) { throw 'Independent cold boots are not deterministic.' }
-if ((Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash -ne $imageHash -or (Get-FileHash -LiteralPath (Join-Path $workspaceRoot 'artifacts\freedos-original\FD14LITE.img') -Algorithm SHA256).Hash -ne $originalHash) { throw 'FreeDOS media changed during acceptance.' }
+if ((Get-DosFileHash -LiteralPath $image -Algorithm SHA256).Hash -ne $imageHash -or (Get-DosFileHash -LiteralPath (Join-Path $workspaceRoot 'artifacts\freedos-original\FD14LITE.img') -Algorithm SHA256).Hash -ne $originalHash) { throw 'FreeDOS media changed during acceptance.' }
 $summary = [pscustomobject]@{passed=$true;coldBoots=2;interactive=$true;frameHash=$results[0].frameHash;virtualNanoseconds=$results[0].status.virtualNanoseconds;ataSectors=$results[0].ataSectorsRead;originalUnchanged=$true;derivedImageUnchanged=$true}
 $summary | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $testDirectory 'acceptance-summary.json') -Encoding utf8
 $summary | ConvertTo-Json

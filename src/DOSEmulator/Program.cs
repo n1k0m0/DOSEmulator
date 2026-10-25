@@ -35,7 +35,8 @@ internal static class Program
             string? acceptance = Value("--acceptance-test");
             using var window = new DosWindow(machine, settings, settingsFile, acceptance ?? Value("--smoke-test"),
                 acceptance is not null, Value("--type-file") is { } typePath ? File.ReadAllText(typePath) : null, Value("--capture-after"),
-                Value("--audio-out"), args.Contains("--audio-acceptance"), Value("--scenario") is { } scenarioPath ? GuestTestScenario.Load(scenarioPath) : null);
+                Value("--audio-out"), args.Contains("--audio-acceptance"), Value("--scenario") is { } scenarioPath ? GuestTestScenario.Load(scenarioPath) : null,
+                args.Contains("--sb2-resource-acceptance"), args.Contains("--mouse-native-acceptance"));
             window.Run();
             return 0;
         }

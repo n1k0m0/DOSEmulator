@@ -178,10 +178,10 @@ internal static partial class SoundBlasterTests
             var r = new Rig(); r.Reset(); r.ProgramDma(new byte[65536]); r.Send(0x40, 131, 0x14, 255, 255);
             r.Advance(125000); Check(r.Dsp.TransferredSamples == 1 && r.Dsp.RemainingSamples == 65535 && !r.Dsp.InterruptAsserted);
         });
-        test("SB missing ADPCM and high-speed recording commands are explicitly diagnosed", () =>
+        test("SB missing MIDI commands are explicitly diagnosed without corrupting DSP framing", () =>
         {
-            var r = new Rig(); r.Reset(); r.Send(0x75, 0x10, 0, 0x99);
-            Check(r.Dsp.UnsupportedCommands == 2 && r.Dsp.LastUnsupportedCommand == 0x99 && !r.Dsp.Active);
+            var r = new Rig(); r.Reset(); r.Send(0x38, 0x10, 0x30);
+            Check(r.Dsp.UnsupportedCommands == 2 && r.Dsp.LastUnsupportedCommand == 0x30 && !r.Dsp.Active);
             r.Send(0xe1); Check(r.Dsp.Read(0x22a, 1) == 2 && r.Dsp.Read(0x22a, 1) == 1);
         });
         test("mixed speaker and PCM equal independently integrated sources across chunk sizes", () =>

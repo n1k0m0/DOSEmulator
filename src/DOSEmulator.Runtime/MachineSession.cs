@@ -6,14 +6,27 @@ using DOSEmulator.Hardware;
 namespace DOSEmulator.Runtime;
 
 /// <summary>UI and IPC enqueue work; only the emulation owner pumps and mutates the machine.</summary>
-public sealed class MachineSession(PcMachine machine) : IDisposable
+public sealed class MachineSession : IDisposable
 {
     private readonly ConcurrentQueue<(IpcRequest Request, TaskCompletionSource<IpcResponse> Result)> _commands = new();
     private bool _disposed;
     private readonly object _queueGate = new();
     private long _revision = 1;
-    public PcMachine Machine { get; private set; } = machine;
+    public PcMachine Machine { get; private set; }
     public long Revision => _revision;
+
+    public MachineSession(PcMachine machine)
+    {
+        Machine = machine; Machine.HardwareResetOccurred += TrackReset;
+    }
+    private void TrackReset() => _revision++;
+    private void ReplaceMachine(PcMachine replacement)
+    {
+        Machine.Rtc.CarryBatteryStateTo(replacement.Rtc);
+        Machine.HardwareResetOccurred -= TrackReset;
+        Machine.Dispose(); Machine = replacement;
+        Machine.HardwareResetOccurred += TrackReset; _revision++;
+    }
 
     public Task<IpcResponse> Enqueue(IpcRequest request)
     {
@@ -54,22 +67,31 @@ public sealed class MachineSession(PcMachine machine) : IDisposable
             case "GetStatus": result = Machine.GetStatus(); break;
             case "GetCapabilities":
                 result = new { development = true, freeDosMinimalBoot = true, msDos622InstalledRealMode = true, biosFloppyFormatNativeGeometry = true, biosFixedDiskChsVerify = true,
-                    privateDiskOverlays = true, floppyDma = true, dosBoot = "FreeDOS 1.4 minimal; local German MS-DOS 6.22 installed real-mode profile", protectedMode = false, sound = true, pcSpeaker = true, sb2Dsp = true, sb2HighSpeedPcm = true, opl2Timers = true, opl2Melodic = true, opl2CsmKeying = true, soundBlaster = false, opl = false, guestNetwork = false,
-                    ps2Mouse = true, mouseWheel = false,
-                    commands = new[] { "Ping", "GetStatus", "GetCapabilities", "Pause", "Resume", "PowerCycleCurrent", "PowerCycleDemo", "PowerCycleReadOnlyDisk", "PowerCycleOverlayDisk", "InsertFloppy", "EjectFloppy", "PrepareConfigurationChange", "CommitConfigurationChange", "SendScanCode", "SendMouseInput" } }; break;
+                    privateDiskOverlays = true, floppyDma = true, dosBoot = "FreeDOS 1.4 minimal; local German MS-DOS 6.22 installed real-mode profile", protectedMode = false, sound = true, pcSpeaker = true, sb2Dsp = true, sb2HighSpeedPcm = true,
+                    sb2DirectAdc = true, sb2InputPcm = true, sb2HighSpeedInput = true, sb2Adpcm = true, hostAudioInput = false,
+                    sb2ConfigurableResources = true, sb2BasePorts = new[] { 0x220, 0x240 }, sb2Irqs = new[] { 3, 5, 7, 9 }, sb2DmaChannels = new[] { 1 },
+                    opl2Timers = true, opl2Melodic = true, opl2Rhythm = true, opl2CsmKeying = true, opl2CsmTotalLevelLatch = true, soundBlaster = false, opl = false, guestNetwork = false,
+                    ps2Mouse = true, mouseWheel = false, vgaTextFontBlocks = 8, biosVgaUserFontLoad = true,
+                    biosVgaTextScanlines = true, msDos622Cp850Text = true, guestCpuHotReset = true,
+                    resetScope = "CPU only; RAM, devices, virtual time and attached media retained",
+                    commands = new[] { "Ping", "GetStatus", "GetCapabilities", "Pause", "Resume", "HardwareReset", "SendCtrlAltDel", "PowerCycleCurrent", "PowerCycleDemo", "PowerCycleReadOnlyDisk", "PowerCycleOverlayDisk", "InsertFloppy", "EjectFloppy", "PrepareConfigurationChange", "CommitConfigurationChange", "SendScanCode", "SendMouseInput" } }; break;
             case "Pause": Machine.Running = false; result = Machine.GetStatus(); break;
             case "Resume": Machine.Running = true; result = Machine.GetStatus(); break;
+            case "HardwareReset": Machine.HardwareReset(); result = Machine.GetStatus(); break;
+            case "SendCtrlAltDel":
+                foreach (byte code in new byte[] { 0x1d, 0x38, 0x53, 0xd3, 0xb8, 0x9d }) Machine.Keyboard.InjectTranslatedSet1(code);
+                result = Machine.GetStatus(); break;
             case "PowerCycleCurrent":
             {
                 var replacement = Machine.CreatePowerCycle(Machine.Profile);
-                Machine.Dispose(); Machine = replacement; Machine.Running = true; _revision++;
+                ReplaceMachine(replacement); Machine.Running = true;
                 result = Machine.GetStatus(); break;
             }
             case "PowerCycleDemo":
             {
                 // This explicit operation always boots the built-in test disk, never swaps an attached user image silently.
                 var replacement = PcMachine.CreateDemo(Machine.Profile);
-                Machine.Dispose(); Machine = replacement; Machine.Running = true; _revision++;
+                ReplaceMachine(replacement); Machine.Running = true;
                 result = Machine.GetStatus(); break;
             }
             case "PowerCycleReadOnlyDisk":
@@ -88,7 +110,7 @@ public sealed class MachineSession(PcMachine machine) : IDisposable
                 PcMachine replacement;
                 try { a = Machine.Floppy.ReopenMedia(0); b = Machine.Floppy.ReopenMedia(1); replacement = new PcMachine(Machine.Profile, disk, a, b); }
                 catch { disk.Dispose(); a?.Dispose(); b?.Dispose(); throw; }
-                Machine.Dispose(); Machine = replacement; Machine.Running = true; _revision++;
+                ReplaceMachine(replacement); Machine.Running = true;
                 result = Machine.GetStatus(); break;
             }
             case "InsertFloppy":
@@ -118,7 +140,7 @@ public sealed class MachineSession(PcMachine machine) : IDisposable
                 if (plan.ExpectedRevision != _revision) return new(1, request.RequestId, false, "StaleConfiguration", null);
                 plan.Requested.Validate();
                 var replacement = Machine.CreatePowerCycle(plan.Requested);
-                Machine.Dispose(); Machine = replacement; Machine.Running = true; _revision++;
+                ReplaceMachine(replacement); Machine.Running = true;
                 result = new { revision = _revision, status = Machine.GetStatus() }; break;
             }
             case "SendScanCode": Machine.Keyboard.InjectTranslatedSet1(request.Payload.GetProperty("scanCode").GetByte()); result = null; break;
@@ -143,6 +165,7 @@ public sealed class MachineSession(PcMachine machine) : IDisposable
             _disposed = true;
             while (_commands.TryDequeue(out var item)) item.Result.TrySetResult(new(1, item.Request.RequestId, false, "SessionStopped", null));
         }
+        Machine.HardwareResetOccurred -= TrackReset;
         Machine.Dispose();
     }
 }

@@ -2,6 +2,7 @@
 import json
 import importlib.util
 import pathlib
+import struct
 import sys
 
 
@@ -12,7 +13,7 @@ def source(name):
     return module
 
 
-def verify(base, cow, trace):
+def verify(base, cow, trace, memory=None):
     fat = source("verify-msdos-install")
     floppy = source("verify-floppy-format")
     disk, journal = fat.materialize(base, cow)
@@ -30,17 +31,23 @@ def verify(base, cow, trace):
     formats = [packet for packet in packets if packet["command"][0] == 0x4d]
     assert len(formats) == 160
     tracks = []
+    # POST uses 9FC0h, while a real memory manager may relocate the EBDA.
+    # With a dump, derive the expected buffer from the independent BDA pointer.
+    ebda = struct.unpack_from("<H", pathlib.Path(memory).read_bytes(), 0x40e)[0] if memory else 0x9fc0
+    bounce = (ebda << 4) + 0x200
+    assert (bounce & 0xffff) + 72 <= 65536
     for packet in formats:
         assert packet["command"] == [0x4d, 1 | (packet["result"][4] << 2), 2, 18, 0x6c, 0xf6]
         assert packet["result"][0] & 0xc0 == 0 and packet["result"][1:3] == [0, 0]
         assert packet["result"][6] == 2 and packet["maskedAfterResult"]
-        assert packet["dma"] == {"address": 0xfe00, "count": 71, "page": 9, "mode": 0x4a, "masked": False}
+        assert packet["dma"] == {"address": bounce & 0xffff, "count": 71, "page": bounce >> 16, "mode": 0x4a, "masked": False}
         tracks.append((packet["result"][3], packet["result"][4]))
     assert tracks == [(cylinder, head) for cylinder in range(80) for head in range(2)]
     return {"passed": True, "readOnlyVerification": True, "formatTrackCommands": len(formats),
-            "all80CylindersBothHeads": True, "realDma2": True, "label": "M2TEST", "files": 0,
+            "all80CylindersBothHeads": True, "realDma2": True, "ebdaSegment": ebda, "dmaLinearAddress": bounce,
+            "label": "M2TEST", "files": 0,
             "allocation": allocation, "allDataSectorFillBytesChecked": True, "journal": journal}
 
 
 if __name__ == "__main__":
-    print(json.dumps(verify(*sys.argv[1:4]), indent=2))
+    print(json.dumps(verify(*sys.argv[1:5]), indent=2))

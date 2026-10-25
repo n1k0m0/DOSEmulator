@@ -7,6 +7,9 @@ public sealed record IpcResponse(int ProtocolVersion, string RequestId, bool Suc
 
 public static class IpcProtocol
 {
+    /// <summary>Use the wire naming policy for both UI records and anonymous payloads.</summary>
+    public static IpcRequest CreateRequest(string command, object? payload = null) =>
+        new(Version, Guid.NewGuid().ToString("N"), command, JsonSerializer.SerializeToElement(payload ?? new { }, JsonOptions));
     public const int Version = 1;
     public const int MaximumMessageBytes = 64 * 1024;
     public static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)

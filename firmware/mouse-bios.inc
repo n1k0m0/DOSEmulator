@@ -12,7 +12,7 @@ int_ps2_service:
     mov rAH,0x86
     jmp .error
 .present:
-    mov ax,0x9fc0
+    call bios_ebda_segment
     mov es,ax
     mov al,rAL
     cmp al,7
@@ -262,7 +262,10 @@ irq_mouse:
     cmp al,0x21
     jne .done
     in al,0x60
-    mov dx,0x9fc0
+    push ax
+    call bios_ebda_segment
+    mov dx,ax
+    pop ax
     mov ds,dx
     movzx bx,byte [mouse_index]
     test bl,bl

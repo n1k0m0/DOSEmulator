@@ -13,7 +13,9 @@ public static class GuestKeyboard
         if (head is < 0x1e or >= 0x3e || tail is < 0x1e or >= 0x3e || ((head | tail) & 1) != 0) return false;
         int queued = ((tail - head + 32) % 32) / 2;
         if (queued >= 8) return false;
-        machine.Keyboard.InjectTranslatedSet1(scanCode); return true;
+        // KEYB/monitor routines temporarily disable the keyboard or scanning.
+        // A rejected byte has not been delivered and must stay in the scenario.
+        return machine.Keyboard.TryInjectTranslatedSet1(scanCode);
     }
     public static byte[] Encode(string text)
     {

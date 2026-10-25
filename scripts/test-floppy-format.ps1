@@ -1,12 +1,14 @@
+#requires -Version 7.4
+[CmdletBinding()]
 param([switch]$SkipBuild, [switch]$Gui, [string]$OutputRoot = 'artifacts\m1-build')
-$ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'common.ps1')
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
-$buildRoot = [IO.Path]::GetFullPath((Join-Path $workspaceRoot $OutputRoot))
+$buildRoot = Get-DosBuildRoot -OutputRoot $OutputRoot
 if (-not $SkipBuild) { & (Join-Path $PSScriptRoot 'build.ps1') -OutputRoot $buildRoot }
 $runner = Join-Path $buildRoot 'Release\net10.0\DOSEmulator.Headless.dll'
 $assembler = Join-Path $workspaceRoot 'artifacts\tools\nasm-3.02\nasm-3.02\nasm.exe'
 $baseImage = Join-Path $workspaceRoot 'artifacts\freedos-m1\FD14LITE-minimal.img'
-$baseHash = (Get-FileHash -LiteralPath $baseImage -Algorithm SHA256).Hash
+$baseHash = (Get-DosFileHash -LiteralPath $baseImage -Algorithm SHA256).Hash
 $testRoot = Join-Path $workspaceRoot ('artifacts\freedos-m2\floppy-format-' + [guid]::NewGuid().ToString('N'))
 $programs = Join-Path $testRoot 'programs'
 New-Item -ItemType Directory -Path $programs -Force | Out-Null
@@ -15,11 +17,11 @@ if ($LASTEXITCODE -ne 0) { throw 'Floppy format probe assembly failed.' }
 $image = Join-Path $testRoot 'private-probe.img'
 dotnet $runner --prepare-test-programs $baseImage --program-dir $programs --output $image | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Private format probe disk preparation failed.' }
-$imageHash = (Get-FileHash -LiteralPath $image -Algorithm SHA256).Hash
+$imageHash = (Get-DosFileHash -LiteralPath $image -Algorithm SHA256).Hash
 $a = Join-Path $testRoot 'private-scratch-a.img'; $b = Join-Path $testRoot 'private-scratch-b.img'
 $scratch = [byte[]]::new(1474560); [Array]::Fill[byte]($scratch,0x39)
 foreach ($path in @($a,$b)) { $file = [IO.File]::Open($path,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write); try { $file.Write($scratch) } finally { $file.Dispose() } }
-$scratchHash = (Get-FileHash -LiteralPath $a -Algorithm SHA256).Hash
+$scratchHash = (Get-DosFileHash -LiteralPath $a -Algorithm SHA256).Hash
 $results = @(); $stages = @()
 foreach ($run in 1..2) {
     $aCow = Join-Path $testRoot ("a-$run.cow"); $bCow = Join-Path $testRoot ("b-$run.cow")
@@ -27,7 +29,7 @@ foreach ($run in 1..2) {
         $prefix = Join-Path $testRoot ("$mode-$run")
         $commands = $prefix+'.txt'; $argument = if ($mode -eq 'write') { '' } else { ' /v' }
         [IO.File]::WriteAllText($commands,"biosfmt$argument`r`necho M2-FORMAT-END`r`n")
-        $oldOverlays = if ($mode -eq 'verify') { @((Get-FileHash -LiteralPath $aCow).Hash,(Get-FileHash -LiteralPath $bCow).Hash) } else { @() }
+        $oldOverlays = if ($mode -eq 'verify') { @((Get-DosFileHash -LiteralPath $aCow).Hash,(Get-DosFileHash -LiteralPath $bCow).Hash) } else { @() }
         dotnet $runner --disk $image --floppy-a $a --floppy-a-overlay $aCow --floppy-b $b --floppy-b-overlay $bCow --boot ide --steps 90000000 --type-file $commands --stop-text "`r`nM2-FORMAT-END`r`nC:\>" --report ($prefix+'.json') --frame ($prefix+'.ppm') --floppy-io-trace ($prefix+'.io.jsonl') | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Floppy format guest failed: $prefix" }
         $result = Get-Content -Raw -LiteralPath ($prefix+'.json') | ConvertFrom-Json
@@ -36,7 +38,7 @@ foreach ($run in 1..2) {
         foreach ($text in $required) { if (-not $result.status.debugOutput.Contains($text)) { throw "Missing actual DOS result '$text': $prefix" } }
         $expectedWrites = if ($mode -eq 'write') { 27 } else { 0 }
         if ($result.status.fault -or $result.status.debugOutput.Contains('BIOS-FORMAT-FAILED') -or $result.inputBytesSent -ne $result.inputBytesTotal -or $result.ataSectorsWritten -ne 0 -or $result.floppySectorsWritten -ne $expectedWrites -or $result.floppySectorsRead -ne 37) { throw "Unexpected guest format state: $prefix" }
-        if ($mode -eq 'verify' -and ($oldOverlays[0] -ne (Get-FileHash -LiteralPath $aCow).Hash -or $oldOverlays[1] -ne (Get-FileHash -LiteralPath $bCow).Hash)) { throw 'Persistence read-back changed overlays.' }
+        if ($mode -eq 'verify' -and ($oldOverlays[0] -ne (Get-DosFileHash -LiteralPath $aCow).Hash -or $oldOverlays[1] -ne (Get-DosFileHash -LiteralPath $bCow).Hash)) { throw 'Persistence read-back changed overlays.' }
         $oracle = python (Join-Path $workspaceRoot 'tests\verify-floppy-format.py') ($prefix+'.io.jsonl') $mode $a $aCow $b $bCow
         if ($LASTEXITCODE -ne 0) { throw 'Independent format verification failed.' }
         $oracle | Set-Content -LiteralPath ($prefix+'.verified.json') -Encoding utf8
@@ -70,7 +72,7 @@ if ($Gui) {
     foreach ($capture in $guiResult.captures) { $graphics = Get-Content -Raw -LiteralPath ($capture+'.json') | ConvertFrom-Json; if ($graphics.error -ne 'NoError' -or $graphics.footerBrightPixels -lt 100) { throw 'OpenGL format capture incomplete.' } }
 }
 foreach ($pair in @(@($baseImage,$baseHash),@($image,$imageHash),@($a,$scratchHash),@($b,$scratchHash))) {
-    if ((Get-FileHash -LiteralPath $pair[0] -Algorithm SHA256).Hash -ne $pair[1]) { throw 'Read-only format test base changed.' }
+    if ((Get-DosFileHash -LiteralPath $pair[0] -Algorithm SHA256).Hash -ne $pair[1]) { throw 'Read-only format test base changed.' }
 }
 $summary = [pscustomobject]@{passed=$true;directory=$testRoot;coldBoots=5;actualDosGuest=$true;fdcDma2=$true;allScratchSectorsIndependentlyChecked=$true;
     baseImagesUnchanged=$true;privateOverlays=$true;gui=[bool]$Gui;stages=$stages}

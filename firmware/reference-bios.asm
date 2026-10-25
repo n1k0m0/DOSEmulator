@@ -61,6 +61,7 @@ start:
     loop .vectors
     vector 0x08,irq_timer
     vector 0x09,irq_keyboard
+    vector 0x0e,irq_floppy
     vector 0x10,int_video
     vector 0x11,int_equipment
     vector 0x12,int_memory
@@ -72,11 +73,12 @@ start:
     vector 0x19,boot_entry
     vector 0x1a,int_time
     vector 0x1e,floppy_parameters
-    vector 0x1f,font_data
+    vector 0x1f,font8_data+1024
     vector 0x43,font_data
     vector 0x41,disk_parameters
     vector 0x46,disk_parameters
     vector 0x74,irq_mouse
+    vector 0x75,irq_numeric_error
     mov di,0x400
     mov cx,128
     xor ax,ax
@@ -103,7 +105,7 @@ start:
     mov byte [0x449],3
     mov word [0x44a],80
     mov word [0x44c],4000
-    mov word [0x460],0x0607
+    mov word [0x460],0x0e0f       ; native underline for the initial 16-scanline text cell
     mov word [0x463],0x3d4
     mov byte [0x484],24
     mov word [0x485],16
@@ -122,6 +124,7 @@ start:
     mov cx,512
     rep stosw
     mov byte [es:0],1
+    mov byte [es:0x20],2           ; next text mode uses the 400-scanline family
     ; Program a conventional cascaded PIC and 18.2-Hz timer.
     mov al,0x11
     out 0x20,al
@@ -150,18 +153,8 @@ start:
     out 0x92,al
     mov ax,3
     call set_video_mode
-    mov dx,0x3d4
-    mov al,10
-    out dx,al
-    inc dx
-    mov al,6
-    out dx,al
-    dec dx
-    mov al,11
-    out dx,al
-    inc dx
-    mov al,7
-    out dx,al
+    ; Mode set already installs the native underline for its character height.
+    ; Do not overwrite it with the old eight-scanline 06/07 shape here.
     push cs
     pop ds
     mov si,banner
@@ -174,6 +167,33 @@ start:
     je .no_floppy_init
     call fdc_reset
 .no_floppy_init:
+    ; CPU hot reset leaves powered controllers intact. POST reinitializes their boot paths.
+    cmp dword [cs:disk_sectors],0
+    je .no_ide_reset
+    mov dx,0x3f6
+    mov al,4
+    out dx,al
+    xor al,al
+    out dx,al
+.no_ide_reset:
+    mov al,0x60
+    out 0x64,al
+    mov al,0x45
+    cmp byte [cs:mouse_present],0
+    je .keyboard_command
+    or al,0x20
+.keyboard_command:
+    out 0x60,al
+    mov al,0xff
+    out 0x60,al
+    mov cx,64
+.flush_keyboard:
+    in al,0x64
+    test al,1
+    jz .keyboard_ready
+    in al,0x60
+    loop .flush_keyboard
+.keyboard_ready:
     sti
 boot_entry:
     xor ax,ax
@@ -246,7 +266,7 @@ verify_sectors:
     cmp ebx,[cs:disk_sectors]
     ja .bad
 .sector:
-    mov ax,0x9fc0
+    call bios_ebda_segment
     mov es,ax
     mov di,0x200
     mov eax,esi
@@ -552,8 +572,8 @@ clear_screen:
     mov ax,0xb800
     mov es,ax
     xor di,di
+    mov cx,0x4000                ; initialize all eight mode-03h text pages
     mov ax,0x0720
-    mov cx,2000
     rep stosw
     pop es
     pop di
@@ -571,95 +591,8 @@ print_string:
 .done:
     ret
 
-; DS=0, character in AL. Advances the BIOS cursor, handles text scrolling.
-teletype:
-    pushad
-    push es
-    out 0xe9,al
-    mov dx,[0x450]
-    cmp al,13
-    je .cr
-    cmp al,10
-    je .lf
-    cmp al,8
-    je .bs
-    cmp al,7
-    je .bell
-    mov bl,al
-    movzx ax,dh
-    imul di,ax,160
-    movzx ax,dl
-    shl ax,1
-    add di,ax
-    mov ax,0xb800
-    mov es,ax
-    mov al,bl
-    mov ah,7
-    stosw
-    inc dl
-    cmp dl,80
-    jb .store
-    xor dl,dl
-.lf:
-    inc dh
-    cmp dh,25
-    jb .store
-    ; Scroll the complete 80x25 screen up one line.
-    push ds
-    mov ax,0xb800
-    mov ds,ax
-    mov es,ax
-    xor di,di
-    mov si,160
-    mov cx,1920
-    rep movsw
-    mov ax,0x0720
-    mov cx,80
-    rep stosw
-    pop ds
-    mov dh,24
-    jmp .store
-.cr:
-    xor dl,dl
-    jmp .store
-.bs:
-    test dl,dl
-    jz .store
-    dec dl
-.store:
-    mov [0x450],dx
-    call hardware_cursor
-    jmp .done
-.bell:
-    call speaker_bell
-.done:
-    pop es
-    popad
-    ret
-hardware_cursor:
-    push ax
-    push bx
-    push dx
-    movzx ax,dh
-    imul bx,ax,80
-    movzx ax,dl
-    add bx,ax
-    mov dx,0x3d4
-    mov al,14
-    out dx,al
-    inc dx
-    mov al,bh
-    out dx,al
-    dec dx
-    mov al,15
-    out dx,al
-    inc dx
-    mov al,bl
-    out dx,al
-    pop dx
-    pop bx
-    pop ax
-    ret
+%include "video-text-bios.inc"
+%include "video-graphics-bios.inc"
 
 int_video:
     enter_service
@@ -673,7 +606,7 @@ int_video:
     cmp ah,3
     je .cursor_get
     cmp ah,5
-    je .done
+    je .page
     cmp ah,6
     je .scroll_up
     cmp ah,7
@@ -698,8 +631,12 @@ int_video:
     je .font
     cmp ah,0x12
     je .ega
+    cmp ah,0x13
+    je .string
     cmp ah,0x1a
     je .display
+    cmp ah,0x1b
+    je .video_state
     jmp .done
 .mode:
     mov al,rAL
@@ -713,78 +650,116 @@ int_video:
     jmp .done
 .shape:
     mov cx,rCX
-    mov [0x460],cx
-    mov dx,0x3d4
-    mov al,10
-    out dx,al
-    inc dx
-    mov al,ch
-    out dx,al
-    dec dx
-    mov al,11
-    out dx,al
-    inc dx
-    mov al,cl
-    out dx,al
+    call video_cursor_shape
     jmp .done
 .cursor_set:
     mov dx,rDX
-    mov [0x450],dx
+    mov al,rBH
+    call video_cursor_position
+    jc .done
+    mov [si],dx
+    mov al,rBH
+    cmp al,[0x462]
+    jne .done
     call hardware_cursor
     jmp .done
 .cursor_get:
-    mov dx,[0x450]
+    mov al,rBH
+    call video_cursor_page
+    jc .done
+    mov dx,[si]
     mov cx,[0x460]
     mov rDX,dx
     mov rCX,cx
     jmp .done
+.page:
+    mov al,rAL
+    call video_text_select_page
+    jmp .done
+.string:
+    cmp byte [0x449],3
+    jne .graphics_string
+    call video_text_string
+    jmp .done
+.graphics_string:
+    call video_graphics_string
+    jmp .done
 .tty:
+    cmp byte [0x449],3
+    jne .graphics_tty
     mov al,rAL
     call teletype
+    jmp .done
+.graphics_tty:
+    call video_graphics_tty
     jmp .done
 .mode_get:
     mov al,[0x449]
     mov ah,[0x44a]
     mov rAX,ax
-    mov rBH,0
+    mov al,[0x462]
+    mov rBH,al
     jmp .done
 .font:
-    cmp rAL,0x30
-    jne .done
-    mov rES,0xf000
-    mov word [ss:bp],font_data ; final POP BP returns the font offset
-    mov rCX,16
-    mov rDL,24
+    call video_font
     jmp .done
 .ega:
+    cmp rBL,0x34
+    je .cursor_emulation
+    cmp rBL,0x30
+    je .scanlines
     cmp rBL,0x10
     jne .done
     mov rBX,3
     mov rCX,0
     jmp .done
+.scanlines:
+    call video_select_scanlines
+    jmp .done
+.cursor_emulation:
+    call video_cursor_emulation
+    jmp .done
 .display:
     mov rAL,0x1a
     mov rBX,8
     jmp .done
+.video_state:
+    call video_functionality
+    jmp .done
 .character_read:
-    mov dx,[0x450]
-    movzx ax,dh
-    imul di,ax,160
-    movzx ax,dl
-    shl ax,1
-    add di,ax
+    cmp byte [0x449],3
+    jne .graphics_character_read
+    mov al,rBH
+    call video_text_page
+    jc .done
+    mov dx,[si]
+    mov al,rBH
+    call video_text_position
+    jc .done
     mov ax,0xb800
     mov es,ax
     mov ax,[es:di]
     mov rAX,ax
     jmp .done
+.graphics_character_read:
+    call video_graphics_character_read
+    jmp .done
 .character_write:
-    mov dx,[0x450]
-    movzx ax,dh
-    imul di,ax,160
-    movzx ax,dl
+    cmp byte [0x449],3
+    jne .graphics_character_write
+    mov al,rBH
+    call video_text_page
+    jc .done
+    mov dx,[si]
+    mov al,rBH
+    call video_text_position
+    jc .done
+    movzx ax,byte [0x484]
+    inc ax
+    imul ax,[0x44a]
     shl ax,1
-    add di,ax
+    add ax,bx
+    mov si,ax                    ; visible end, excluding inter-page padding
     mov ax,0xb800
     mov es,ax
     mov al,rAL
@@ -793,7 +768,7 @@ int_video:
 .write_loop:
     test cx,cx
     jz .done
-    cmp di,4000
+    cmp di,si
     jae .done
     mov [es:di],al
     cmp rAH,10
@@ -803,78 +778,40 @@ int_video:
     add di,2
     loop .write_loop
     jmp .done
+.graphics_character_write:
+    call video_graphics_character_write
+    jmp .done
 .scroll_up:
-    mov byte [0x49f],0
-    jmp .scroll
 .scroll_down:
-    mov byte [0x49f],1
 .scroll:
-    ; Rectangular scroll, preserving cells outside the requested rectangle.
-    mov ax,0xb800
-    mov es,ax
-    movzx si,rCH
-.row:
-    movzx ax,rDH
-    cmp si,ax
+    cmp byte [0x449],3
+    jne .graphics_scroll
+    mov al,[0x462]
+    call video_text_page
+    jc .done
+    mov cx,rCX
+    mov dx,rDX
+    cmp ch,dh
     ja .done
-    movzx cx,rCL
-.column:
-    movzx ax,rDL
-    cmp cx,ax
-    ja .next_row
-    mov ax,si
-    imul di,ax,160
-    mov ax,cx
-    shl ax,1
-    add di,ax
-    mov al,' '
-    mov ah,rBH
-    mov bx,si
-    cmp byte [0x49f],0
-    jne .down_source
-    movzx dx,rAL
-    add bx,dx
-    movzx dx,rDH
-    cmp bx,dx
-    ja .fill
-    cmp rAL,0
-    je .fill
-    jmp .copy
-.down_source:
-    ; Downward scroll is traversed bottom-to-top by the mapped logical row.
-    movzx bx,rDH
-    sub bx,si
-    movzx dx,rCH
-    add bx,dx
-    imul di,bx,160
-    mov dx,cx
-    shl dx,1
-    add di,dx
-    movzx dx,rAL
-    sub bx,dx
-    jc .fill
-    movzx dx,rCH
-    cmp bx,dx
-    jb .fill
-    cmp rAL,0
-    je .fill
-.copy:
-    imul bx,bx,160
-    mov dx,cx
-    shl dx,1
-    add bx,dx
-    mov ax,[es:bx]
-.fill:
-    mov [es:di],ax
-    inc cx
-    jmp .column
-.next_row:
-    inc si
-    jmp .row
+    cmp cl,dl
+    ja .done
+    cmp dh,[0x484]
+    ja .done
+    cmp dl,[0x44a]
+    jae .done
+    movzx si,rBH
+    mov al,rAL
+    mov ah,rAH
+    sub ah,6
+    call video_text_scroll_region
+    jmp .done
+.graphics_scroll:
+    call video_graphics_scroll
 .done:
     leave_service
 
 %include "video-bios.inc"
+%include "video-font-bios.inc"
 %include "speaker-bios.inc"
 
 int_equipment:
@@ -888,10 +825,37 @@ int_equipment:
     pop bp
     iret
 int_memory:
-    mov ax,639
+    push ds
+    xor ax,ax
+    mov ds,ax
+    mov ax,[0x413]
+    pop ds
     iret
+
+; Memory managers may relocate the EBDA and change conventional RAM size.
+; All run-time EBDA users read the authoritative BDA pointer, preserving DS.
+bios_ebda_segment:
+    push ds
+    xor ax,ax
+    mov ds,ax
+    mov ax,[0x40e]
+    pop ds
+    ret
 int_printer:
     mov ah,0x90
+    iret
+
+; AT-compatible external x87 error entry. The owner of INT 02h handles the
+; numeric state. Port F0 releases a pending WAIT before that handler executes.
+irq_numeric_error:
+    push ax
+    xor al,al
+    out 0xf0,al
+    mov al,0x20
+    out 0xa0,al
+    out 0x20,al
+    int 2
+    pop ax
     iret
 
 irq_timer:
@@ -970,6 +934,17 @@ keyboard_read:
     and [0x417],dl
     jmp .done
 .character:
+    cmp al,0x53
+    jne .translate
+    mov ah,[0x417]
+    and ah,0x0c
+    cmp ah,0x0c
+    jne .translate
+    mov word [0x472],0x1234
+    mov al,0xfe
+    out 0x64,al                  ; real KBC reset pulse, no host reboot shortcut
+    ret
+.translate:
     movzx bx,al
     mov ah,al
     mov al,[cs:ascii_lower+bx]
@@ -1137,6 +1112,8 @@ int_system:
     enter_service
     and rFLAGS,0xfffe
     mov ah,rAH
+    cmp ah,0x87
+    je int_block_move
     cmp ah,0x88
     je .extended_memory
     cmp rAX,0xe801
@@ -1170,7 +1147,8 @@ int_system:
     mov rAH,0
     jmp .done
 .ebda:
-    mov rES,0x9fc0
+    call bios_ebda_segment
+    mov rES,ax
     jmp .done
 .a20:
     mov al,rAL
@@ -1203,6 +1181,7 @@ int_system:
     leave_service
 
 %include "mouse-bios.inc"
+%include "memory-bios.inc"
 
 banner: db 'DOSEmulator reference BIOS - 486 AT',13,10,0
 disk_error: db 13,10,'BOOT ERROR: no readable primary IDE master.',13,10,0
@@ -1219,6 +1198,9 @@ ascii_lower:
 ascii_upper:
     db 0,27,'!@#$%^&*()_+',8,9,'QWERTYUIOP{}',13,0,'ASDFGHJKL:',34,126,0,124,'ZXCVBNM<>?',0,'*',0,' '
     times 128-($-ascii_upper) db 0
+times 0xa000-($-$$) db 0xff
+font8_data: times 2048 db 0
+font14_data: times 3584 db 0
 times 0xc000-($-$$) db 0xff
 font_data: times 4096 db 0
 times 0xe000-($-$$) db 0xff

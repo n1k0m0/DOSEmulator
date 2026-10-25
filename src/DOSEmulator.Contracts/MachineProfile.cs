@@ -12,7 +12,12 @@ public sealed record MachineProfile
     public string FloppyDriveB { get; init; } = "none";
     public string BootDevice { get; init; } = "ide";
     public string SoundCard { get; init; } = "none";
+    public int SoundBlasterBasePort { get; init; } = 0x220;
+    public int SoundBlasterIrq { get; init; } = 5;
+    public int SoundBlasterDmaChannel { get; init; } = 1;
     public string Mouse { get; init; } = "none";
+
+    public string GetBlasterEnvironment() => $"A{SoundBlasterBasePort:X3} I{SoundBlasterIrq} D{SoundBlasterDmaChannel} T3";
 
     public void Validate()
     {
@@ -32,17 +37,25 @@ public sealed record MachineProfile
             throw new ArgumentException("Drive B requires an installed drive A on this reference platform.");
         if (SoundCard is not ("none" or "sb2-dsp-development" or "adlib-opl2-development" or "sb2-opl2-development"))
             throw new ArgumentException("Unknown development sound card. Supported: none, sb2-dsp-development, adlib-opl2-development, sb2-opl2-development.");
+        if (SoundBlasterBasePort is not (0x220 or 0x240))
+            throw new ArgumentException("SB2 base port must be 220h or 240h.");
+        if (SoundBlasterIrq is not (3 or 5 or 7 or 9))
+            throw new ArgumentException("SB2 IRQ must be 3, 5, 7 or AT IRQ9; reserved board IRQs cannot be shared.");
+        if (SoundBlasterDmaChannel != 1)
+            throw new ArgumentException("This SB2 board uses DMA1. Other DMA wiring belongs to a later card profile; DMA2 is reserved for floppy.");
         if (Mouse is not ("none" or "ps2-two-button")) throw new ArgumentException("Mouse must be none or ps2-two-button.");
     }
 }
 
-public enum MachineRunState { Paused, Running, Halted, Faulted, Stopped }
+public enum MachineRunState { Paused, Running, Halted, Faulted, Stopped, ResetHeld }
+
+public sealed record MachineResetStatus(long Count, string? Source, ulong AtNanoseconds, ushort WarmBootFlag, bool Held, long Post10Count = 0);
 
 public sealed record MachineStatus(
     string ProfileId, string ProfileName, MachineRunState State, long Instructions,
     ulong VirtualNanoseconds, string Position, string? Fault, string MediaName, string DebugOutput,
     bool DiskWritable = false, MachineProfile? Configuration = null,
-    string FloppyAMedia = "Empty", string FloppyBMedia = "Empty");
+    string FloppyAMedia = "Empty", string FloppyBMedia = "Empty", MachineResetStatus? Reset = null);
 
 public sealed record HostSettings
 {

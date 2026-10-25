@@ -18,15 +18,36 @@ set_video_mode:
     xor ax,ax
     mov ds,ax
     mov [0x449],bl
-    mov word [0x450],0
+    mov di,0x450
+    mov cx,8
+.reset_cursors:
+    mov word [di],0
+    add di,2
+    loop .reset_cursors
+    mov word [0x44e],0
+    mov byte [0x462],0
     mov word [0x460],0
     mov word [0x44a],80
-    mov word [0x44c],4000
+    mov word [0x44c],4096
     mov byte [0x484],24
     mov word [0x485],16
+    mov word [0x43*4],font_data
+    mov word [0x43*4+2],0xf000
     cmp bl,3
     jne .graphics_bda
-    mov word [0x460],0x0607
+    mov word [0x460],0x0e0f       ; default 16-high mode: native bottom two scanlines
+    mov ax,[0x40e]
+    mov es,ax
+    cmp byte [es:0x20],0
+    jne .text_not200
+    mov word [0x485],8
+    mov word [0x43*4],font8_data
+    jmp .bda_done
+.text_not200:
+    cmp byte [es:0x20],1
+    jne .bda_done
+    mov word [0x485],14
+    mov word [0x43*4],font14_data
     jmp .bda_done
 .graphics_bda:
     mov word [0x44c],0x9600
@@ -37,6 +58,7 @@ set_video_mode:
     mov word [0x44c],0xfa00
     mov byte [0x484],24
     mov word [0x485],8
+    mov word [0x43*4],font8_data
 .bda_done:
     ; Clear through unchained plane writes, then load our own font into plane 2.
     mov al,0x67
@@ -70,15 +92,25 @@ set_video_mode:
     mov ax,0x0402
     out dx,ax
     push ds
+    mov dx,[0x485]
     push cs
     pop ds
     mov si,font_data
+    cmp dx,14
+    jne .font_not14
+    mov si,font14_data
+.font_not14:
+    cmp dx,8
+    jne .font_source
+    mov si,font8_data
+.font_source:
     xor di,di
     mov bx,256
 .font_character:
-    mov cx,16
+    mov cx,dx
     rep movsb
-    add di,16
+    add di,32
+    sub di,dx
     dec bx
     jnz .font_character
     pop ds
@@ -88,7 +120,12 @@ set_video_mode:
     mov bx,vga_gc_text
     mov al,0x67
     cmp byte [0x449],3
-    je .tables
+    jne .graphics_tables
+    cmp word [0x485],14
+    jne .tables
+    mov al,0xa3
+    jmp .tables
+.graphics_tables:
     mov si,vga_seq_planar
     mov di,vga_crtc_planar
     mov bx,vga_gc_planar
@@ -115,6 +152,18 @@ set_video_mode:
     mov si,di
     mov cx,25
     call vga_write_indexed_table
+    cmp byte [0x449],3
+    jne .crtc_done
+    cmp word [0x485],16
+    je .crtc_done
+    cmp word [0x485],8
+    jne .text_geometry
+    mov ax,0xcf09                ; 200 logical lines, doubled to 400 VGA raster lines
+    out dx,ax
+.text_geometry:
+    mov bh,[0x485]
+    call vga_font_geometry
+.crtc_done:
     mov si,vga_attr_planar
     cmp byte [0x449],0x13
     jne .attributes
@@ -420,7 +469,7 @@ vga_seq_indexed: db 3,1,15,0,14
 vga_gc_text: db 0,0,0,0,0,0x10,0x0e,0,0xff
 vga_gc_planar: db 0,0,0,0,0,0,5,15,0xff
 vga_gc_indexed: db 0,0,0,0,0,0x40,5,15,0xff
-vga_crtc_text: db 0x5f,0x4f,0x50,0x82,0x54,0x80,0xbf,0x1f,0,0x4f,6,7,0,0,0,0,0x9c,0x0e,0x8f,0x28,0x1f,0x96,0xb9,0xa3,0xff
+vga_crtc_text: db 0x5f,0x4f,0x50,0x82,0x54,0x80,0xbf,0x1f,0,0x4f,14,15,0,0,0,0,0x9c,0x0e,0x8f,0x28,0x1f,0x96,0xb9,0xa3,0xff
 vga_crtc_planar: db 0x5f,0x4f,0x50,0x82,0x54,0x80,0x0b,0x3e,0,0,0,0,0,0,0,0,0xea,0x0c,0xdf,0x28,0,0xe7,6,0xe3,0xff
 vga_crtc_indexed: db 0x5f,0x4f,0x50,0x82,0x54,0x80,0xbf,0x1f,0,0x41,0,0,0,0,0,0,0x9c,0x0e,0x8f,0x28,0x40,0x96,0xb9,0xa3,0xff
 vga_attr_planar: db 0,1,2,3,4,5,0x14,7,0x38,0x39,0x3a,0x3b,0x3c,0x3d,0x3e,0x3f,0x0c,0,15,0,0
