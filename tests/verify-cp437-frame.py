@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Original artwork -> independent full text scanout and guest-ROM-copy oracle.
 No emulator imports, public font asset, OS font bytes or screenshot baseline.
 The text art is the intended input; integration and geometry are checked here,
@@ -11,6 +13,7 @@ import struct
 
 
 def artwork(points):
+    """Reads the original project glyph artwork and checks the requested font geometry."""
     source = Path(__file__).resolve().parents[1] / 'firmware/fonts/cp437-8x8.txt'
     rows = {}
     for line in source.read_text(encoding='utf-8').splitlines():
@@ -48,6 +51,7 @@ def artwork(points):
 
 
 def verify(args):
+    """Validates cp437 frame evidence from actual guest state, immutable program bytes and independently expected results."""
     font = artwork(args.points)
     report = json.loads(Path(args.report).read_text(encoding='utf-8-sig'))
     assert report['status']['fault'] is None and report['scenario']['complete']
@@ -63,12 +67,13 @@ def verify(args):
     assert magic == b'P6' and maximum == b'255' and (width, height) == (80*args.cell_width, rows*args.points)
     cells = [[(32,0x17) for _ in range(80)] for _ in range(rows)]
     def text(row, col, value, color=0x1f):
+        """Writes expected character/attribute cells into the independent frame oracle."""
         if isinstance(value, str):
             value = value.encode('ascii')
         for code in value:
             cells[row][col] = (code,color)
             col += 1
-    text(0,2,'ORIGINAL CP437 / REFERENCE VGA')
+    text(0,2,'ORIGINAL CP437 / DOSE VGA')
     text(1,2,'256 video glyphs / 8, 14 and 16 rows')
     text(2,2,'Own artwork / ROM bytes + real VGA plane 2')
     for col in range(16):

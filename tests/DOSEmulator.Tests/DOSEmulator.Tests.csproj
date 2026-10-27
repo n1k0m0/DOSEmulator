@@ -1,4 +1,9 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Copyright 2026 Nils Kopal -->
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../../src/DOSEmulator.Runtime/DOSEmulator.Runtime.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../../src/DOSEmulator.Runtime/DOSEmulator.Runtime.csproj" />
+    <Compile Include="../../src/SharpPixels/GpuSourceRevision.cs" Link="Host/GpuSourceRevision.cs" />
+    <Compile Include="../../src/SharpPixels/KeyRepeatClock.cs" Link="Host/KeyRepeatClock.cs" />
+  </ItemGroup>
 </Project>

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
@@ -14,22 +16,30 @@ internal static class SpeakerTests
         public readonly PcSpeaker Speaker;
         public readonly List<AudioBlock> Audio = [];
         public int Irqs;
+        /// <summary>Builds the isolated rig fixture and initializes its caller-owned test state.</summary>
         public Rig() { Pit = new(Clock, () => Irqs++); Speaker = new(Clock, Pit.SpeakerCounter); Speaker.AudioReady += Audio.Add; }
+        /// <summary>Programs the actual guest-visible DMA registers with the case's address, count, page and mode.</summary>
         public void Program(int mode, ushort count, int access = 3)
         {
             Pit.Write(0x43, (uint)(0x80 | access << 4 | mode << 1), 1);
             if (access != 2) Pit.Write(0x42, (byte)count, 1);
             if (access != 1) Pit.Write(0x42, (byte)(count >> 8), 1);
         }
+        /// <summary>Performs one synthetic source/sink DMA request at the fixture's real scheduled device deadline.</summary>
         public void Tick(ulong tick) => Clock.AdvanceTo((ulong)(((UInt128)tick * 1_000_000_000 + PitSpeakerCounter.Frequency - 1) / PitSpeakerCounter.Frequency));
+        /// <summary>Advances the controlled clock/source to an absolute virtual time.</summary>
         public void To(ulong time) { Clock.AdvanceTo(time); Speaker.AdvanceTo(time); }
+        /// <summary>Flushes and collects completed fixture PCM blocks for the independent signal oracle.</summary>
         public float[] Samples() { Speaker.Flush(); return Audio.SelectMany(b => b.Samples).ToArray(); }
     }
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition, string message = "Speaker assertion failed.") { if (!condition) throw new Exception(message); }
+    /// <summary>Latches and reads the actual PIT channel-two count through its byte access sequence.</summary>
     private static ushort Count(Rig r)
     {
         r.Pit.Write(0x43, 0x80, 1); uint lo = r.Pit.Read(0x42, 1), hi = r.Pit.Read(0x42, 1); return (ushort)(lo | hi << 8);
     }
+    /// <summary>Registers the named speaker regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("PIT2 mode three emits even and odd duty cycles on input-clock boundaries", () =>

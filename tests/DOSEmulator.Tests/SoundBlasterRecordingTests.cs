@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Hardware;
 
 internal static partial class SoundBlasterTests
 {
+    /// <summary>Registers virtual ADC and actual device-paced recording/playback regressions.</summary>
     public static void AddRecordingTo(Action<string, Action> test)
     {
         test("SB direct ADC returns unconnected midpoint or the virtual source at command completion without DMA", () =>

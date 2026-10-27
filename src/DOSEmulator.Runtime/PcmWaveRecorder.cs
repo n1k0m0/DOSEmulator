@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
@@ -11,28 +13,38 @@ public sealed class PcmWaveRecorder : IDisposable
     private readonly FileStream _file;
     private readonly IncrementalHash _hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
     private bool _completed;
+    private byte[] _encodingBuffer = [];
+    /// <summary>Number of complete stereo PCM frames committed to the private WAV recording.</summary>
     public long Frames { get; private set; }
+    /// <summary>Hash of the committed PCM data payload, available after successful recording completion.</summary>
     public string? DataSha256 { get; private set; }
+    /// <summary>Initializes PcmWaveRecorder and connects the supplied dependencies before the component is used.</summary>
     public PcmWaveRecorder(string path)
     {
         _file = new(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
-        _file.Write(new byte[44]);
+        try { _file.Write(new byte[44]); }
+        catch { _file.Dispose(); _hash.Dispose(); throw; }
     }
+    /// <summary>Converts a validated stereo float block to PCM16 with the existing rounding contract and reusable storage.</summary>
     public void Write(AudioBlock block)
     {
         block.Validate();
         if (block.SampleRate != 48000 || block.Channels != 2) throw new ArgumentException("Expected 48-kHz stereo PCM.");
-        byte[] bytes = new byte[block.Samples.Length * 2];
+        int length = checked(block.Samples.Length * 2);
+        if (_encodingBuffer.Length < length) _encodingBuffer = new byte[length];
+        Span<byte> bytes = _encodingBuffer.AsSpan(0, length);
         for (int i = 0; i < block.Samples.Length; i++)
-            BinaryPrimitives.WriteInt16LittleEndian(bytes.AsSpan(i * 2), (short)Math.Round(Math.Clamp(block.Samples[i], -1f, 1f) * 32767));
+            BinaryPrimitives.WriteInt16LittleEndian(bytes[(i * 2)..], (short)Math.Round(Math.Clamp(block.Samples[i], -1f, 1f) * 32767));
         WritePcm16(bytes);
     }
+    /// <summary>Appends complete stereo PCM16 frames, updating the independent data hash and enforcing the WAV size limit.</summary>
     public void WritePcm16(ReadOnlySpan<byte> bytes)
     {
         if (_completed || bytes.Length % 4 != 0) throw new InvalidOperationException("Recording closed or incomplete stereo frame.");
         if ((ulong)(Frames * 4) + (uint)bytes.Length > uint.MaxValue - 36) throw new IOException("WAV size limit reached.");
         _file.Write(bytes); _hash.AppendData(bytes); Frames += bytes.Length / 4;
     }
+    /// <summary>Finalizes the component's output/phase only once and publishes its completed state.</summary>
     public void Complete()
     {
         if (_completed) return;
@@ -45,5 +57,6 @@ public sealed class PcmWaveRecorder : IDisposable
         Encoding.ASCII.GetBytes("data").CopyTo(header, 36); BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(40), length);
         _file.Position = 0; _file.Write(header); _file.Flush(true); DataSha256 = Convert.ToHexString(_hash.GetHashAndReset());
     }
+    /// <summary>Releases the resources or ownership lease held by this instance.</summary>
     public void Dispose() { try { Complete(); } finally { _hash.Dispose(); _file.Dispose(); } }
 }

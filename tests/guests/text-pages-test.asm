@@ -1,7 +1,10 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own DOS text-page/cursor acceptance, Apache-2.0. Contains no font/OS bytes.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cld
     push cs
@@ -307,11 +310,13 @@ start:
     call debug
     mov ax,0x4c00
     int 0x21
+; Positions the cursor through the real guest video BIOS.
 cursor:
     mov ah,2
     mov bh,[page]
     int 0x10
     ret
+; Reads back and byte-compares the previously formatted/written private sectors.
 read_check:
     push ax
     mov ah,8
@@ -321,11 +326,13 @@ read_check:
     cmp ax,dx
     jne failure
     ret
+; Calls the actual video BIOS string-output service with the explicit test buffer.
 string:
     mov bh,[page]
     mov ax,0x1300
     int 0x10
     ret
+; Writes one actual guest debug-port byte for the independent evidence trace.
 debug:
     lodsb
     test al,al

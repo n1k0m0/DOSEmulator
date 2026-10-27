@@ -1,4 +1,6 @@
-; Original reference BIOS BEL: about 40 ms at PIT2 divisor 1193. Guest I/O only.
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
+; Original DOSEBios BEL: about 40 ms at PIT2 divisor 1193. Guest I/O only.
 speaker_bell:
     in al,0x61
     and al,15

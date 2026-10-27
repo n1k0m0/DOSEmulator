@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent port/timer/PCM checks for our DOS CSM-keying probe; stdlib only.
 
 Yamaha's documented timer/key behavior is checked. Neither this oracle nor our
@@ -34,18 +36,22 @@ text = "".join(chr(io["value"]) for io in chars)
 
 
 def marker(name):
+    """Finds the unique guest proof marker and rejects missing or ambiguous observations."""
     return chars[text.index(name) + len(name) - 1]["time"] / 1e9
 
 
 def extract(start, end):
+    """Selects the requested audio interval from the independent capture and marker times."""
     return mono[round(start * 48000):round(end * 48000)]
 
 
 def rms(part):
+    """Measures RMS over the explicit captured sample window, independently from the synthesizer."""
     return math.sqrt(sum(s * s for s in part) / len(part))
 
 
 def amplitude(part, hz):
+    """Measures the selected signal's sinusoidal component independently from the emulated oscillator state."""
     step = cmath.exp(-2j * math.pi * hz / 48000)
     phase, total = 1 + 0j, 0j
     for sample in part:

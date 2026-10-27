@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
 param([switch]$Gui)
@@ -7,10 +9,12 @@ $testRoot = Join-Path $workspaceRoot ('artifacts\script-tests\acceptance-' + [gu
 $foreignDirectory = Join-Path $testRoot 'caller with spaces [ä]'
 New-Item -ItemType Directory -Path $foreignDirectory -Force | Out-Null
 $checks = [Collections.Generic.List[string]]::new()
+# Counts the assertion and raises a diagnostic failure when the script invariant is false.
 function Check([bool]$Value, [string]$Name) {
     if (-not $Value) { throw "Script regression failed: $Name" }
     $checks.Add($Name)
 }
+# Runs an isolated PowerShell child with controlled arguments/environment and validates its exit/output.
 function Child([string]$File, [string[]]$Arguments, [string]$Name, [hashtable]$Environment = @{}, [string]$RawArguments) {
     $info = [Diagnostics.ProcessStartInfo]::new($File)
     $info.WorkingDirectory = $foreignDirectory
@@ -29,6 +33,7 @@ function Child([string]$File, [string[]]$Arguments, [string]$Name, [hashtable]$E
         return [pscustomobject]@{ exitCode=$process.ExitCode; stdout=$out; stderr=$err }
     } finally { $process.Dispose() }
 }
+# Runs a CMD launcher with controlled arguments/environment to exercise the public entry point.
 function Batch([string]$Path, [string]$Arguments, [string]$Name, [hashtable]$Environment = @{}) {
     # cmd /s /c requires a separate pair of outer quotes. These paths are our
     # own filesystem test fixtures, not assembled commands from guest content.
@@ -74,7 +79,7 @@ $failure=Join-Path $testRoot 'native-failure.ps1'; $unreachable=Join-Path $testR
 $failed=Child -File $hostExe -Arguments @('-NoProfile','-File',$failure,$commonPath,$unreachable) -Name 'native-failure'
 Check ($failed.exitCode -ne 0 -and -not (Test-Path -LiteralPath $unreachable)) 'failed piped native command stops the script'
 
-$firmwareHash=(Get-DosFileHash -LiteralPath (Join-Path $workspaceRoot 'src\DOSEmulator.Runtime\ReferenceFirmware.Image.g.cs')).Hash
+$firmwareHash=(Get-DosFileHash -LiteralPath (Join-Path $workspaceRoot 'src\DOSEmulator.Runtime\DOSEBios.Image.g.cs')).Hash
 $withoutHash=Join-Path $testRoot 'without-hash-cmdlet.ps1'
 [IO.File]::WriteAllText($withoutHash,@'
 #requires -Version 7.4
@@ -83,7 +88,7 @@ function Get-FileHash { throw 'The old command must never be used.' }
 '@)
 $built=Child -File $hostExe -Arguments @('-NoProfile','-File',$withoutHash,(Join-Path $PSScriptRoot 'build-firmware.ps1')) -Name 'firmware-without-hash-cmdlet'
 Check ($built.exitCode -eq 0) 'firmware builds without Get-FileHash from foreign directory'
-Check ((Get-DosFileHash -LiteralPath (Join-Path $workspaceRoot 'src\DOSEmulator.Runtime\ReferenceFirmware.Image.g.cs')).Hash -eq $firmwareHash) 'firmware bytes/source manifest remain unchanged'
+Check ((Get-DosFileHash -LiteralPath (Join-Path $workspaceRoot 'src\DOSEmulator.Runtime\DOSEBios.Image.g.cs')).Hash -eq $firmwareHash) 'firmware bytes/source manifest remain unchanged'
 
 foreach ($launcher in @('run.cmd','run-freedos.cmd','run-freedos-floppy.cmd')) {
     $help=Batch -Path (Join-Path $workspaceRoot $launcher) -Arguments '-?' -Name ($launcher+'-help')
@@ -107,6 +112,34 @@ if (Test-Path -LiteralPath $storeHost) {
     Check ($store.exitCode -eq 0 -and $store.stdout.Contains('SmokeTestDirectory')) 'Microsoft Store PowerShell fallback works without pwsh on PATH'
 }
 
+$headless=Join-Path $workspaceRoot 'artifacts\m1-build\Release\net10.0\DOSEmulator.Headless.dll'
+if(Test-Path -LiteralPath $headless){
+    $dotnet=(Get-Command dotnet -ErrorAction Stop).Source
+    $fractionImage=Join-Path $testRoot 'explicit fraction.img'
+    $fraction=Child -File $dotnet -Arguments @($headless,'--create-disk',$fractionImage,'--size','1.5','--unit','MiB') -Name 'disk-size-decimal-point'
+    Check ($fraction.exitCode -eq 0 -and (Get-Item -LiteralPath $fractionImage).Length -eq 1572864) 'CLI explicit decimal point creates exactly 1.5 MiB'
+    $commaImage=Join-Path $testRoot 'rejected comma.img'
+    $comma=Child -File $dotnet -Arguments @($headless,'--create-disk',$commaImage,'--size','1,5','--unit','MiB') -Name 'disk-size-decimal-comma'
+    Check ($comma.exitCode -ne 0 -and -not (Test-Path -LiteralPath $commaImage)) 'CLI decimal comma cannot silently become a larger disk'
+    foreach($peer in @(
+        @{name='parallel';profile='virtual486-parallel-dev-v1.json';flag='--parallel-sink'},
+        @{name='serial';profile='virtual486-serial-dev-v1.json';flag='--serial-echo'})) {
+        $peerReport=Join-Path $testRoot ($peer.name+'-switch.json')
+        $peerRun=Child -File $dotnet -Arguments @($headless,'--profile',(Join-Path $workspaceRoot ('profiles/'+$peer.profile)),
+            '--steps','1','--report',$peerReport,$peer.flag) -Name ($peer.name+'-last-switch')
+        $peerState=if($peerRun.exitCode -eq 0 -and (Test-Path -LiteralPath $peerReport)){Get-Content -LiteralPath $peerReport -Raw|ConvertFrom-Json}else{$null}
+        $connected=if($peer.name -eq 'parallel'){$peerState.parallel.virtualSink}else{$peerState.serial.virtualEcho}
+        Check ($peerRun.exitCode -eq 0 -and $connected) ($peer.flag+' is a valueless switch even at the end of the command line')
+    }
+    # Explicit MIDI capture must require its transport and never replace an existing destination.
+    $unconfiguredMidi=Join-Path $testRoot 'unconfigured midi.bin'
+    $noMidi=Child -File $dotnet -Arguments @($headless,'--steps','1','--midi-output',$unconfiguredMidi) -Name 'midi-requires-profile'
+    Check ($noMidi.exitCode -ne 0 -and -not (Test-Path -LiteralPath $unconfiguredMidi)) 'MIDI capture cannot silently enable a card or create output without one'
+    $existingMidi=Join-Path $testRoot 'existing midi.bin';[IO.File]::WriteAllBytes($existingMidi,[Text.Encoding]::ASCII.GetBytes('abc'))
+    $midiProfile=Join-Path $workspaceRoot 'profiles/virtual486-midi-dev-v1.json'
+    $existingRun=Child -File $dotnet -Arguments @($headless,'--profile',$midiProfile,'--steps','1','--midi-output',$existingMidi) -Name 'midi-existing-capture'
+    Check ($existingRun.exitCode -ne 0 -and (Get-DosFileHash -LiteralPath $existingMidi).Hash -eq $expected) 'MIDI capture never overwrites an existing destination'
+}
 if ($Gui) {
     $smoke=Join-Path $testRoot 'real CMD GUI [ä]'
     $started=Batch -Path (Join-Path $workspaceRoot 'run.cmd') -Arguments ('-NoBuild -SmokeTestDirectory "'+$smoke+'"') -Name 'real-launcher-gui'
@@ -122,3 +155,6 @@ $summary=[pscustomobject]@{passed=$true;directory=$testRoot;powerShell=$PSVersio
     checks=$checks.Count;cases=$checks;gui=[bool]$Gui;firmwareUnchanged=$true;originalMediaUsed=$false}
 $summary | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $testRoot 'acceptance-summary.json') -Encoding utf8
 $summary | ConvertTo-Json -Depth 5
+# Expected negative CLI cases must not leak their native failure code to a
+# caller after every assertion above has passed.
+$global:LASTEXITCODE = 0

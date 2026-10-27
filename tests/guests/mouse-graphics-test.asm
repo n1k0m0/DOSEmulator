@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original ID-00/CuteMouse graphics acceptance, real INT10/INT33 and VGA memory.
 bits 16
 org 0x100
@@ -72,6 +74,7 @@ failed:
     int 0x10
     mov ax,0x4c01
     int 0x21
+; Publishes the probe's actual output marker for the independent host observer.
 marker:
     lodsb
     test al,al

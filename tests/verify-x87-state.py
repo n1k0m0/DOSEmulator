@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent raw 80-bit/legacy environment oracle; no host floating arithmetic."""
 import argparse
 import copy
@@ -15,6 +17,7 @@ INDEFINITE=(0xc000000000000000,0xffff)
 
 
 def verify(report_path,memory_path,program_path,system,protected=False,paging=False):
+    """Validates x87 state evidence from actual guest state, immutable program bytes and independently expected results."""
     r=json.loads(Path(report_path).read_text(encoding='utf-8-sig'));m=Path(memory_path).read_bytes();p=Path(program_path).read_bytes()
     cpu=r['cpu'];output=r['status']['debugOutput'];managed=system.startswith('emm386')
     assert not (protected and managed) and (not paging or protected)
@@ -28,6 +31,7 @@ def verify(report_path,memory_path,program_path,system,protected=False,paging=Fa
     address=int(markers[0],16)
     raw=lambda at:struct.unpack_from('<I',m,at)[0]
     def physical(at):
+        """Walks the reported classic 4-KiB page tables to translate a guest linear proof address."""
         if not cpu['pagingEnabled']:return at
         pde=raw((cpu['cr3']&0xfffff000)+((at>>20)&0xffc));assert pde&1
         pte=raw((pde&0xfffff000)+((at>>10)&0xffc));assert pte&1
@@ -50,6 +54,7 @@ def verify(report_path,memory_path,program_path,system,protected=False,paging=Fa
     assert read(at('values'),80)==b''.join(struct.pack('<QH',*value) for value in VALUES)
     image=lambda name:read(at(name),{'env14':14,'env28':28,'save94':94,'drain':80,'empty_value':10}.get(name,108))
     def env(name,wide):
+        """Decodes the selected 14/28-byte x87 environment format and its real/protected pointer convention."""
         b=image(name);step=4 if wide else 2;word=lambda off:struct.unpack_from('<H',b,off)[0]
         dword=lambda off:struct.unpack_from('<I',b,off)[0]
         result={'cw':word(0),'sw':word(step),'tags':word(step*2)}
@@ -80,6 +85,7 @@ def verify(report_path,memory_path,program_path,system,protected=False,paging=Fa
     modified_stack=[VALUES[i] for i in (0,6,0,5,4,3,2,6)]
     assert unpack(image('mutated'),28)==modified_stack
     def metadata(label,opcode,data):
+        """Decodes saved x87 instruction/data pointers and opcode under the selected environment format."""
         if protected:return dict(ip=0x10000+labels[label],cs=24,data=data,ds=32,opcode=opcode)
         return dict(ip=at(label)&0xfffff,data=(basis+data)&0xfffff,opcode=opcode)
     assert env('mutated',True)==dict(cw=0xb7f,sw=0x3800,tags=0x30a2,**metadata('absolute_value',0x1e1,labels['values']+70))
@@ -127,6 +133,7 @@ def verify(report_path,memory_path,program_path,system,protected=False,paging=Fa
 
 
 def negative_controls(report_path,memory_path,program_path,system,protected,paging,directory):
+    """Corrupts selected independent evidence fields and requires each corrupted oracle input to fail."""
     result=verify(report_path,memory_path,program_path,system,protected,paging)
     assert not system.startswith('emm386')
     root=Path(directory);root.mkdir(parents=True,exist_ok=False)

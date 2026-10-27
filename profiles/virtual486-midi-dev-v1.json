@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "virtual486-dev-v1",
+  "name": "DOSE 486 AT - CT1740 MPU UART Development",
+  "cpu": "i486dx-development",
+  "cpuHz": 33000000,
+  "ramMiB": 8,
+  "soundCard": "sb16-ct1740-dsp405-development",
+  "midiInterface": "ct1740-mpu401-uart-development",
+  "midiBasePort": 816
+}

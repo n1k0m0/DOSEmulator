@@ -27,6 +27,7 @@ using System.Drawing.Imaging;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using GlErrorCode = OpenTK.Graphics.OpenGL4.ErrorCode;
 using Key = OpenTK.Input.Key;
 using KeyModifiers = OpenTK.Input.KeyModifiers;
 using MouseState = OpenTK.Input.MouseState;
@@ -193,6 +194,7 @@ namespace SharpPixels
             }
         }
 
+        /// <summary>Applies the local renderer's Windows process scheduling hint.</summary>
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool SetProcessInformation(
             IntPtr process,
@@ -200,9 +202,11 @@ namespace SharpPixels
             ref PowerThrottlingState processInformation,
             int processInformationSize);
 
+        /// <summary>Obtains the native current-thread pseudo-handle for the local presentation scheduling hint.</summary>
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern IntPtr GetCurrentThread();
 
+        /// <summary>Applies the local renderer's Windows thread scheduling hint.</summary>
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool SetThreadInformation(
             IntPtr thread,
@@ -331,7 +335,7 @@ namespace SharpPixels
         private static readonly byte[,] _alphaMulTable = new byte[256, 256];
         private static readonly byte[,] _oneMinusAlphaMulTable = new byte[256, 256];
 
-        private DateTime nextKeyPressTime = DateTime.Now;
+        private readonly KeyRepeatClock _keyRepeatClock = new KeyRepeatClock();
         private readonly HashSet<Key> keysPressed = new HashSet<Key>();
         private KeyModifiers modifiersPressed;
 
@@ -364,6 +368,10 @@ namespace SharpPixels
         private int _sourceTextureWidth;
         private int _sourceTextureHeight;
         private uint[] _gpuSourcePixels;
+        private long? _gpuSourceRevision;
+        private readonly GpuSourceRevision _sourceUpload = new GpuSourceRevision();
+        /// <summary>Most recent checked versioned-source upload error; NoError follows successful confirmation.</summary>
+        public GlErrorCode SourceUploadError { get; private set; }
         private int _gpuSourceWidth;
         private int _gpuSourceHeight;
         private int _gpuSourceCropX;
@@ -416,11 +424,13 @@ namespace SharpPixels
                 1f,  1f, 0.0f, 1.0f, 0.0f,
         };
 
+        /// <summary>Width in pixels of the host's logical presentation surface.</summary>
         public int PixelsWidth
         {
             get;
         }
 
+        /// <summary>Height in pixels of the host's logical presentation surface.</summary>
         public int PixelsHeight
         {
             get;
@@ -492,7 +502,7 @@ namespace SharpPixels
         }
 
         /// <summary>
-        /// Defines the interval in milliseconds the OnUserKeyPress method is called
+        /// Defines the interval in milliseconds for repeated OnUserKeyPress callbacks; zero disables repeats.
         /// </summary>
         public uint KeyPressInterval { get; set; } = 50;
 
@@ -577,9 +587,11 @@ namespace SharpPixels
             }
         }
 
+        /// <summary>Requests the renderer's Windows timer resolution and is balanced when that ownership ends.</summary>
         [DllImport("winmm.dll")]
         private static extern uint timeBeginPeriod(uint periodMilliseconds);
 
+        /// <summary>Releases a matching renderer-owned Windows timer-resolution request.</summary>
         [DllImport("winmm.dll")]
         private static extern uint timeEndPeriod(uint periodMilliseconds);
 
@@ -624,6 +636,8 @@ namespace SharpPixels
             _vertexBufferObject = GL.GenBuffer();
             _textureHandle = GL.GenTexture();
             _sourceTextureHandle = GL.GenTexture();
+            _sourceTextureWidth = _sourceTextureHeight = 0;
+            _sourceUpload.Invalidate();
             _shader = new Shader(Properties.Resources.vert, Properties.Resources.frag);
             if (!_shader.Compile())
             {
@@ -735,9 +749,21 @@ namespace SharpPixels
         /// <param name="e">Focus state event data.</param>
         private void SharpPixels_FocusedChanged(FocusedChangedEventArgs e)
         {
+            if (!e.IsFocused) ResetKeyRepeat(true);
+            else ResetKeyRepeat();
             IsEventDriven = false;
             ApplyPresentationVSync();
             ResetFpsCounter();
+        }
+
+        /// <summary>Allows applications to suspend repeat admission while their guest or input context is paused.</summary>
+        protected virtual bool KeyRepeatsEnabled => IsFocused;
+
+        /// <summary>Discards accumulated host repeat time and optionally retires the host-held key set.</summary>
+        protected void ResetKeyRepeat(bool clearHeldKeys = false)
+        {
+            _keyRepeatClock.Reset();
+            if (clearHeldKeys) { keysPressed.Clear(); modifiersPressed = 0; }
         }
 
         /// <summary>
@@ -788,16 +814,18 @@ namespace SharpPixels
                 RenderPixelBufferPresentation();
             }
 
-            // Calls OnUserKeyPress method for all pressed keys
-            var dateTimeNow = DateTime.Now;
-            if (dateTimeNow >= nextKeyPressTime)
+            // Host repeat uses only the monotonic stopwatch and discards every missed interval after a stall.
+            if (_keyRepeatClock.TryTake(_drawingStopwatch.ElapsedMilliseconds, KeyPressInterval,
+                KeyRepeatsEnabled && keysPressed.Count != 0))
             {
                 var modifiers = modifiersPressed;
-                foreach (Key key in keysPressed)
+                var repeatedKeys = new Key[keysPressed.Count]; keysPressed.CopyTo(repeatedKeys);
+                try
                 {
-                    OnUserKeyPress(new KeyEventArgs(key, modifiers));
+                    foreach (Key key in repeatedKeys)
+                        if (KeyRepeatsEnabled && keysPressed.Contains(key)) OnUserKeyPress(new KeyEventArgs(key, modifiers));
                 }
-                nextKeyPressTime = nextKeyPressTime.AddMilliseconds(KeyPressInterval);
+                finally { _keyRepeatClock.Restart(_drawingStopwatch.ElapsedMilliseconds); }
             }
             _fpsCounter++;
 
@@ -812,7 +840,8 @@ namespace SharpPixels
                 _fpsCounter = 0;
                 _fpsWindowStartMilliseconds = _drawingStopwatch.ElapsedMilliseconds;
                 
-                //delete cached bitmap data 
+                // Bitmap expiration remains a wall-clock cache policy, separate from monotonic key-repeat admission.
+                var dateTimeNow = DateTime.Now;
                 _expiredBitmapScratch.Clear();
                 foreach (var bitmapMemory in _bitmapMemories)
                 {
@@ -834,6 +863,7 @@ namespace SharpPixels
 
         /// <summary>Raised on the render thread with the complete back buffer available, before presentation.</summary>
         public event Action FrameReady;
+        /// <summary>Runs the local pre-presentation hook used for explicit private screenshot evidence.</summary>
         protected virtual void OnFrameReady() { FrameReady?.Invoke(); }
 
         /// <summary>
@@ -911,6 +941,7 @@ namespace SharpPixels
         /// </summary>
         private void UploadGpuSourceTexture()
         {
+            if (!_sourceUpload.NeedsUpload(_gpuSourcePixels, _gpuSourceWidth, _gpuSourceHeight, _gpuSourceRevision)) return;
             GL.ActiveTexture(TextureUnit.Texture0);
             GL.BindTexture(TextureTarget.Texture2D, _sourceTextureHandle);
             GL.PixelStore(PixelStoreParameter.UnpackAlignment, 1);
@@ -927,6 +958,20 @@ namespace SharpPixels
             {
                 GL.TexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, _gpuSourceWidth, _gpuSourceHeight, OpenTK.Graphics.OpenGL4.PixelFormat.Bgra, PixelType.UnsignedByte, (IntPtr)sourcePointer);
             }
+            bool successful = true;
+            // Legacy callers keep their original error-query behavior. Explicit
+            // revisions require a confirmed upload before a future frame can skip it.
+            if (_gpuSourceRevision.HasValue)
+            {
+                GlErrorCode error = GL.GetError(); successful = error == GlErrorCode.NoError;
+                if (!successful)
+                {
+                    _sourceTextureWidth = _sourceTextureHeight = 0; // A failed allocation must retry too.
+                    if (SourceUploadError != error) Trace.TraceError("SharpPixels source upload failed: {0}", error);
+                }
+                SourceUploadError = error;
+            }
+            _sourceUpload.CompleteUpload(_gpuSourcePixels, _gpuSourceWidth, _gpuSourceHeight, _gpuSourceRevision, successful);
         }
 
         /// <summary>
@@ -1118,6 +1163,7 @@ namespace SharpPixels
                 keysPressed.Remove(key);
                 modifiersPressed = ConvertModifiers(e.Modifiers);
                 OnUserKeyUp(new KeyEventArgs(key, modifiersPressed));
+                if (keysPressed.Count == 0) _keyRepeatClock.Reset();
             }
         }
 
@@ -1133,7 +1179,8 @@ namespace SharpPixels
             {
                 keysPressed.Add(key);
                 modifiersPressed = ConvertModifiers(e.Modifiers);
-                OnUserKeyDown(new KeyEventArgs(key, modifiersPressed));
+                try { OnUserKeyDown(new KeyEventArgs(key, modifiersPressed)); }
+                finally { _keyRepeatClock.Restart(_drawingStopwatch.ElapsedMilliseconds); }
             }
         }
 
@@ -1353,7 +1400,16 @@ namespace SharpPixels
             int upscaleFactor,
             byte borderRed,
             byte borderGreen,
-            byte borderBlue)
+            byte borderBlue) => DrawArgbPixelsGpuPresented(sourcePixels, sourceWidth, sourceHeight, cropX, cropY, cropWidth, cropHeight,
+                destinationX, destinationY, destinationWidth, destinationHeight, filterMode, upscaleMode, upscaleFactor,
+                borderRed, borderGreen, borderBlue, null);
+
+        /// <summary>Schedules versioned source content; the caller must hold pixels unchanged through the later GPU upload.</summary>
+        public bool DrawArgbPixelsGpuPresented(
+            uint[] sourcePixels, int sourceWidth, int sourceHeight, int cropX, int cropY, int cropWidth, int cropHeight,
+            int destinationX, int destinationY, int destinationWidth, int destinationHeight,
+            SharpPixelsGpuFilterMode filterMode, SharpPixelsGpuUpscaleMode upscaleMode, int upscaleFactor,
+            byte borderRed, byte borderGreen, byte borderBlue, long? pixelRevision)
         {
             if (sourcePixels == null || sourceWidth <= 0 || sourceHeight <= 0 || destinationWidth <= 0 || destinationHeight <= 0)
             {
@@ -1376,6 +1432,7 @@ namespace SharpPixels
             int clampedDestinationBottom = ClampInt(destinationY + destinationHeight, clampedDestinationY + 1, PixelsHeight);
 
             _gpuSourcePixels = sourcePixels;
+            _gpuSourceRevision = pixelRevision;
             _gpuSourceWidth = sourceWidth;
             _gpuSourceHeight = sourceHeight;
             _gpuSourceCropX = clampedCropX;
@@ -2923,6 +2980,7 @@ namespace SharpPixels
                 SwapIntegers(ref x3, ref x2);
             }
 
+            // Swaps the two integer values used by the surrounding raster/layout routine.
             void SwapIntegers(ref int a, ref int b)
             {
                 int temp = a;

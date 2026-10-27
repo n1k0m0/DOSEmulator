@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Hardware;
 
 internal static partial class Opl2Tests
 {
+    /// <summary>Programs the controlled percussion operators through actual guest-visible FM registers.</summary>
     private static void RhythmSetup(Rig r)
     {
         foreach (byte offset in new byte[] {16,19,17,20,18,21})
@@ -12,6 +15,7 @@ internal static partial class Opl2Tests
         for (int ch = 6; ch < 9; ch++) { r.Write((byte)(0xa0+ch),0x44); r.Write((byte)(0xb0+ch),0x12); }
         r.Write(0xbd,0x20);
     }
+    /// <summary>Registers the independent five-instrument rhythm/noise regression cases.</summary>
     public static void AddRhythmTo(Action<string,Action> test)
     {
         foreach ((byte bit, int[] slots) in new (byte,int[])[] { (16,[12,13]),(1,[14]),(8,[15]),(4,[16]),(2,[17]) })

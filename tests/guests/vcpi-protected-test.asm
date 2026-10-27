@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original VCPI client. No host mode switch, memory-manager or DOS hooks.
 ; DE01 supplies the server mappings/descriptors; DE0C transfers both ways.
 bits 16
@@ -9,6 +11,7 @@ org 0x100
 %define SERVER_CODE 0x20
 %define SERVER_DATA 0x28
 %define ALIAS 0x400000
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -141,6 +144,7 @@ enter_client:
     mov ax,0xde0c
     int 0x67
     jmp failed
+; Resumes the actual V86/DOS client after the monitor's protected-mode return service.
 v86_return:
     push cs
     pop ds
@@ -196,12 +200,14 @@ report:
     int 0x21
     mov ax,0x4c00
     int 0x21
+; Patches the explicit descriptor base bytes for this probe's allocated guest memory.
 descriptor_base:
     mov [di+2],ax
     shr eax,16
     mov [di+4],al
     mov [di+7],ah
     ret
+; Returns the probe's owned VCPI pages to the real resident manager.
 release_pages:
     cmp byte [allocated],0
     je .done
@@ -217,6 +223,7 @@ release_pages:
     jmp release_pages
 .done:
     ret
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al
@@ -226,6 +233,7 @@ debug_string:
 .done:
     ret
 bits 32
+; Runs the probe's actual protected client code after the validated monitor transition.
 pm_entry:
     mov ax,FLAT_DATA
     mov ds,ax
@@ -313,6 +321,7 @@ pm_entry:
     mov ds,ax
     mov ax,0xde0c
     call far [ebp+server_entry]
+; Captures an actual protected-client fault in the probe's own handler.
 pm_fault:
     mov ax,FLAT_DATA
     mov ds,ax

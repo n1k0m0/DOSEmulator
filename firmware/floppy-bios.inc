@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original PC/AT floppy BIOS services, Apache-2.0.
 ; All transfers pass through FDC ports and DMA2; one bounce sector uses reserved EBDA.
 ; The polling transfer path also has a real IRQ6 completion handler. A V86
@@ -14,6 +16,7 @@ irq_floppy:
     pop ax
     iret
 
+; Programs DMA2's address/page for the current EBDA bounce buffer; callers precheck its 64-KiB boundary separately.
 fdc_dma_bounce:
     push eax
     call bios_ebda_segment
@@ -44,6 +47,7 @@ fdc_check_bounce:
     pop eax
     ret
 
+; Dispatches the implemented real FDC/DMA floppy services and their BIOS error responses.
 int_floppy:
     enter_service
     and rFLAGS,0xfffe
@@ -268,20 +272,65 @@ int_floppy:
 .done:
     leave_service
 
+; Poll actual FDC status. Only a slow path samples RTC seconds, preserving
+; the caller's CMOS index/NMI bit and AH. Two second transitions bound an
+; ordinary stuck wait to 1..2 seconds plus sampling jitter; a frozen/unmapped
+; RTC retains the old four-million-poll hard limit. No STI/HLT/PIT reprogramming.
+%macro fdc_poll_status 2
+    push ebx
+    push edi
+    mov ebx,0x02ff             ; BH=second transitions left, BL=uninitialized
+    mov ecx,4000000
+    mov dx,0x3f4
+%%wait:
+    in al,dx
+    and al,%1
+    cmp al,%2
+    je %%ready
+    dec ecx
+    jz %%timeout
+    test ecx,255
+    jnz %%wait
+    push ax
+    mov dx,0x70
+    in al,dx
+    movzx edi,al
+    and al,0x80                ; select seconds without changing NMI masking
+    out dx,al
+    inc dx
+    in al,dx
+    cmp bl,al
+    je %%clock_done
+    cmp bl,0xff
+    je %%clock_first
+    dec bh
+%%clock_first:
+    mov bl,al
+%%clock_done:
+    dec dx
+    mov ax,di
+    out dx,al
+    mov dx,0x3f4
+    pop ax
+    test bh,bh
+    jnz %%wait
+%%timeout:
+    stc
+    jmp %%done
+%%ready:
+    clc
+%%done:
+    pop edi
+    pop ebx
+%endmacro
+
 ; Bounded FIFO polling preserves all registers except AL on receive.
 fdc_send:
     push ax
     push ecx
     push dx
-    mov ecx,4000000
-    mov dx,0x3f4
-.wait:
-    in al,dx
-    and al,0xc0
-    cmp al,0x80
-    je .ready
-    dec ecx
-    jnz .wait
+    fdc_poll_status 0xc0,0x80
+    jnc .ready
     pop dx
     pop ecx
     pop ax
@@ -297,18 +346,12 @@ fdc_send:
     pop dx
     clc
     ret
+; Waits for an FDC result byte with a bounded guest timeout.
 fdc_receive:
     push ecx
     push dx
-    mov ecx,4000000
-    mov dx,0x3f4
-.wait:
-    in al,dx
-    and al,0xc0
-    cmp al,0xc0
-    je .ready
-    dec ecx
-    jnz .wait
+    fdc_poll_status 0xc0,0xc0
+    jnc .ready
     pop dx
     pop ecx
     stc
@@ -320,17 +363,12 @@ fdc_receive:
     pop ecx
     clc
     ret
+; Polls seek completion through actual FDC sense-interrupt commands.
 fdc_wait_seek:
     push ecx
     push dx
-    mov ecx,4000000
-    mov dx,0x3f4
-.wait:
-    in al,dx
-    test al,15
-    jz .ready
-    dec ecx
-    jnz .wait
+    fdc_poll_status 15,0
+    jnc .ready
     pop dx
     pop ecx
     stc
@@ -340,6 +378,7 @@ fdc_wait_seek:
     pop ecx
     clc
     ret
+; Resets the real controller and consumes the required sense-interrupt results.
 fdc_reset:
     push ax
     push cx
@@ -361,8 +400,10 @@ fdc_reset:
     loop .sense
     mov al,3
     call fdc_send
+    jc .bad
     mov al,0xdf
     call fdc_send
+    jc .bad
     mov al,2
     call fdc_send
     jc .bad
@@ -413,8 +454,10 @@ floppy_sectors:
     push ax
     mov al,0x0f
     call fdc_send
+    jc .seek_failed
     mov al,bl
     call fdc_send
+    jc .seek_failed
     pop ax
     call fdc_send
     jc .timeout
@@ -422,6 +465,7 @@ floppy_sectors:
     jc .timeout
     mov al,8
     call fdc_send
+    jc .timeout
     call fdc_receive
     jc .timeout
     call fdc_receive
@@ -467,21 +511,29 @@ floppy_sectors:
     mov al,0x46
 .command:
     call fdc_send
+    jc .timeout
     mov al,cl
     call fdc_send
+    jc .timeout
     mov al,ch
     call fdc_send
+    jc .timeout
     mov al,cl
     shr al,2
     call fdc_send
+    jc .timeout
     mov al,bh
     call fdc_send
+    jc .timeout
     mov al,2
     call fdc_send
+    jc .timeout
     mov al,bh
     call fdc_send
+    jc .timeout
     mov al,0x1b
     call fdc_send
+    jc .timeout
     mov al,0xff
     call fdc_send
     jc .timeout
@@ -507,6 +559,8 @@ floppy_sectors:
     jnz .sector
     clc
     jmp .done
+.seek_failed:
+    pop ax                      ; discard the saved cylinder before aborting
 .timeout:
     mov al,0x80
     stc

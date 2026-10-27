@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
@@ -6,9 +8,12 @@ using static ProtectedModeTests;
 
 internal static class X87ErrorTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value, string detail = "numeric error invariant") { if (!value) throw new Exception(detail); }
+    /// <summary>Places controlled bytes at a private guest address and executes through the normal decoder.</summary>
     private static void At(X86Cpu c, MemoryBus m, byte[] bytes, uint address = 0x2200)
     { bytes.CopyTo(m.Ram, (int)address); c.Eip = address; c.Step(); }
+    /// <summary>Selects the highest eligible request under the current mask and in-service priority.</summary>
     private static void Pending(X86Cpu c, MemoryBus m, bool ne = false)
     {
         c.SetRegister(Register.Ax, ne ? c.Cr0 | 0x20 : c.Cr0 & ~0x20u);
@@ -17,12 +22,14 @@ internal static class X87ErrorTests
         At(c,m,[0xd8,0xc0]); // Empty stack: unmasked IE/SF, no arithmetic commit.
         Check(c.FpuErrorAsserted && (c.FpuStatusWord & 0x80c1) == 0x80c1);
     }
+    /// <summary>Connects the test CPU's actual FERR/IGNNE levels and PIC IRQ13 through the real AT latch.</summary>
     private static FpuErrorLatch Wire(X86Cpu c, IoPortBus io, Pic8259 pic)
     {
         var latch = new FpuErrorLatch(high=>pic.SetLine(13,high),high=>c.IgnoreNumericError=high);
         io.Map(0xf0,1,latch); c.FpuErrorChanged += latch.SetFerr;
         return latch;
     }
+    /// <summary>Registers the named x87 error regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
         foreach(bool ne in new[]{false,true}) foreach(int flag in new[]{1,2,4,8,16,32})

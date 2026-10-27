@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Create one NEW private FAT12 floppy containing our two assembled COM probes.
 No operating system, font, driver or imported boot code is copied.
 """
@@ -14,6 +16,7 @@ spec.loader.exec_module(fat_oracle)
 
 
 def prepare(program12,program13,destination):
+    """Creates a fresh private graphics font media image from validated inputs, leaving every source medium unchanged."""
     files={'GFX12.COM':Path(program12).read_bytes(),'GFX13.COM':Path(program13).read_bytes()}
     assert all(0<len(data)<=65535 for data in files.values())
     image=bytearray(1474560)

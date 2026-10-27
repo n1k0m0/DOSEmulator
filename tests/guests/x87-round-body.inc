@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Actual FRNDINT and pending-image capture, loaded and executed by DOS.
 body_start:
 %if PROTECTED

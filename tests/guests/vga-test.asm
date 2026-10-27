@@ -1,8 +1,11 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original DOS COM acceptance program, Apache-2.0. Assemble with -DTEST_MODE=0x12 or 0x13.
 ; FreeCOM loads this file through FAT/IDE. No host memory injection or graphics shortcuts.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cld
     push cs
@@ -172,6 +175,7 @@ failed:
     int 0x21
     mov ax,0x4c01
     int 0x21
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al

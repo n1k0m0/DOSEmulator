@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using static ProtectedModeTests;
@@ -5,23 +7,29 @@ using static ProtectedModeTests;
 internal static class PagingTests
 {
     private const uint Directory = 0x1c000, Table = 0x1d000;
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value, string message = "Paging invariant failed") { if (!value) throw new Exception(message); }
+    /// <summary>Writes the explicitly requested classic 4-KiB PTE into private guest table memory.</summary>
     internal static void Pte(MemoryBus m, uint linear, uint physical, uint flags = 7) => m.WriteDword(Table + ((linear >> 10) & 0xffc), (physical & 0xfffff000) | flags);
+    /// <summary>Places controlled bytes at a private guest address and executes through the normal decoder.</summary>
     internal static void At(X86Cpu c, MemoryBus m, byte[] code, uint address = 0x2200)
     { code.CopyTo(m.Ram, (int)address); c.Eip = address; c.Step(); }
-    internal static (X86Cpu Cpu, MemoryBus Memory) Create(byte[] code, bool enable = true, bool wp = true, IoPortBus? io = null)
+    /// <summary>Creates this regression's isolated CPU/device fixture with explicit parameters and private data.</summary>
+    internal static (X86Cpu Cpu, MemoryBus Memory) Create(byte[] code, bool enable = true, bool wp = true, IoPortBus? io = null, X86CpuModel model = X86CpuModel.Intel486Dx, DeviceScheduler? timestampSource = null, uint timestampFrequency = 0)
     {
-        var (c, m) = ProtectedModeTests.Rig(code,io:io);
+        var (c, m) = ProtectedModeTests.Rig(code,io:io,model:model,timestampSource:timestampSource,timestampFrequency:timestampFrequency);
         m.WriteDword(Directory, Table | 7);
         for (uint i = 0; i < 1024; i++) m.WriteDword(Table + i * 4, i * 4096 | 7);
         if (enable) Enable(c, m, wp);
         return (c, m);
     }
+    /// <summary>Enables the requested paging/write-protect fixture state through actual guest control-register instructions.</summary>
     internal static void Enable(X86Cpu c, MemoryBus m, bool wp = true)
     {
         c.SetRegister(Register.Ax, Directory); At(c,m,[0x0f,0x22,0xd8]);
         c.SetRegister(Register.Ax, c.Cr0 | 0x80000000 | (wp ? 0x10000u : 0)); At(c,m,[0x0f,0x22,0xc0]); c.Eip=0x2000;
     }
+    /// <summary>Builds a controlled user-ring fixture with explicit paging and alignment-check controls.</summary>
     internal static void User(X86Cpu c, MemoryBus m, bool accessed = false)
     {
         Descriptor(m,0x28,0,0xfffff,(byte)(accessed?0xfb:0xfa),12); Descriptor(m,0x30,0,0xfffff,(byte)(accessed?0xf3:0xf2),12);
@@ -29,6 +37,7 @@ internal static class PagingTests
         m.WriteDword(0x1800c,0x1b000);m.WriteDword(0x18010,0x33);
         At(c,m,[0xcf],0x2100);Check(c.CurrentPrivilegeLevel==3 && c.Eip==0x2000);
     }
+    /// <summary>Builds the explicit fixture TSS and ring-stack fields needed by the following privilege test.</summary>
     internal static void Tss(X86Cpu c, MemoryBus m)
     {
         Descriptor(m,0x40,0x9000,0x67,0x89);m.WriteDword(0x9004,0x1a000);m.WriteWord(0x9008,16);
@@ -37,9 +46,12 @@ internal static class PagingTests
     private sealed class Device : IMemoryDevice
     {
         public int Reads, Writes;
+        /// <summary>Returns a controlled mapped-device byte and records the test observation/fault hook.</summary>
         public byte ReadByte(uint offset) { Reads++;return 0x5a; }
+        /// <summary>Applies the controlled mapped-device write and records its test observation/fault hook.</summary>
         public void WriteByte(uint offset,byte value) { Writes++; }
     }
+    /// <summary>Registers the named paging regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
         test("EMS paging supplies extended RAM behind an undecoded ISA frame",()=>

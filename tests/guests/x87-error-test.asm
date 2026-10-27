@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own 486 numeric-error client: blocked external waits, AT F0/INT02 chain,
 ; native MF/IRETD, and (optionally) a later repaired operand PF.
 bits 16
@@ -24,6 +26,7 @@ TSS equ 48
     mov [di+4],al
     mov [di+7],ah
 %endmacro
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -336,6 +339,7 @@ body_drained:
     mov dword [proof+8],1
     jmp cleanup
 
+; Installs and enables the probe's timer release path for the pending numeric-error test.
 enable_timer:
     mov al,0xfa
     out 0x21,al
@@ -343,6 +347,7 @@ enable_timer:
     out 0xa1,al
     ; Return with IF=0. STI must be directly before the tested instruction.
     ret
+; Installs the explicit raw numeric operand used by the next pending-error case.
 prepare_operand:
 %if PROTECTED
     mov edi,0x300000
@@ -356,6 +361,7 @@ prepare_operand:
 %endif
 %endif
     ret
+; Selects the current fixed-layout numeric proof record.
 row_pointer:
     movzx esi,byte [data phase]
     dec esi
@@ -439,6 +445,7 @@ int2_entry:
     popad
     iret
 %endif
+; Runs pending nonwaiting controls, then proves FNOP completes only after actual F0 acknowledgement before FNCLEX.
 numeric_owner:
     fnstsw [data esi+28]
     fnstcw [data esi+30]
@@ -500,6 +507,7 @@ unexpected:
     hlt
     jmp unexpected
 %endif
+; Releases this probe's acquired resources and restores its explicitly saved handler/control state.
 cleanup:
     cli
     fninit
@@ -604,6 +612,7 @@ real_return:
     int 0x21
     mov ax,0x4c00
     int 0x21
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Text;
 using DOSEmulator.Core;
 
@@ -5,12 +7,14 @@ namespace DOSEmulator.Hardware;
 
 public sealed partial class VgaAdapter
 {
+    /// <summary>Resolves a source pixel through the active VGA attribute/DAC palette mapping.</summary>
     private int PaletteIndex(int color)
     {
         int index = _attr[color & _attr[0x12] & 15] & 63;
         if ((_attr[0x10] & 128) != 0) index = (index & 15) | ((_attr[0x14] & 3) << 4);
         return (index | ((_attr[0x14] & 12) << 4)) & _pelMask;
     }
+    /// <summary>Produces a diagnostic text approximation from guest VGA cells; it does not replace BIOS rendering.</summary>
     public string ReadText()
     {
         if (GraphicsMode) return "";
@@ -21,17 +25,33 @@ public sealed partial class VgaAdapter
             var line = new StringBuilder(columns);
             for (int column = 0; column < columns; column++)
             {
-                byte value = _planes[0][(Start + row * Stride + column) & 65535];
+                byte value = _planes[0][(Start + row * Stride + column) & PlaneAddressMask];
                 line.Append(value is >= 32 and < 127 ? (char)value : ' ');
             }
             text.AppendLine(line.ToString().TrimEnd());
         }
         return text.ToString().TrimEnd();
     }
-    public VideoFrame Capture(ulong now)
+    /// <summary>Captures the component's current output into owned result storage.</summary>
+    public VideoFrame Capture(ulong now) => Capture(now, new VgaFrameBuffer());
+    /// <summary>Captures the component's current output into owned result storage.</summary>
+    public VideoFrame Capture(ulong now, VgaFrameBuffer buffer)
     {
+        ArgumentNullException.ThrowIfNull(buffer);
         int width = Width, height = Height;
-        var pixels = new uint[checked(width * height)];
+        ulong phase = GraphicsMode ? 0 : (now / FramePeriod) & 48;
+        if (!ReferenceEquals(buffer.Owner, this) || buffer.Revision != _pixelRevision || buffer.Phase != phase || buffer.Width != width || buffer.Height != height)
+        {
+            if (buffer.Pixels.Length != checked(width * height)) buffer.Pixels = new uint[checked(width * height)];
+            Render(now, width, height, buffer.Pixels);
+            buffer.Owner = this; buffer.Revision = _pixelRevision; buffer.Phase = phase;
+            buffer.Width = width; buffer.Height = height; buffer.RenderedFrames++;
+        }
+        return buffer.Frame = new(++_frame, _generation, now, width, height, buffer.Pixels);
+    }
+    /// <summary>Renders the current guest text/graphics state into a complete caller-owned pixel surface.</summary>
+    private void Render(ulong now, int width, int height, uint[] pixels)
+    {
         if (!_displayEnabled || (_seq[1] & 32) != 0 || (_seq[0] & 3) != 3) Array.Fill(pixels, 0xff000000u);
         else if (GraphicsMode)
         {
@@ -39,7 +59,7 @@ public sealed partial class VgaAdapter
             for (int y = 0; y < height; y++)
                 for (int x = 0; x < width; x++)
                 {
-                    int pixel = x + pan, address = (Start + y * Stride + (Indexed256 ? pixel / 4 : pixel / 8)) & 65535;
+                    int pixel = x + pan, address = (Start + y * Stride + (Indexed256 ? pixel / 4 : pixel / 8)) & PlaneAddressMask;
                     int color = 0;
                     if (Indexed256) color = _planes[pixel & 3][address] & _pelMask;
                     else
@@ -58,13 +78,13 @@ public sealed partial class VgaAdapter
             int fontA = ((_seq[3] & 12) << 12) | ((_seq[3] & 32) << 8);
             int fontB = ((_seq[3] & 3) << 14) | ((_seq[3] & 16) << 9);
             bool twoFonts = (_seq[4] & 2) != 0 && fontA != fontB;
-            int cursor = ((_crtc[14] << 8 | _crtc[15]) + ((_crtc[11] >> 5) & 3)) & 65535;
+            int cursor = ((_crtc[14] << 8 | _crtc[15] | (IsEt4000 ? (_crtc[0x33] & 12) << 14 : 0)) + ((_crtc[11] >> 5) & 3)) & PlaneAddressMask;
             ulong rasterFrame = now / FramePeriod;
             bool cursorOff = (rasterFrame & 16) != 0, blinkOff = (rasterFrame & 32) != 0;
             for (int y = 0; y < height; y++)
                 for (int x = 0; x < width; x++)
                 {
-                    int address = (Start + y / characterHeight * Stride + x / CharacterWidth) & 65535;
+                    int address = (Start + y / characterHeight * Stride + x / CharacterWidth) & PlaneAddressMask;
                     int character = _planes[0][address], attribute = _planes[1][address];
                     int row = y % characterHeight, column = x % CharacterWidth;
                     int font = twoFonts && (attribute & 8) != 0 ? fontA : fontB;
@@ -76,6 +96,5 @@ public sealed partial class VgaAdapter
                     pixels[y * width + x] = _rgb[PaletteIndex(color)];
                 }
         }
-        return new(++_frame, _generation, now, width, height, pixels);
     }
 }

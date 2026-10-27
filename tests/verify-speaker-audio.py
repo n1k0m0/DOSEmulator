@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent PCM16 pitch/silence oracle for the original DOS speaker probe. Standard library only."""
 import array
 import hashlib

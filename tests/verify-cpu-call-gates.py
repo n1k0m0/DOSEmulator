@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent assembled-byte/RAM/frame/descriptor/paging/DOS-return oracle."""
 import argparse
 import copy
@@ -9,6 +11,7 @@ import struct
 
 
 def verify(report_path,memory_path,program_path,os_name,paging=False):
+    """Validates cpu call gates evidence from actual guest state, immutable program bytes and independently expected results."""
     report=json.loads(Path(report_path).read_text(encoding='utf-8-sig'))
     memory=Path(memory_path).read_bytes();program=Path(program_path).read_bytes()
     output=report['status']['debugOutput'];cpu=report['cpu']
@@ -104,12 +107,14 @@ def verify(report_path,memory_path,program_path,os_name,paging=False):
 
 
 def negative_controls(paths,directory):
+    """Corrupts selected independent evidence fields and requires each corrupted oracle input to fail."""
     report_path,memory_path,program_path,os_name,paging=paths
     directory=Path(directory);directory.mkdir(exist_ok=False)
     report=json.loads(Path(report_path).read_text(encoding='utf-8-sig'));memory=Path(memory_path).read_bytes()
     address=int(re.search(r'CPU-CALL-PROOF=([0-9A-F]{8})',report['status']['debugOutput'])[1],16)
     rejected=[]
     def reject(name,args):
+        """Requires an independently corrupted input to fail instead of accepting the guest's success marker alone."""
         try:verify(*args)
         except (AssertionError,ValueError,KeyError,IndexError,struct.error):rejected.append(name)
         else:raise AssertionError('Corrupted call gate acceptance was accepted: '+name)

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent oracle for our DOS probe: known DMA bytes, actual IN/OUT timeline, WAV and spectrum.
 
 Uses no emulator assemblies, DSP snapshots, DAC trace or third-party Python packages.
@@ -60,6 +62,7 @@ runs = []
 
 
 def level(time):
+    """Computes the independent expected signed PCM level from its captured format and mixer setting."""
     value = (dac - 128) / 128 if enabled else 0.0
     if value != transitions[-1][1]:
         transitions.append((time, value))
@@ -124,10 +127,12 @@ assert largest_error <= 1, f"PCM differs from independent byte/timing oracle by 
 
 
 def extract(start, end):
+    """Selects the requested audio interval from the independent capture and marker times."""
     return mono[round(start * 48000):round(end * 48000)]
 
 
 def pitch(part):
+    """Estimates signal frequency from the captured waveform independently from the chip's phase accumulator."""
     rising = [i for i in range(1, len(part)) if part[i - 1] < 0 <= part[i]]
     assert len(rising) >= 20
     return (len(rising) - 1) * 48000 / (rising[-1] - rising[0])
@@ -145,6 +150,7 @@ mix = extract(mix_start + 0.2, mix_start + 0.7)
 
 
 def amplitude(hz):
+    """Measures the selected signal's sinusoidal component independently from the emulated oscillator state."""
     step = cmath.exp(-2j * math.pi * hz / 48000)
     phase, total = 1 + 0j, 0j
     for sample in mix:

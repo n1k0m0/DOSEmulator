@@ -19,6 +19,8 @@
 *.raw
 *.cow
 *.dossav
+*.dosemedia/
+*.dosebranch/
 *.bin
 *.rom
 *.cue

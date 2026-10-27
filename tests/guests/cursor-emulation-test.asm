@@ -1,7 +1,10 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own real-DOS cursor-policy/shape probe, Apache-2.0. No OS/font bytes.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cld
     push cs
@@ -262,6 +265,7 @@ start:
     int 0x21
     mov ax,0x4c00
     int 0x21
+; Reads an actual indexed CRTC register for the cursor-state proof.
 read_crtc:
     mov dx,0x3d4
     in al,dx
@@ -281,6 +285,7 @@ read_crtc:
     pop ax
     out dx,al
     ret
+; Writes the selected actual indexed CRTC cursor register.
 write_crtc:
     mov dx,0x3d4
     in al,dx
@@ -294,6 +299,7 @@ write_crtc:
     pop ax
     out dx,al
     ret
+; Prints the explicit guest text through the real DOS/BIOS path.
 text:
     lodsb
     test al,al
@@ -303,6 +309,7 @@ text:
     jmp text
 .done:
     ret
+; Writes one actual guest debug-port byte for the independent evidence trace.
 debug:
     lodsb
     test al,al
@@ -323,6 +330,7 @@ old_crtc: dw 0
 old_points: dw 16
 automatic: db 0
 settle_start: dw 0
+; Waits for actual BIOS timer ticks rather than advancing virtual time from the host.
 wait_ticks: dw 9
 capture_header: db 'CURSOR-STATE-V1'
 points: dw 16

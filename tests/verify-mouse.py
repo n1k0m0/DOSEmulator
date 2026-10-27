@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent stdlib oracle for actual KBC bytes, PIC masks and IRQ12 in guest tests."""
 import json
 from pathlib import Path
@@ -5,6 +7,7 @@ import sys
 
 
 def verify(report_path, trace_path):
+    """Validates mouse evidence from actual guest state, immutable program bytes and independently expected results."""
     report = json.loads(Path(report_path).read_text(encoding="utf-8-sig"))
     expected = [[0x29, 4, 253], [0x1A, 254, 1], [8, 0, 0], [9, 0, 0], [8, 0, 0]]
     commands, replies, packet, packets = [], [], [], []

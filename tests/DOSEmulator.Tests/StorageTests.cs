@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Security.Cryptography;
 using System.Text.Json;
 using DOSEmulator.Contracts;
@@ -10,20 +12,26 @@ internal static class StorageTests
 {
     private sealed class UnreadableDataDisk : IReadOnlyBlockDevice
     {
+        /// <summary>Capacity in complete 512-byte sectors, fixed while the protected medium is open.</summary>
         public long SectorCount => 4;
+        /// <summary>Human-readable name of this configured component or media binding.</summary>
         public string Name => "Bootable with unreadable data sectors";
+        /// <summary>Reads one checked 512-byte sector into caller storage without modifying the underlying image.</summary>
         public void ReadSector(long lba, Span<byte> destination)
         {
             if (lba != 0) throw new IOException("Injected medium read failure");
             DevelopmentFirmware.CreateDemoDisk().AsSpan(0, 512).CopyTo(destination);
         }
+        /// <summary>Acquires a separately disposable media instance or prepared journal lease; base images remain protected.</summary>
         public IReadOnlyBlockDevice Reopen() => new UnreadableDataDisk();
+        /// <summary>Releases the resources or ownership lease held by this instance.</summary>
         public void Dispose() { }
     }
     private sealed class Fixture
     {
         public readonly string Base, Overlay;
         public readonly byte[] Original;
+        /// <summary>Builds the isolated fixture fixture and initializes its caller-owned test state.</summary>
         public Fixture()
         {
             string directory = Path.Combine(Environment.CurrentDirectory, "artifacts", "tests", "storage-" + Guid.NewGuid().ToString("N"));
@@ -33,41 +41,52 @@ internal static class StorageTests
             DevelopmentFirmware.CreateDemoDisk().AsSpan(0, 512).CopyTo(Original);
             Original.AsSpan(512).Fill(0x35); File.WriteAllBytes(Base, Original);
         }
+        /// <summary>Acquires the fixture's protected base/private-journal device for a persistence case.</summary>
         public CopyOnWriteDisk Open() => new(Base, Overlay);
+        /// <summary>Hashes the original private base fixture and rejects any accidental write-through.</summary>
         public void OriginalUnchanged() => Check(SHA256.HashData(Original).AsSpan().SequenceEqual(SHA256.HashData(File.ReadAllBytes(Base))), "Base image changed.");
     }
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value, string message = "Storage assertion failed.") { if (!value) throw new Exception(message); }
+    /// <summary>Requires the supplied operation to throw the selected exception type.</summary>
     private static void Reject<T>(Action action) where T : Exception
     {
         try { action(); } catch (T) { return; }
         throw new Exception("Expected " + typeof(T).Name);
     }
+    /// <summary>Builds a deterministic caller-owned pattern used to detect missing, aliased or reordered transfer data.</summary>
     private static byte[] Pattern(byte value) { byte[] bytes = new byte[512]; bytes.AsSpan().Fill(value); return bytes; }
+    /// <summary>Reads an actual device sector and compares all bytes with the independent expected contents.</summary>
     private static void ExpectSector(IReadOnlyBlockDevice disk, int lba, byte[] expected)
     {
         byte[] actual = new byte[512]; disk.ReadSector(lba, actual); Check(actual.AsSpan().SequenceEqual(expected), "Sector contents differ.");
     }
+    /// <summary>Submits the requested operation through the component's normal command interface.</summary>
     private static void Command(AtaPioController ata, byte command, int lba, int count = 1)
     {
         ata.Write(0x1f6, (uint)(0xe0 | (lba >> 24 & 15)), 1); ata.Write(0x1f2, (uint)count, 1);
         ata.Write(0x1f3, (uint)lba & 255, 1); ata.Write(0x1f4, (uint)(lba >> 8) & 255, 1);
         ata.Write(0x1f5, (uint)(lba >> 16) & 255, 1); ata.Write(0x1f7, command, 1);
     }
+    /// <summary>Sends the controlled test data through the real device-facing transfer interface.</summary>
     private static void Send(AtaPioController ata, byte value, int words = 256)
     {
         for (int i = 0; i < words; i++) ata.Write(0x1f0, (uint)(value | value << 8), 2);
     }
+    /// <summary>Boots the supplied private/synthetic medium through the emulated CPU and firmware.</summary>
     private static PcMachine Boot(IReadOnlyBlockDevice disk)
     {
         var machine = new PcMachine(new(), disk); machine.RunSteps(100000);
         Check(machine.Fault is null && machine.Cpu.Halted, machine.Fault ?? "Test disk did not boot."); return machine;
     }
+    /// <summary>Executes the real guest ROM service and checks its return to the test sentinel.</summary>
     private static void Bios(PcMachine machine, ushort ax)
     {
         machine.Cpu.SetSegment(Segment.Cs, 0); machine.Cpu.Eip = 0x1000; machine.Memory.WriteByte(0x1000, 0xf4);
         machine.Cpu.SetRegister(Register.Ax, ax); machine.Cpu.EnterRealModeInterrupt(0x13); machine.RunSteps(1_000_000);
         Check(machine.Fault is null && machine.Cpu.Halted, machine.Fault ?? "BIOS did not return.");
     }
+    /// <summary>Registers the named storage regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("BIOS fixed-disk AH04 consumes actual ATA sectors without touching caller memory", () =>

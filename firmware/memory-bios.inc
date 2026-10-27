@@ -1,4 +1,6 @@
-; Original reference-platform INT15/AH87 implementation, Apache-2.0.
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
+; Original DOSE platform INT15/AH87 implementation, Apache-2.0.
 ; Caller supplies 48-byte table, source descriptor at 10h, destination at 18h.
 ; Reserved EBDA 100h..142h is disjoint from mouse/video state and FDC bounce.
 ; Copy uses the actual CPU's protected segments and REP MOVSW, never host RAM.
@@ -9,6 +11,7 @@
 %define bm_ss        0x140
 %define bm_a20       0x142
 
+; Enters the guest PE/REP-MOVSW block-move service with checked descriptors and return state.
 int_block_move:
     mov cx,rCX
     cmp cx,0x8000

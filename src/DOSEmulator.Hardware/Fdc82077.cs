@@ -1,10 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 
 namespace DOSEmulator.Hardware;
 
 /// <summary>PC/AT two-drive sector-level FDC subset. DMA2, IRQ6 and deterministic seek/motor/sector delays.
 /// Raw images cannot represent physical flux, deleted marks or CRC errors. Non-DMA data mode is not implemented.</summary>
-public sealed class Fdc82077 : IIoPortDevice, IDisposable
+public sealed partial class Fdc82077 : IIoPortDevice, IDisposable
 {
     private readonly DeviceScheduler _clock;
     private readonly Dma8237 _dma;
@@ -23,25 +25,38 @@ public sealed class Fdc82077 : IIoPortDevice, IDisposable
     private bool _write, _multiTrack;
     private long _event;
     private readonly byte[] _sector = new byte[512];
+    /// <summary>Diagnostic count of read sector count.</summary>
     public long ReadSectorCount { get; private set; }
+    /// <summary>Diagnostic count of written sector count.</summary>
     public long WrittenSectorCount { get; private set; }
+    /// <summary>Whether an active command/result/seek phase currently prevents a safe floppy media change.</summary>
     public bool Busy => _executing || _received != 0 || _result.Count != 0 || _seekEvents.Any(e => e != 0);
+    /// <summary>Externally observable interrupt line after the component's enable/mask policy.</summary>
     public bool InterruptAsserted => _interrupt && (_dor & 0x0c) == 0x0c;
 
+    /// <summary>Initializes Fdc82077 and connects the supplied dependencies before the component is used.</summary>
     public Fdc82077(DeviceScheduler clock, Dma8237 dma, Action<bool> irq,
         FloppyGeometry? driveA, FloppyGeometry? driveB, IReadOnlyBlockDevice? mediumA = null, IReadOnlyBlockDevice? mediumB = null)
     {
         _clock = clock; _dma = dma; _irq = irq; _geometry = [driveA, driveB]; _media = [mediumA, mediumB];
         ValidateMedium(0, mediumA); ValidateMedium(1, mediumB);
     }
+    /// <summary>Requires a valid floppy slot and a raw image matching the configured physical drive geometry.</summary>
     private void ValidateMedium(int drive, IReadOnlyBlockDevice? medium)
     {
         if ((uint)drive >= 2) throw new ArgumentOutOfRangeException(nameof(drive));
         if (medium is not null && (_geometry[drive] is null || _geometry[drive]!.SectorCount != medium.SectorCount))
             throw new ArgumentException("Floppy image must match the configured drive geometry. Change drive type with a power cycle.");
     }
+    /// <summary>Returns the selected drive's display name or its empty-media label.</summary>
     public string MediaName(int drive) => _media[drive]?.Name ?? "Empty";
+    /// <summary>Returns only immutable media locations for saving a PC configuration.</summary>
+    public BlockDeviceImage? MediaImage(int drive) => (_media[drive] as IFileBackedBlockDevice)?.Image;
+    /// <summary>Returns borrowed media for a coordinated owner-thread checkpoint; ownership stays with this controller.</summary>
+    public IReadOnlyBlockDevice? MediaAt(int drive) => _media[drive];
+    /// <summary>Acquires a new lease for the selected floppy while retaining its protected base/private overlay binding.</summary>
     public IReadOnlyBlockDevice? ReopenMedia(int drive) => _media[drive]?.Reopen();
+    /// <summary>Replaces an idle floppy's medium and records a real disk-change indication.</summary>
     public void ReplaceMedia(int drive, IReadOnlyBlockDevice? medium)
     {
         ValidateMedium(drive, medium);
@@ -49,8 +64,11 @@ public sealed class Fdc82077 : IIoPortDevice, IDisposable
         if (ReferenceEquals(_media[drive], medium)) return;
         _media[drive]?.Dispose(); _media[drive] = medium; _changed[drive] = true;
     }
+    /// <summary>Changes the device interrupt state and publishes the externally enabled line level.</summary>
     private void SetInterrupt(bool value) { _interrupt = value; _irq(InterruptAsserted); }
+    /// <summary>Tests the selected floppy's medium, motor and controller enable conditions.</summary>
     private bool Ready(int drive) => drive < 2 && (_dor & 3) == drive && (_dor & (0x10 << drive)) != 0 && _media[drive] is not null;
+    /// <summary>Reads an FDC status/register/result byte, including the ordinary result-FIFO consumption effects.</summary>
     public uint Read(ushort port, int width)
     {
         if (width != 1) return 0xff;
@@ -64,6 +82,7 @@ public sealed class Fdc82077 : IIoPortDevice, IDisposable
             _ => 0xff
         };
     }
+    /// <summary>Builds the FDC main-status byte from command/result direction and busy state.</summary>
     private uint MainStatus()
     {
         if ((_dor & 4) == 0) return 0;
@@ -71,11 +90,13 @@ public sealed class Fdc82077 : IIoPortDevice, IDisposable
         for (int i = 0; i < 4; i++) if (_seekEvents[i] != 0) result |= 1u << i;
         return result;
     }
+    /// <summary>Consumes one FDC result byte and updates the controller's result/interrupt state.</summary>
     private byte ReadResult()
     {
         if (_result.Count == 0) return 0xff;
         SetInterrupt(false); return _result.Dequeue();
     }
+    /// <summary>Accepts controller/command bytes through the two-drive reference FDC state machine.</summary>
     public void Write(ushort port, uint value, int width)
     {
         if (width != 1) return;
@@ -104,6 +125,7 @@ public sealed class Fdc82077 : IIoPortDevice, IDisposable
                 break;
         }
     }
+    /// <summary>Restarts the component using its documented reset state and the supplied reset parameters.</summary>
     private void Reset(bool release)
     {
         if (_event != 0) _clock.Cancel(_event); _event = 0;
@@ -114,13 +136,15 @@ public sealed class Fdc82077 : IIoPortDevice, IDisposable
         {
             _event = 0; _executing = false;
             for (int i = 0; i < 4; i++) _sense.Enqueue(((byte)(0xc0 | i), _cylinder[i])); SetInterrupt(true);
-        }); }
+        }, this, "event0"); }
     }
+    /// <summary>Publishes the device command's result bytes and interrupt state.</summary>
     private void Result(bool interrupt, params byte[] bytes)
     {
         _executing = false; foreach (byte b in bytes) _result.Enqueue(b);
         if (interrupt) SetInterrupt(true);
     }
+    /// <summary>Dispatches a decoded primary opcode, including prefix validity and operand-width rules.</summary>
     private void Execute()
     {
         int opcode = _command[0] & 0x1f, unit = _command[1] & 3;
@@ -159,12 +183,14 @@ public sealed class Fdc82077 : IIoPortDevice, IDisposable
                     if (opcode == 10) { if (ValidateTransfer(false)) Finish(0, 0); }
                     else if (opcode == 13) FormatTrack();
                     else TransferSector();
-                });
+                }, this, "event1", () => StateValues.Pack(opcode));
                 break;
             default: Result(false, 0x80); break;
         }
     }
+    /// <summary>Returns the reference FDC sector-service delay from its programmed data rate.</summary>
     private ulong SectorDelay() => (ulong)(200_000_000 / (_drive < 2 ? _geometry[_drive]?.SectorsPerTrack ?? 18 : 18));
+    /// <summary>Schedules a reference floppy seek and its sense-interrupt completion result.</summary>
     private void Seek(int drive, byte target, bool recalibrate)
     {
         if (_seekEvents[drive] != 0) { Result(false, 0x80); return; }
@@ -179,8 +205,9 @@ public sealed class Fdc82077 : IIoPortDevice, IDisposable
                 _cylinder[drive] = target;
             }
             _sense.Enqueue((st0, _cylinder[drive])); SetInterrupt(true);
-        });
+        }, this, "event2", () => StateValues.Pack(drive, target, recalibrate));
     }
+    /// <summary>Checks a DMA request's channel, direction, mask and mode before any memory/device contact.</summary>
     private bool ValidateTransfer(bool data)
     {
         if (!Ready(_drive)) { Finish(4, 0, notReady: true); return false; }
@@ -198,6 +225,7 @@ public sealed class Fdc82077 : IIoPortDevice, IDisposable
         if (data && ((_specify2 & 1) != 0 || (_dor & 8) == 0)) { Finish(0x10, 0); return false; }
         return true;
     }
+    /// <summary>Performs one scheduled FDC sector transfer through the actual DMA channel.</summary>
     private void TransferSector()
     {
         if (!ValidateTransfer(true)) return;
@@ -217,16 +245,18 @@ public sealed class Fdc82077 : IIoPortDevice, IDisposable
                 else { AdvanceSector(); Finish(0x80, 0); return; }
             }
             else _r++;
-            _event = _clock.ScheduleAfter(SectorDelay(), () => { _event = 0; TransferSector(); });
+            _event = _clock.ScheduleAfter(SectorDelay(), () => { _event = 0; TransferSector(); }, this, "event3");
         }
         catch (IOException) { Finish(0x20, 0); }
         catch (InvalidOperationException) { Finish(0x10, 0); }
     }
+    /// <summary>Advances the FDC's cylinder/head/sector position under its current multi-track command.</summary>
     private void AdvanceSector()
     {
         if (_r < _eot) _r++;
         else { _r = 1; if (_multiTrack && _h == 0) _h = 1; else { _h = 0; _c++; } }
     }
+    /// <summary>Processes a real guest format-ID stream through DMA and the private writable medium.</summary>
     private void FormatTrack()
     {
         if (!ValidateTransfer(false)) return;
@@ -253,9 +283,11 @@ public sealed class Fdc82077 : IIoPortDevice, IDisposable
         catch (IOException) { Finish(0x20, 0); }
         catch (InvalidOperationException) { Finish(0x10, 0); }
     }
+    /// <summary>Completes the current operation and releases its active device/transfer state.</summary>
     private void Finish(byte st1, byte st2, bool notReady = false) => Result(true,
         (byte)((st1 != 0 || st2 != 0 ? 0x40 : 0) | (notReady ? 8 : 0) | (_h & 1) << 2 | _drive),
         st1, st2, (byte)_c, (byte)_h, (byte)_r, 2);
+    /// <summary>Releases the resources or ownership lease held by this instance.</summary>
     public void Dispose()
     {
         Reset(false); foreach (var medium in _media) medium?.Dispose();

@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Hardware;
 
 internal static partial class SoundBlasterTests
 {
+    /// <summary>Registers legacy high-speed DSP transfer/reset regressions.</summary>
     public static void AddHighSpeedTo(Action<string, Action> test)
     {
         test("SB high-speed single uses the 48h block size and exact programmed sample period", () =>
@@ -117,6 +120,7 @@ internal static partial class SoundBlasterTests
         });
         test("SB high-speed waveform is identical across arbitrary host chunk sizes", () =>
         {
+            // Renders the current guest text/graphics state into a complete caller-owned pixel surface.
             float[] Render(bool chunked)
             {
                 var r = new Rig(); r.Reset(); r.ProgramDma([0, 64, 128, 255], 0x59); r.Send(0xd1, 0x40, 233, 0x48, 3, 0, 0x90);

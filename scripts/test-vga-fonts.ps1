@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
 param([switch]$SkipBuild, [switch]$Gui, [string]$OutputRoot = 'artifacts\m1-build',
@@ -21,11 +23,13 @@ if ($LASTEXITCODE -ne 0) { throw 'Font probe assembly failed.' }
 python (Join-Path $workspaceRoot 'tests\prepare-font-media.py') $probe $floppy > (Join-Path $testRoot 'probe-media.json')
 if ($LASTEXITCODE -ne 0) { throw 'Private own-probe media preparation failed.' }
 $floppyHash = (Get-DosFileHash -LiteralPath $floppy -Algorithm SHA256).Hash
+# Writes the original guest-input plan into this run's private evidence directory.
 function Write-Scenario($Name, $Steps) {
     $path = Join-Path $testRoot ($Name + '-scenario.json')
     $Steps | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $path -Encoding utf8
     return $path
 }
+# Runs the actual guest against the explicitly selected private journal and optional frame capture.
 function Invoke-Guest($Name, $Cow, $Scenario, [bool]$Capture) {
     $report = Join-Path $testRoot ($Name + '.json')
     $guestArguments = @($runner,'--disk',$Disk,'--overlay',$Cow,'--floppy-a',$floppy,'--steps','100000000',

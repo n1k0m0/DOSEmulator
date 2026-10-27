@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 
 namespace DOSEmulator.Hardware;
@@ -26,43 +28,67 @@ public sealed partial class Opl2 : IIoPortDevice
     private long? _csmReleaseSample;
     private short _output;
     private uint _noise = 1;
+    /// <summary>Diagnostic count of generated samples.</summary>
     public long GeneratedSamples { get; private set; }
+    /// <summary>Diagnostic count of register writes.</summary>
     public long RegisterWrites { get; private set; }
+    /// <summary>Diagnostic count of rejected writes.</summary>
     public long RejectedWrites { get; private set; }
+    /// <summary>Diagnostic count of key on count.</summary>
     public long KeyOnCount { get; private set; }
+    /// <summary>Diagnostic count of csm key pulses.</summary>
     public long CsmKeyPulses { get; private set; }
+    /// <summary>Diagnostic count of timer1 overflows.</summary>
     public long Timer1Overflows => _timers[0].Overflows;
+    /// <summary>Diagnostic count of timer2 overflows.</summary>
     public long Timer2Overflows => _timers[1].Overflows;
+    /// <summary>FM timer status/output diagnostic; it is not an invented sound-card PIC IRQ connection.</summary>
     public bool TimerInterruptAsserted => _timers.Any(t => t.Flag);
+    /// <summary>Whether the guest rhythm-enable register bit selects the implemented percussion topology.</summary>
     public bool RhythmEnabled => (_registers[0xbd] & 0x20) != 0;
+    /// <summary>Deterministic reference noise-generator state used by rhythm synthesis.</summary>
     public uint NoiseState => _noise;
+    /// <summary>Diagnostic indication that the guest selected rhythm outside the implemented reference contract.</summary>
     public bool UnsupportedRhythm => false;
+    /// <summary>Whether the reference OPL2 CSM key-source mode is selected.</summary>
     public bool CsmEnabled => (_registers[8] & 0x80) != 0;
+    /// <summary>Whether the sample-timed OPL2 CSM key pulse currently contributes a key source.</summary>
     public bool CsmPulseActive => _csmReleaseSample.HasValue;
+    /// <summary>Diagnostic indication that the guest selected csm outside the implemented reference contract.</summary>
     public bool UnsupportedCsm => false;
+    /// <summary>Diagnostic indication that the guest selected test outside the implemented reference contract.</summary>
     public bool UnsupportedTest => (_registers[1] & ~0x20) != 0;
+    /// <summary>Diagnostic indication that the guest selected programming outside the implemented reference contract.</summary>
     public bool UnsupportedProgramming => UnsupportedRhythm || UnsupportedCsm || UnsupportedTest;
+    /// <summary>Number of currently active reference FM operators for diagnostic reporting.</summary>
     public int ActiveOperators => _operators.Count(o => o.Stage != OplEnvelopeStage.Off);
+    /// <summary>Current mono reference FM output sample.</summary>
     public short Output => _output;
+    /// <summary>Host-side source gain, separate from guest DSP/mixer register state.</summary>
     public double Volume { get => _input.Gain; set => _input.Gain = value; }
+    /// <summary>Initializes Opl2 and connects the supplied dependencies before the component is used.</summary>
     public Opl2(DeviceScheduler clock, PcAudioMixer audio, ushort? aliasBase = 0x228)
     {
         if (aliasBase is not (null or 0x228 or 0x248)) throw new ArgumentOutOfRangeException(nameof(aliasBase));
         _aliasBase = aliasBase;
         _clock = clock; _audio = audio; _input = audio.AddSource(Integrate, 0.5);
     }
+    /// <summary>Returns the stored FM register for diagnostics without performing a guest port access.</summary>
     public byte InspectRegister(byte register) => _registers[register];
+    /// <summary>Returns a diagnostic snapshot of the selected reference FM operator state.</summary>
     public OplOperatorStatus InspectOperator(int channel, bool carrier)
     {
         if ((uint)channel >= 9) throw new ArgumentOutOfRangeException(nameof(channel));
         Operator op = _operators[channel * 2 + (carrier ? 1 : 0)];
         return new(op.Stage, op.Attenuation, op.Phase, op.Keyed, op.TotalLevel);
     }
+    /// <summary>Reads the reference OPL2 status through its implemented ISA aliases.</summary>
     public uint Read(ushort port, int width)
     {
         if (width != 1 || (port != 0x388 && port != _aliasBase)) return 0xff;
         return (uint)(0x06 | (_timers[0].Flag ? 0x40 : 0) | (_timers[1].Flag ? 0x20 : 0) | (TimerInterruptAsserted ? 0x80 : 0));
     }
+    /// <summary>Applies a guest address/data write to the reference OPL2 register and timer interface.</summary>
     public void Write(ushort port, uint value, int width)
     {
         if (width != 1 || (port is not (0x388 or 0x389) && port != _aliasBase && port != _aliasBase + 1)) return;
@@ -100,6 +126,7 @@ public sealed partial class Opl2 : IIoPortDevice
         if (slot < 0 || group is not (0x20 or 0x40 or 0x60 or 0x80 or 0xe0)) return;
         UpdateOperator(slot); UpdateChannel(slot / 2);
     }
+    /// <summary>Restarts the component using its documented reset state and the supplied reset parameters.</summary>
     public void Reset()
     {
         _audio.AdvanceTo(_clock.Now); Array.Clear(_registers); _address = 0; _busyUntil = _clock.Now;
@@ -112,7 +139,7 @@ public sealed partial class Opl2 : IIoPortDevice
         for (int i = 0; i < 9; i++) _channels[i] = new();
         _output = 0; _csmReleaseSample = null; _noise = 1;
     }
-    private sealed class Timer(uint unitClocks)
+    private sealed partial class Timer(uint unitClocks)
     {
         public readonly uint UnitClocks = unitClocks;
         public byte Preset;
@@ -120,6 +147,7 @@ public sealed partial class Opl2 : IIoPortDevice
         public long Event, Overflows;
         public ulong DeadlineClocks;
     }
+    /// <summary>Applies timer start/mask/reset bits while retaining the model's separate sticky overflow state.</summary>
     private void TimerControl(byte data)
     {
         if ((data & 0x80) != 0) { foreach (Timer timer in _timers) timer.Flag = false; return; }
@@ -140,6 +168,7 @@ public sealed partial class Opl2 : IIoPortDevice
             }
         }
     }
+    /// <summary>Schedules the next FM timer overflow on the chip's own reference clock.</summary>
     private void ScheduleTimer(Timer timer)
     {
         ulong deadline = (ulong)(((UInt128)timer.DeadlineClocks * 1_000_000_000 + MasterFrequency - 1) / MasterFrequency);
@@ -158,18 +187,22 @@ public sealed partial class Opl2 : IIoPortDevice
             }
             timer.DeadlineClocks += (uint)(256 - timer.Preset) * timer.UnitClocks;
             ScheduleTimer(timer);
-        });
+        }, this, "event0", () => StateValues.Pack(Array.IndexOf(_timers, timer)));
     }
+    /// <summary>Releases only the OPL2 CSM key source at its scheduled sample boundary.</summary>
     private void ReleaseCsmKey()
     {
         foreach (Operator op in _operators) SetKeySource(op, 2, false);
         _csmReleaseSample = null;
     }
+    /// <summary>Captures the reference OPL2 CSM total levels at the documented timer/key boundary.</summary>
     private void LatchCsmLevels()
     {
         for (int i = 0; i < 18; i++) _operators[i].TotalLevel = (_registers[0x40 + OperatorOffsets[i]] & 63) * 0.75;
     }
+    /// <summary>Converts a native FM sample index to virtual nanoseconds with integer rounding.</summary>
     private static ulong SampleTime(long sample) => (ulong)(((UInt128)(ulong)sample * ClocksPerSample * 1_000_000_000 + MasterFrequency - 1) / MasterFrequency);
+    /// <summary>Accumulates the reference source's signal area over the requested virtual interval.</summary>
     private Int128 Integrate(ulong start, ulong end)
     {
         if (start != _position) throw new InvalidOperationException("OPL integration must follow the shared mixer timeline.");

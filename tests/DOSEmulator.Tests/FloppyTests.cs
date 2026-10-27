@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Contracts;
 using System.Text.Json;
 using DOSEmulator.Core;
@@ -14,6 +16,7 @@ internal static class FloppyTests
         public readonly Dma8237 Dma;
         public readonly Pic8259 Pic = new();
         public readonly Fdc82077 Fdc;
+        /// <summary>Builds the isolated rig fixture and initializes its caller-owned test state.</summary>
         public Rig(IReadOnlyBlockDevice? medium = null)
         {
             Dma = new(Memory);
@@ -21,40 +24,51 @@ internal static class FloppyTests
                 medium ?? new MemoryDisk(Image(), "A"), new MemoryDisk(Image(0xbb), "B"));
             Fdc.Write(0x3f2, 0x1c, 1); Send(3, 0xdf, 2);
         }
+        /// <summary>Sends the controlled test data through the real device-facing transfer interface.</summary>
         public void Send(params byte[] bytes) { foreach (byte value in bytes) Fdc.Write(0x3f5, value, 1); }
+        /// <summary>Publishes the device command's result bytes and interrupt state.</summary>
         public byte[] Result(int count = 7) => Enumerable.Range(0, count).Select(_ => (byte)Fdc.Read(0x3f5, 1)).ToArray();
+        /// <summary>Advances the fixture's virtual device clock by the requested bounded interval.</summary>
         public void Wait(ulong ns = 400_000_000) => Clock.AdvanceTo(Clock.Now + ns);
+        /// <summary>Programs the fixture's actual DMA controller rather than injecting a completed transfer.</summary>
         public void ProgramDma(int count, bool read = true, int address = 0x2000)
         {
             Dma.Write(0x0a, 6, 1); Dma.Write(0x0c, 0, 1); Dma.Write(4, (uint)address & 255, 1); Dma.Write(4, (uint)(address >> 8) & 255, 1);
             Dma.Write(0x81, (uint)address >> 16, 1); Dma.Write(5, (uint)(count - 1) & 255, 1); Dma.Write(5, (uint)(count - 1) >> 8, 1);
             Dma.Write(0x0b, read ? 0x46u : 0x4au, 1); Dma.Write(0x0a, 2, 1);
         }
+        /// <summary>Releases the resources or ownership lease held by this instance.</summary>
         public void Dispose() => Fdc.Dispose();
     }
+    /// <summary>Builds the explicit private raw-image bytes used by this test case.</summary>
     private static byte[] Image(byte? fill = null)
     {
         byte[] image = new byte[1474560];
         for (int sector = 0; sector < 2880; sector++) image.AsSpan(sector * 512, 512).Fill(fill ?? (byte)sector);
         return image;
     }
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value, string message = "Floppy assertion failed.") { if (!value) throw new Exception(message); }
+    /// <summary>Requires the supplied operation to throw the selected exception type.</summary>
     private static void Reject<T>(Action action) where T : Exception
     {
         try { action(); } catch (T) { return; } throw new Exception("Expected " + typeof(T).Name);
     }
+    /// <summary>Creates fresh private base/journal fixture files for the persistence assertions.</summary>
     private static (string Base, string Overlay) DiskFiles()
     {
         string directory = Path.Combine(Environment.CurrentDirectory, "artifacts", "tests", "floppy-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory); string image = Path.Combine(directory, "base.img"); File.WriteAllBytes(image, Image());
         return (image, Path.Combine(directory, "private.cow"));
     }
+    /// <summary>Executes the real guest ROM service and checks its return to the test sentinel.</summary>
     private static void Bios(PcMachine machine, ushort ax)
     {
         machine.Cpu.SetSegment(Segment.Cs, 0); machine.Cpu.Eip = 0x1000; machine.Memory.WriteByte(0x1000, 0xf4);
         machine.Cpu.SetRegister(Register.Ax, ax); machine.Cpu.EnterRealModeInterrupt(0x13); machine.RunSteps(5_000_000);
         Check(machine.Fault is null && machine.Cpu.Halted, machine.Fault ?? "BIOS did not return.");
     }
+    /// <summary>Registers the named floppy regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("floppy BIOS DMA and CPU bounce copies follow a memory-manager-relocated EBDA",()=>

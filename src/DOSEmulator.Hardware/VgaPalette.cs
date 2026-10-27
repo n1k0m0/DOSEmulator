@@ -1,11 +1,14 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 namespace DOSEmulator.Hardware;
 
-/// <summary>Original reference-firmware palettes; components are six-bit VGA DAC values.</summary>
+/// <summary>Original DOSEBios palettes; components are six-bit VGA DAC values.</summary>
 public static class VgaPalette
 {
     public static readonly uint[] TextColors =
     [0xff000000,0xff0000aa,0xff00aa00,0xff00aaaa,0xffaa0000,0xffaa00aa,0xffaa5500,0xffaaaaaa,
      0xff555555,0xff5555ff,0xff55ff55,0xff55ffff,0xffff5555,0xffff55ff,0xffffff55,0xffffffff];
+    /// <summary>Builds the original project's planar VGA palette table.</summary>
     public static byte[] Planar()
     {
         byte[] rgb = new byte[768];
@@ -17,6 +20,7 @@ public static class VgaPalette
         }
         return rgb;
     }
+    /// <summary>Builds the original project's indexed 256-color VGA palette table.</summary>
     public static byte[] Indexed()
     {
         byte[] rgb = new byte[768];

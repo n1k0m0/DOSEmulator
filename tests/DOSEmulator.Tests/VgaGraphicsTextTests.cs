@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
@@ -6,19 +8,25 @@ internal static class VgaGraphicsTextTests
 {
     private static readonly uint[] Colors = [0xff000000,0xff0000aa,0xff00aa00,0xff00aaaa,0xffaa0000,0xffaa00aa,0xffaa5500,0xffaaaaaa,
         0xff555555,0xff5555ff,0xff55ff55,0xff55ffff,0xffff5555,0xffff55ff,0xffffff55,0xffffffff];
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value, string message = "Graphics text assertion failed") { if (!value) throw new Exception(message); }
+    /// <summary>Writes an actual indexed VGA register for the controlled fixture setup.</summary>
     private static void Reg(VgaAdapter v, ushort port, int index, int value) => v.Write(port, (uint)(index | value << 8), 2);
+    /// <summary>Reads an actual indexed device register for the surrounding independent assertions.</summary>
     private static byte Get(VgaAdapter v, ushort port, int index) { v.Write(port, (uint)index, 1); return (byte)v.Read((ushort)(port+1), 1); }
+    /// <summary>Executes the real guest ROM service and checks its return to the test sentinel.</summary>
     private static void Bios(PcMachine m, ushort ax)
     {
         m.Cpu.SetSegment(Segment.Cs, 0); m.Cpu.Eip=0x1000; m.Memory.WriteByte(0x1000, 0xf4);
         m.Cpu.SetRegister(Register.Ax, ax); m.Cpu.EnterRealModeInterrupt(0x10); m.RunSteps(3000000);
         Check(m.Fault is null && m.Cpu.Halted, m.Fault ?? "INT10 did not return");
     }
+    /// <summary>Boots the supplied private/synthetic medium through the emulated CPU and firmware.</summary>
     private static PcMachine Boot(int mode)
     {
         var m=PcMachine.CreateDemo(); m.RunSteps(150000); Check(m.Fault is null && m.Cpu.Halted, m.Fault ?? "POST did not halt"); Bios(m,(ushort)mode); return m;
     }
+    /// <summary>Builds an independent deterministic glyph table for the pixel/text oracle.</summary>
     private static byte[] Font(int points)
     {
         byte[] font=new byte[256*points];
@@ -26,14 +34,17 @@ internal static class VgaGraphicsTextTests
             font[ch*points+row]=(byte)(row==1?ch:row==2?ch^0x5a:(ch << (row%7) | ch >> (8-row%7)));
         return font;
     }
+    /// <summary>Prepares the explicit test source required by the following guest instruction or BIOS operation.</summary>
     private static byte[] Load(PcMachine m,int mode,int points)
     {
         byte[] font=Font(points); font.CopyTo(m.Memory.Ram,0x23000);
         m.Cpu.SetSegment(Segment.Es,0x2000);m.Cpu.SetRegister(Register.Bp,0x3000);m.Cpu.SetRegister(Register.Bx,0);
         m.Cpu.SetRegister(Register.Cx,(uint)points);m.Cpu.SetRegister(Register.Dx,(uint)((mode==0x12?480:200)/points));Bios(m,0x1121);return font;
     }
+    /// <summary>Positions the cursor through the real guest BIOS service.</summary>
     private static void Cursor(PcMachine m,int row,int column)
     { m.Cpu.SetRegister(Register.Bx,0);m.Cpu.SetRegister(Register.Dx,(uint)(row<<8|column));Bios(m,0x0200); }
+    /// <summary>Draws the independent expected glyph pixels, including foreground/background/XOR behavior.</summary>
     private static void Glyph(byte[] pixels,int width,byte[] font,int points,int ch,int row,int col,byte foreground,byte background=0,bool xor=false)
     {
         for(int y=0;y<points;y++)for(int x=0;x<8;x++)
@@ -42,6 +53,7 @@ internal static class VgaGraphicsTextTests
             if(xor){if(on)pixels[at]^=foreground;}else pixels[at]=on?foreground:background;
         }
     }
+    /// <summary>Executes the controlled event and validates the actual guest exception/debug frame.</summary>
     private static void Frame(PcMachine m,byte[] expected)
     {
         var actual=m.Video.Capture(0);Check(actual.ArgbPixels.Length==expected.Length);
@@ -51,8 +63,10 @@ internal static class VgaGraphicsTextTests
             Check(actual.ArgbPixels[i]==color,$"Pixel {i%actual.Width},{i/actual.Width}: {actual.ArgbPixels[i]:X8} != {color:X8}");
         }
     }
+    /// <summary>Programs the guest DAC through the selected real BIOS register service.</summary>
     private static void Dac(PcMachine m,int index,int r,int g,int b)
     {m.Cpu.SetRegister(Register.Bx,(uint)index);m.Cpu.SetRegister(Register.Dx,(uint)(r<<8));m.Cpu.SetRegister(Register.Cx,(uint)(g<<8|b));Bios(m,0x1010);}
+    /// <summary>Builds and installs the controlled initial pixels required by the graphics regression.</summary>
     private static byte[] Seed(PcMachine m,int mode)
     {
         int width=mode==0x12?640:320,height=mode==0x12?480:200;byte[] pixels=new byte[width*height];
@@ -67,12 +81,14 @@ internal static class VgaGraphicsTextTests
         {byte color=(byte)((x+y*3)%16);pixels[y*width+x]=color;m.Memory.WriteByte((uint)(0xa0000+y*width+x),color);}
         return pixels;
     }
+    /// <summary>Captures the fixture's actual indexed VGA access state for later restoration/assertions.</summary>
     private static byte[] Registers(VgaAdapter v)
     {
         int si=(int)v.Read(0x3c4,1),gi=(int)v.Read(0x3ce,1),ci=(int)v.Read(0x3d4,1);
         byte[] result=[(byte)si,(byte)gi,(byte)ci,..Enumerable.Range(0,5).Select(i=>Get(v,0x3c4,i)),..Enumerable.Range(0,9).Select(i=>Get(v,0x3ce,i)),..Enumerable.Range(0,25).Select(i=>Get(v,0x3d4,i))];
         v.Write(0x3c4,(uint)si,1);v.Write(0x3ce,(uint)gi,1);v.Write(0x3d4,(uint)ci,1);return result;
     }
+    /// <summary>Reads all actual VGA backing planes through the controlled aperture/register path.</summary>
     private static byte[] Planes(PcMachine m)
     {
         byte[] registers=Registers(m.Video),result=new byte[4*65536];
@@ -82,6 +98,7 @@ internal static class VgaGraphicsTextTests
         for(int i=0;i<9;i++)Reg(m.Video,0x3ce,i,registers[8+i]);
         m.Video.Write(0x3c4,registers[0],1);m.Video.Write(0x3ce,registers[1],1);return result;
     }
+    /// <summary>Registers the named vga graphics text regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
         test("Graphics INT1F font pointer changes independently of mode, geometry, INT43 and VGA contents",()=>

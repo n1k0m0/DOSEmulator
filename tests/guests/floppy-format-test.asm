@@ -1,9 +1,12 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original BIOS format probe loaded by real DOS, Apache-2.0.
 ; Only use with the script's private 1.44-MiB scratch floppies (base fill 39h).
 ; /V verifies persisted formatted sectors; /R checks read-only format rejection.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cld
     push cs
@@ -221,6 +224,7 @@ failed:
     call print
     mov ax,0x4c01
     int 0x21
+; Restores only this probe's explicitly saved interrupt/controller state.
 restore:
     cmp byte [installed],0
     je .done
@@ -254,6 +258,7 @@ descriptors:
     dec bl
     loop .id
     ret
+; Stores the next observed protocol byte in the bounded guest proof record.
 put_byte:
     mov [es:di],al
     inc di
@@ -263,6 +268,7 @@ put_byte:
     mov es,ax
 .done:
     ret
+; Executes the real BIOS format-track operation on the private test medium.
 format:
     mov es,[buffer_seg]
     mov bx,0xffff
@@ -273,6 +279,7 @@ format:
     mov ax,0x0500          ; SC supplied by the active INT1E DPT
     int 0x13
     ret
+; Reads back and byte-compares the previously formatted/written private sectors.
 read_check:
     push cs
     pop es
@@ -290,10 +297,12 @@ read_check:
     repe scasb
     jne failed
     ret
+; Prints the probe's diagnostic text through its actual guest DOS/BIOS output service.
 print:
     mov ah,9
     int 0x21
     ret
+; Emits a hexadecimal diagnostic value through the probe's output path.
 hex:
     push ax
     shr al,4

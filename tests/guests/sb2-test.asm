@@ -1,8 +1,11 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original DOS SB2 PCM probe, Apache-2.0. No host audio or DOS-service shortcuts.
 ; /H holds 250-Hz DMA audio for native GUI acceptance. Requires A220 I5 D1.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cld
     push cs
@@ -203,6 +206,7 @@ failed:
     mov ax,0x4c01
     int 0x21
 
+; Starts the programmed single-cycle byte-DMA DSP transfer.
 single:
     mov al,0x14
     call dsp_write
@@ -211,6 +215,7 @@ single:
     mov al,31
     call dsp_write
     ret
+; Starts the programmed auto-initialized byte-DMA stream through the real DSP command port.
 auto_start:
     mov al,0x59
     call program_dma
@@ -228,6 +233,7 @@ auto_start:
     mov al,0x1c
     call dsp_write
     ret
+; Sends the explicitly chosen legacy DSP sample-rate time constant.
 time_constant:
     push ax
     mov al,0x40
@@ -235,6 +241,7 @@ time_constant:
     pop ax
     call dsp_write
     ret
+; Programs the actual byte/word DMA controller with the probe's owned physical buffer.
 program_dma:
     push eax
     mov ah,al
@@ -262,10 +269,12 @@ program_dma:
     out 0x0a,al
     pop eax
     ret
+; Stops the controlled DSP stream before releasing this probe's sound/IRQ resources.
 quiet:
     mov al,0xd3
     call dsp_write
     ret
+; Releases this probe's acquired resources and restores its explicitly saved handler/control state.
 cleanup:
     mov al,0xd0
     call dsp_write
@@ -287,6 +296,7 @@ cleanup:
     pop ds
 .done:
     ret
+; Acknowledges the actual byte-DMA sound interrupt and sends the required PIC EOI.
 irq5:
     push ax
     push dx
@@ -309,6 +319,7 @@ irq5:
     pop dx
     pop ax
     iret
+; Polls DSP readiness before writing one real command/parameter byte.
 dsp_write:
     push ax
     push cx
@@ -331,6 +342,7 @@ dsp_write:
     pop cx
     pop ax
     ret
+; Polls DSP readiness with a bounded timeout before reading the actual reply byte.
 dsp_read:
     push cx
     push dx
@@ -351,6 +363,7 @@ dsp_read:
     pop dx
     pop cx
     ret
+; Waits for the expected actual IRQ-handler count with a bounded guest timeout.
 wait_irqs:
     xor ah,ah
     int 0x1a
@@ -366,6 +379,7 @@ wait_irqs:
     jmp .wait
 .done:
     ret
+; Waits for actual BIOS timer ticks rather than advancing virtual time from the host.
 wait_ticks:
     pusha
     mov bx,cx
@@ -379,6 +393,7 @@ wait_ticks:
     jb .wait
     popa
     ret
+; Prints the probe's diagnostic text through its actual guest DOS/BIOS output service.
 print:
     mov ah,9
     int 0x21

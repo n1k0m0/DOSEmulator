@@ -1,9 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 
 internal static class CpuSystemTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition) { if (!condition) throw new Exception("486 system-register invariant failed."); }
+    /// <summary>Builds an isolated CPU/bus fixture with caller-supplied guest instruction bytes.</summary>
     private static (X86Cpu Cpu, MemoryBus Memory) Rig(params byte[] code)
     {
         var memory = new MemoryBus(2 * 1024 * 1024);
@@ -12,6 +16,7 @@ internal static class CpuSystemTests
         code.CopyTo(memory.Ram, 0x1000);
         return (cpu, memory);
     }
+    /// <summary>Builds the explicit descriptor-table instruction encoding for the selected operation and size prefix.</summary>
     private static byte[] TableCode(int operation, bool operand32 = false, ushort offset = 0x300)
     {
         var code = new List<byte>();
@@ -19,10 +24,12 @@ internal static class CpuSystemTests
         code.AddRange([0x0f, 0x01, (byte)((operation << 3) | 6), (byte)offset, (byte)(offset >> 8)]);
         return code.ToArray();
     }
+    /// <summary>Writes an explicit limit/base pseudo-descriptor into private guest memory.</summary>
     private static void Table(MemoryBus m, uint address, ushort limit, uint basis)
     {
         m.WriteWord(address, limit); m.WriteDword(address + 2, basis);
     }
+    /// <summary>Requires the expected architectural fault before inspecting or repairing the private guest context.</summary>
     private static void Fault(X86Cpu c, MemoryBus m, byte vector)
     {
         m.WriteWord((uint)vector * 4, 0x2000); m.WriteWord((uint)vector * 4 + 2, 0);
@@ -30,6 +37,7 @@ internal static class CpuSystemTests
         Check(c.Eip == 0x2000 && c.GetSegment(Segment.Cs) == 0 && c.GetRegister(Register.Sp) == 0x8ffa);
         Check(m.ReadWord(0x8ffa) == 0x1000 && m.ReadWord(0x8ffc) == 0 && c.Instructions == 1);
     }
+    /// <summary>Recognizes an unsupported raw extended encoding without normalizing away its explicit integer bit.</summary>
     private static void Unsupported(X86Cpu c)
     {
         try { c.Step(); } catch (UnsupportedInstructionException) { Check(c.Eip == 0x1000 && c.Instructions == 0); return; }
@@ -38,10 +46,13 @@ internal static class CpuSystemTests
     private sealed class AccessProbe : IMemoryDevice
     {
         public int Reads, Writes;
+        /// <summary>Returns a controlled mapped-device byte and records the test observation/fault hook.</summary>
         public byte ReadByte(uint offset) { Reads++; return 0xa5; }
+        /// <summary>Applies the controlled mapped-device write and records its test observation/fault hook.</summary>
         public void WriteByte(uint offset, byte value) { Writes++; }
     }
 
+    /// <summary>Registers the named cpu system regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("system registers reset to IVT and explicit undefined-state defaults", () =>

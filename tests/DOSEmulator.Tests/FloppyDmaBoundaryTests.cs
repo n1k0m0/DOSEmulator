@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
@@ -5,8 +7,10 @@ using DOSEmulator.Runtime;
 
 internal static class FloppyDmaBoundaryTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value, string message = "Floppy DMA boundary assertion failed")
     { if (!value) throw new Exception(message); }
+    /// <summary>Builds an isolated machine fixture with the specified guest code and optional identity paging.</summary>
     private static PcMachine Machine(ushort ebda, out string image, out string cow)
     {
         string root=Path.Combine(Environment.CurrentDirectory,"artifacts","tests","fdc-boundary-"+Guid.NewGuid().ToString("N"));
@@ -18,6 +22,7 @@ internal static class FloppyDmaBoundaryTests
         m.Memory.Ram.AsSpan(0x9fc00,1024).Fill(0xa5);m.Memory.WriteWord(0x40e,ebda);
         return m;
     }
+    /// <summary>Executes the controlled guest service/instruction path used by the surrounding regression.</summary>
     private static byte Call(PcMachine m, ushort ax)
     {
         m.Cpu.SetSegment(Segment.Cs,0);m.Cpu.Eip=0x1000;m.Memory.WriteByte(0x1000,0xf4);
@@ -27,6 +32,7 @@ internal static class FloppyDmaBoundaryTests
         Check(((m.Cpu.Eflags&1)!=0)==(status!=0) && m.Memory.ReadByte(0x441)==status);
         return status;
     }
+    /// <summary>Registers the named floppy dma boundary regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
         foreach(ushort ebda in new ushort[]{0x1fc0,0x1fc1,0x1fd0,0x1fdf,0x1fe0})

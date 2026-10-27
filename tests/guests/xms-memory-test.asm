@@ -1,8 +1,11 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own DOS XMS client. Calls the original resident driver's far entry point.
 bits 16
 cpu 486
 org 0x100
 
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -217,11 +220,13 @@ report:
     int 0x21
     mov ax,0x4c01
     int 0x21
+; Invokes the original XMS manager to move the probe's owned block contents.
 move_block:
     mov si,move_length
     mov ah,0x0b
     call far [xms_entry]
     ret
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al

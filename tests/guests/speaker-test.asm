@@ -1,7 +1,10 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original real-mode DOS PC Speaker probe, Apache-2.0. /H holds 440 Hz for host/UI acceptance.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cld
     push cs
@@ -127,6 +130,7 @@ failed:
     call print
     mov ax,0x4c01
     int 0x21
+; Programs the actual PIT/speaker controls for the selected square-wave test.
 square:
     mov al,0xb6
     out 0x43,al
@@ -138,11 +142,13 @@ square:
     or al,3
     out 0x61,al
     ret
+; Disables the speaker output through the actual port-61 control latch.
 silence:
     in al,0x61
     and al,0xfc
     out 0x61,al
     ret
+; Waits for actual BIOS timer ticks rather than advancing virtual time from the host.
 wait_ticks:
     pusha
     mov bx,cx
@@ -156,6 +162,7 @@ wait_ticks:
     jb .wait
     popa
     ret
+; Prints the probe's diagnostic text through its actual guest DOS/BIOS output service.
 print:
     mov ah,9
     int 0x21
@@ -164,6 +171,7 @@ saved_control: db 0
 hold: db 0
 banner: db 'PC SPEAKER - REAL DOS / PIT2 / PORT 61H',13,10,'$'
 holding: db 'SPEAKER-HOLD-READY',13,10,'Use AUDIO SETTINGS for live volume/mute.',13,10,'$'
+; Programs the explicit FM tone used by the independent captured-pitch test.
 tone440: db 'SPEAKER-440-HZ',13,10,'$'
 tone880: db 'SPEAKER-880-HZ',13,10,'$'
 done: db 'SPEAKER-DOS-RETURN-OK',13,10,'$'

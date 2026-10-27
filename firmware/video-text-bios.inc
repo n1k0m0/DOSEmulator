@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own bounded mode-03h text services, Apache-2.0. No host BIOS shortcuts.
 ; IBM PS/2 BIOS Interface May 1988, pp. 2-16..2-21, 2-28, 2-37, 2-41.
 ; DS=0. BDA page size may be compact after a character-generator call;
@@ -17,7 +19,7 @@ video_cursor_emulation:
     ret
 
 ; CX=requested shape. BDA/AH03 keep the unscaled caller values.
-; Own reference-platform rule: map an ordered, flag-free 0..7 interval to
+; Own DOSE platform rule: map an ordered, flag-free 0..7 interval to
 ; [floor(start*height/8), floor((end+1)*height/8)-1]. This preserves complete
 ; rows and inclusive endpoints. Native (>7), reversed and control-bit forms
 ; pass through; emulation is bounded to mode 03h and cell heights 8..32.

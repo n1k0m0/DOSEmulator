@@ -1,8 +1,11 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own DOS font acceptance sheet, Apache-2.0. This file contains no font data.
 ; The real DISPLAY.SYS/MODE must have loaded the selected font from guest EGA.CPI.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cld
     push cs
@@ -136,6 +139,7 @@ start:
     int 0x21
     mov ax,0x4c00
     int 0x21
+; Prints the explicit guest text through the real DOS/BIOS path.
 text:
     lodsb
     test al,al

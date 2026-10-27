@@ -1,9 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Runtime;
 using DOSEmulator.Cpu.X86;
 
 internal static class BiosBlockMoveTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value, string message="BIOS block move invariant failed") { if(!value)throw new Exception(message); }
+    /// <summary>Creates this regression's isolated CPU/device fixture with explicit parameters and private data.</summary>
     private static PcMachine Create(ushort count=2048, uint source=0x30000, uint destination=0x120000)
     {
         var m=PcMachine.CreateDemo();m.RunSteps(100000);Check(m.Fault is null);
@@ -19,6 +23,7 @@ internal static class BiosBlockMoveTests
         }
         return m;
     }
+    /// <summary>Executes the controlled guest service/instruction path used by the surrounding regression.</summary>
     private static void Call(PcMachine m)
     {
         m.Cpu.EnterRealModeInterrupt(0x15);
@@ -27,6 +32,7 @@ internal static class BiosBlockMoveTests
         for(int i=0;i<100000 && !m.Cpu.Halted;i++)m.Cpu.Step();
         Check(m.Fault is null && m.Cpu.Halted && m.Cpu.Position=="0000:00001001",m.Fault??m.Cpu.Position);
     }
+    /// <summary>Registers the named bios block move regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
         foreach(ushort relocated in new ushort[]{0x0e92,0x8000})

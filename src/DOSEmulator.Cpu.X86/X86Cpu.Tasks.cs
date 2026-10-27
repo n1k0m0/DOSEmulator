@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 namespace DOSEmulator.Cpu.X86;
 
 public sealed partial class X86Cpu
@@ -39,6 +41,7 @@ public sealed partial class X86Cpu
         }
     }
 
+    /// <summary>Validates a privilege-transition stack with the selector-error class appropriate to its source.</summary>
     private Descriptor ValidateTransitionStack(ushort selector, int privilege, bool fromTss, uint external = 0)
     {
         byte invalid = fromTss ? (byte)10 : (byte)13;
@@ -58,6 +61,7 @@ public sealed partial class X86Cpu
         return descriptor;
     }
 
+    /// <summary>Reads the requested ring's stack selector/pointer from the current 16- or 32-bit TSS.</summary>
     private (ushort Selector, uint Pointer, Descriptor Descriptor) ReadPrivilegeStack(int privilege, uint external)
     {
         if (!_trCache.Usable || (_trCache.Access & 15) is not (3 or 11))
@@ -72,6 +76,7 @@ public sealed partial class X86Cpu
         return (selector, pointer, ValidateTransitionStack(selector, privilege, true, external));
     }
 
+    /// <summary>Checks the entire proposed transition frame against the new stack's bounds before committing writes.</summary>
     private static void CheckTransitionPushes(SegmentDescriptorCache cache, uint pointer, int width, int count, uint error = 0)
     {
         uint mask = cache.Default32 ? uint.MaxValue : 0xffff;
@@ -82,6 +87,7 @@ public sealed partial class X86Cpu
         }
     }
 
+    /// <summary>Invalidates data-segment caches that are no longer accessible after returning to an outer privilege.</summary>
     private void InvalidateOuterDataSegments()
     {
         foreach (Segment segment in new[] { Segment.Es, Segment.Ds, Segment.Fs, Segment.Gs })
@@ -95,26 +101,29 @@ public sealed partial class X86Cpu
         }
     }
 
+    /// <summary>Restores an outer stack pointer while honoring the selected operand and stack widths.</summary>
     private void RestoreOuterStackPointer(uint pointer, ushort selector, int width)
     {
         if (StackAddressWidth == 2) WriteRegister((int)Register.Sp, 2, pointer);
         else if (width == 2)
         {
-            // Intel's architecture-compatibility chapter records this 486
-            // quirk: a 16-bit interlevel RET/IRET puts SS in ESP[31:16].
-            SetRegister(Register.Sp, ((uint)selector << 16) | (pointer & 0xffff));
+            // Intel 241430-004 23.2.19.6: 486 inserts SS into ESP[31:16];
+            // P54C zero-extends the 16-bit pointer into its outer 32-bit stack.
+            uint high = Model == X86CpuModel.Intel486Dx ? (uint)selector << 16 : 0;
+            SetRegister(Register.Sp, high | (pointer & 0xffff));
         }
         else SetRegister(Register.Sp, pointer);
     }
 
+    /// <summary>Pushes an architectural exception error code using the target gate's frame width.</summary>
     private void PushFaultError(uint value, int width)
     {
         if (width == 2) { Push(value, width); return; }
         uint pointer = unchecked(StackPointer - 4) & Mask(StackAddressWidth);
         CheckSegment(Segment.Ss, pointer, 4, true);
-        // A 486 reserves a dword but writes just the low word. Pentium's
-        // zero-filled dword is a different model, not a padding invariant.
-        WriteMemory(unchecked(GetSegmentBase(Segment.Ss) + pointer), 2, value);
+        // Intel 241430-004 section 23.2.19.4: 486 retains the upper stack
+        // word; Pentium writes the complete error dword with zero padding.
+        WriteMemory(unchecked(GetSegmentBase(Segment.Ss) + pointer), Model == X86CpuModel.Intel486Dx ? 2 : 4, value & 0xffff);
         SetStackPointer(pointer);
     }
 }

@@ -1,8 +1,11 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original real-mode DOS timer/CSM-keying probe, Apache-2.0.
 ; /S selects the SB2 FM alias. No host synthesis or interrupt shortcuts.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cld
     push cs
@@ -143,6 +146,7 @@ failed:
     call print
     mov ax,0x4c01
     int 0x21
+; Releases this probe's acquired resources and restores its explicitly saved handler/control state.
 cleanup:
     mov ax,0x6004
     call opl_write
@@ -153,6 +157,7 @@ cleanup:
     mov ax,0x12b0
     call opl_write
     ret
+; Writes an actual FM register with the required address/data port sequence.
 opl_write:
     push ax
     push dx
@@ -167,6 +172,7 @@ opl_write:
     pop dx
     pop ax
     ret
+; Waits for actual BIOS timer ticks rather than advancing virtual time from the host.
 wait_ticks:
     pusha
     mov bx,cx
@@ -181,6 +187,7 @@ wait_ticks:
     jb .wait
     popa
     ret
+; Prints the probe's diagnostic text through its actual guest DOS/BIOS output service.
 print:
     mov ah,9
     int 0x21

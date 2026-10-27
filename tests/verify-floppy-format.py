@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent stdlib verification of port protocol and private scratch overlays.
 
 No emulator modules: parse actual FDC/DMA port bytes and the documented journal,
@@ -11,6 +13,7 @@ import sys
 
 
 def overlay(base_path, overlay_path, expected):
+    """Parses and validates checksummed journal records without opening any medium for writing."""
     base = pathlib.Path(base_path).read_bytes()
     data = pathlib.Path(overlay_path).read_bytes()
     assert data[:8] == b"DOSCOW01" and struct.unpack_from("<q", data, 8)[0] == 2880
@@ -34,6 +37,7 @@ def overlay(base_path, overlay_path, expected):
 
 
 def parse_protocol(path):
+    """Decodes actual FDC command/result observations into independently checked track transfers."""
     lengths = {3: 3, 4: 2, 7: 2, 8: 1, 15: 3, 5: 9, 6: 9, 13: 6}
     responses = {4: 1, 8: 2, 5: 7, 6: 7, 13: 7}
     dma = {"address": 0, "count": 0, "page": 0, "mode": 0, "masked": True}
@@ -84,6 +88,7 @@ def parse_protocol(path):
 
 
 def protocol(path, mode):
+    """Parses actual FDC commands, result bytes and DMA observations without assuming the guest report is correct."""
     packets = parse_protocol(path)
     formats = [p for p in packets if p["command"][0] == 0x4d]
     expected = [] if mode == "verify" else ([[0x4d, 0, 2, 18, 0x6c, 0xf6]] if mode == "readonly" else [

@@ -1,15 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Exact dyadic FRNDINT inputs, independent of the emulator and host floating point."""
 import argparse,json,random,struct
 from pathlib import Path
 
 J=1<<63
 def dyadic(n,scale=0,negative=False):
+ """Constructs a raw extended value from the specified exact dyadic integer/exponent pair."""
  if n==0:return (0,0x8000 if negative else 0)
  bits=n.bit_length();assert bits<=64
  return (n<<(64-bits),(16383+scale+bits-1)|(0x8000 if negative else 0))
-def raw(v):return dict(significand=f'{v[0]:016X}',exponent=f'{v[1]:04X}')
+def raw(v):"""Serializes raw significand/exponent fields without numeric conversion."""; return dict(significand=f'{v[0]:016X}',exponent=f'{v[1]:04X}')
 
 def generate():
+ """Builds deterministic x87 round vectors vectors and original guest data tables; no original media are modified."""
  positive=[dyadic(0),dyadic(1),dyadic(2),dyadic(3),dyadic(1,-1),dyadic(3,-1),dyadic(5,-1),dyadic(7,-1),dyadic(3,-2),
   ((1<<64)-1,0x3ffd),(J+1,0x3ffe),(J+1,0x3fff),((1<<64)-1,0x3ffe),(J+1,0x4000),
   dyadic((1<<24)+1,-1),dyadic((1<<53)+1,-1),dyadic((1<<63)+1,-1),dyadic((1<<64)-1,-1),
@@ -18,7 +22,7 @@ def generate():
   (J,0x7fff),(J|1<<62|0x42,0x7fff),(J|0x123,0x7fff),(1,0x1234),(0,1),(1,0x7fff)]
  values=positive+[(sig,e|0x8000) for sig,e in positive]
  cases=[]
- def add(v,c,kind=0):cases.append(dict(id=f'rnd-{len(cases)}',operation=0,control=c,a=raw(v),b=raw((J+0x1234,0x4003)),kind=kind,bits='0000000000000000'))
+ def add(v,c,kind=0):"""Adds one explicitly parameterized x87 round vectors case to the deterministic test matrix."""; cases.append(dict(id=f'rnd-{len(cases)}',operation=0,control=c,a=raw(v),b=raw((J+0x1234,0x4003)),kind=kind,bits='0000000000000000'))
  for pc in (0,2,3):
   for rc in range(4):
    for clear in (0,1,2,32,3,33,34,35):
@@ -39,6 +43,7 @@ if __name__=='__main__':
  cases=generate();(root/'vectors.json').write_text(json.dumps(cases,indent=2)+'\n',encoding='utf-8',newline='\n')
  selected=[]
  def pick(v,c,kind=0):
+  """Chooses a bounded, deterministic guest subset preserving the required architectural case families."""
   match=next(x for x in cases if x['a']==raw(v) and x['control']==c and x['kind']==kind)
   if match not in selected:selected.append(match)
  for rc in range(4):
@@ -64,5 +69,5 @@ if __name__=='__main__':
   a,b=v['a'],v['b'];chunks.append(struct.pack('<4HQHQHIQ',v['control'],v['operation'],v['kind'],i,int(a['significand'],16),int(a['exponent'],16),int(b['significand'],16),int(b['exponent'],16),0,0))
  data=b''.join(chunks);source=f'%define VECTOR_COUNT {len(selected)}\n%macro round_vectors 0\n'
  source+='\n'.join('db '+','.join(str(x) for x in data[i:i+40]) for i in range(0,len(data),40))+'\n%endmacro\n'
- (root/'x87-round-data.inc').write_text(source,encoding='ascii',newline='\n')
+ (root/'x87-round-data.inc').write_text('; SPDX-License-Identifier: Apache-2.0\n; Copyright 2026 Nils Kopal\n' + (source),encoding='ascii',newline='\n')
  print(json.dumps(dict(vectors=len(cases),guestVectors=len(selected))))

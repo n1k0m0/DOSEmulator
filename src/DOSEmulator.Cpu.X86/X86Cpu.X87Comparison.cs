@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 namespace DOSEmulator.Cpu.X86;
 
 public sealed partial class X86Cpu
 {
+    /// <summary>Executes ordered/unordered/test comparisons with separate condition-code and pop decisions.</summary>
     private bool ExecuteFpuComparison(byte opcode, byte modrm)
     {
         int group = modrm >> 3 & 7, logical = modrm & 7;

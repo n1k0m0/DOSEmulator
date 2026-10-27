@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent register/timing/spectral oracle for the original DOS OPL2 probe (stdlib only).
 
 Checks observable melodic behavior; this is not a comparison against a recorded Yamaha chip.
@@ -34,19 +36,23 @@ text = "".join(chr(io["value"]) for io in chars)
 
 
 def marker_time(marker):
+    """Locates the virtual time of the requested actual guest debug-port marker."""
     index = text.index(marker) + len(marker) - 1
     return chars[index]["time"] / 1e9
 
 
 def extract(start, end):
+    """Selects the requested audio interval from the independent capture and marker times."""
     return mono[round(start * 48000):round(end * 48000)]
 
 
 def rms(part):
+    """Measures RMS over the explicit captured sample window, independently from the synthesizer."""
     return math.sqrt(sum(x*x for x in part) / len(part))
 
 
 def amplitude(part, hz):
+    """Measures the selected signal's sinusoidal component independently from the emulated oscillator state."""
     step = cmath.exp(-2j * math.pi * hz / 48000)
     phase, total = 1 + 0j, 0j
     for sample in part:
@@ -56,6 +62,7 @@ def amplitude(part, hz):
 
 
 def pitch(part):
+    """Estimates signal frequency from the captured waveform independently from the chip's phase accumulator."""
     rising = [i for i in range(1, len(part)) if part[i - 1] < 0 <= part[i]]
     assert len(rising) > 30
     return (len(rising) - 1) * 48000 / (rising[-1] - rising[0])

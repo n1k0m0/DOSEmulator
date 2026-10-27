@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 namespace DOSEmulator.Runtime;
 
 /// <summary>US set-1 typing for deterministic guest acceptance tests; bytes pass through KBC and IRQ1.</summary>
@@ -5,7 +7,7 @@ public static class GuestKeyboard
 {
     private const string Unshifted = "\0\u001b1234567890-=\b\tqwertyuiop[]\r\0asdfghjkl;'`\0\\zxcvbnm,./\0*\0 ";
     private const string Shifted = "\0\u001b!@#$%^&*()_+\b\tQWERTYUIOP{}\r\0ASDFGHJKL:\"~\0|ZXCVBNM<>?\0*\0 ";
-    /// <summary>Acceptance-test pacing for the reference BIOS. Avoid overflowing its type-ahead ring during slow disk I/O.</summary>
+    /// <summary>Acceptance-test pacing for the DOSEBios. Avoid overflowing its type-ahead ring during slow disk I/O.</summary>
     public static bool TryInjectForBios(PcMachine machine, byte scanCode)
     {
         if (machine.Keyboard.OutputByteCount != 0) return false;
@@ -17,6 +19,7 @@ public static class GuestKeyboard
         // A rejected byte has not been delivered and must stay in the scenario.
         return machine.Keyboard.TryInjectTranslatedSet1(scanCode);
     }
+    /// <summary>Converts explicitly supported text into balanced translated set-1 guest scancodes.</summary>
     public static byte[] Encode(string text)
     {
         var bytes = new List<byte>();

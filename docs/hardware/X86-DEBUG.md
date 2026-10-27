@@ -67,3 +67,12 @@ Historische Grundlage: [Intel486 Programmer’s Reference Manual, 1992](https://
 Nicht allgemein abgenommen: sämtliche gleichzeitigen Debug-/Fetch-/Task-/Fault-Kombinationen, GD innerhalb eines SS-Schattens, wiederholte SS-Ladevorgänge, NMI/ICE/Buspräzision, alle impliziten Zugriffe/Statusbitkombinationen oder jeder Original-Debuggerbefehl. Die Tests belegen die beschriebenen Referenzpfade, keine vollständige Debugger-, Silizium-, DOS-Extender- oder Windows-Kompatibilität. Keine nativen Fenster/Fokusversuche/Windows-Eingaben wurden dafür gestartet; die verschobene Mauswiederholung bleibt unberührt. Alle Dumps und Betriebssystem-/Spielmedien bleiben privat und ignoriert.
 
 Das nachfolgende [x87-Zustandspaket](X86-X87-STATE.md) prüft inzwischen acht tatsächliche 80-Bit-Register, Stack/Tags/Umgebung und Save/Restore; [elementare Arithmetik und Konvertierungen](X86-X87-NUMERIC.md) besitzen inzwischen ebenfalls eigene Zahlen-/DOS-Nachweise. Nächste Vertikale ist die FERR-/IGNNE-Fehlerleitung, danach verbleibende x87-Operationen. Host-double ist kein Präzisionsersatz. Weitere CPU-Präzision und M3-Geräte/Snapshots sowie M4–M8 bleiben offen.
+
+## Ergänzender LSS-Abgleich
+
+Die [LSS-Interruptgrenze](X86-LSS-BOUNDARY.md) ist auf dem 6309er-Build korrigiert: LSS erzeugt keinen zusätzlichen IRQ-Schatten. MOV-/POP-SS-Deferral, TF-/Datenbreakpoints und acht gezielt wiederholte Debug-Gäste bleiben geprüft. GD innerhalb eines SS-Schattens, wiederholte SS-Ladevorgänge und umfassende Debug-/Faultpräzision bleiben offen; LSS ist kein Beleg für deren Fertigstellung.
+
+
+## Ergänzung zum M3-Abschluss
+
+Der 7030er-Build ergänzt 72 CPU-Fälle und sechs neue tatsächliche GD-/SS-Rahmen je DOS-/Paginggast. Synchrone GD-Faults geschehen vor der DR-Übertragung; IRETD wiederholt die Instruktion auf dem bereits übernommenen SS. Vier MOV-/POP-SS-Paare folgen der bestehenden begrenzten DOSE-Politik. Nur die erste Sperre ist für portable Software garantiert (Intel SDM Band 2B MOV/POP-Fußnoten und Band 3A 6.8.3); diese Tests behaupten keine universelle 486-Steppingantwort. Acht erweiterte Kaltstarts liefern 390 negative Oracles. Frühere Debugzahlen bleiben ihrem Build zugeordnet; [M3-Abnahme](../M3-ACCEPTANCE.md).

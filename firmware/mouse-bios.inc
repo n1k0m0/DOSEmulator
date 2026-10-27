@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original PS/2 ID-00 firmware, IBM BIOS Interface May 1988, INT15 C2.
 ; EBDA 10h..1Bh; the storage bounce sector at 200h..3FFh is disjoint.
 %define mouse_callback 0x10
@@ -6,6 +8,7 @@
 %define mouse_packet 0x16
 %define mouse_saved_command 0x19
 
+; Implements the selected BIOS auxiliary-device commands using actual KBC/PS2 transactions.
 int_ps2_service:
     cmp byte [cs:mouse_present],0
     jne .present
@@ -182,6 +185,7 @@ int_ps2_service:
     or rFLAGS,1
     leave_service
 
+; Prepares a bounded BIOS auxiliary-device transaction while retaining controller state.
 mouse_begin:
     ; Inhibit incoming stream packets while saving/draining the output buffer.
     mov al,0xa7
@@ -210,6 +214,7 @@ mouse_begin:
     call mouse_write_command
     mov byte [es:mouse_index],0
     ret
+; Waits for the KBC input buffer before writing its command byte.
 mouse_write_command:
     push ax
     mov al,0x60
@@ -217,6 +222,7 @@ mouse_write_command:
     pop ax
     out 0x60,al
     ret
+; Sends an actual PS/2 device command through the KBC auxiliary path.
 mouse_send:
     push ax
     mov al,0xd4
@@ -230,6 +236,7 @@ mouse_send:
     stc
 .done:
     ret
+; Waits for and reads an actual auxiliary-device response with a bounded timeout.
 mouse_read:
     push cx
     mov cx,0xffff
@@ -253,6 +260,7 @@ mouse_read:
     pop cx
     ret
 
+; Collects an actual auxiliary packet and calls the installed guest handler before both PIC EOIs.
 irq_mouse:
     pushad
     push ds

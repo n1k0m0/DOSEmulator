@@ -1,0 +1,477 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "file": "src/DOSEmulator.Hardware/AtaPioDrive.cs",
+      "owner": "DOSEmulator.Hardware.AtaPioDrive",
+      "operation": "event0",
+      "arguments": [],
+      "receiver": "_scheduler",
+      "delay": "5_000",
+      "callback": "() =>\n                {\n                    _event = 0;\n                    try { ((IWritableBlockDevice)_disk!).WriteSector(_lba, _data); }\n                    catch (IOException) { Abort(0x40); return; }\n                    WrittenSectorCount++; _lba++; _remaining--; UpdateTaskAddress(); _offset = 0;\n                    Status = _remaining > 0 ? (byte)0x58 : (byte)0x50; PendingInterrupt = true;\n                }",
+      "start": 3926,
+      "end": 4376
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/AtaPioDrive.cs",
+      "owner": "DOSEmulator.Hardware.AtaPioDrive",
+      "operation": "event1",
+      "arguments": [],
+      "receiver": "_scheduler",
+      "delay": "5_000",
+      "callback": "() => { _event = 0; Identify(); Status = 0x58; PendingInterrupt = true; }",
+      "start": 5247,
+      "end": 5353
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/AtaPioDrive.cs",
+      "owner": "DOSEmulator.Hardware.AtaPioDrive",
+      "operation": "event2",
+      "arguments": [],
+      "receiver": "_scheduler",
+      "delay": "5_000",
+      "callback": "() => { _event = 0; Status = 0x58; }",
+      "start": 6150,
+      "end": 6219
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/AtaPioDrive.cs",
+      "owner": "DOSEmulator.Hardware.AtaPioDrive",
+      "operation": "event3",
+      "arguments": [],
+      "receiver": "_scheduler",
+      "delay": "5_000",
+      "callback": "() =>\n        {\n            _event = 0;\n            if (_disk is null || _lba < 0 || _lba >= _disk.SectorCount) { Abort(0x10); return; }\n            try { _disk.ReadSector(_lba, _data); }\n            catch (IOException) { Abort(0x40); return; }\n            Status = 0x58; PendingInterrupt = true;\n        }",
+      "start": 7091,
+      "end": 7430
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Fdc82077.cs",
+      "owner": "DOSEmulator.Hardware.Fdc82077",
+      "operation": "event0",
+      "arguments": [],
+      "receiver": "_clock",
+      "delay": "1_000_000",
+      "callback": "() =>\n        {\n            _event = 0; _executing = false;\n            for (int i = 0; i < 4; i++) _sense.Enqueue(((byte)(0xc0 | i), _cylinder[i])); SetInterrupt(true);\n        }",
+      "start": 7810,
+      "end": 8022
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Fdc82077.cs",
+      "owner": "DOSEmulator.Hardware.Fdc82077",
+      "operation": "event1",
+      "arguments": [
+        [
+          "opcode",
+          "int",
+          "opcode"
+        ]
+      ],
+      "receiver": "_clock",
+      "delay": "wait + SectorDelay()",
+      "callback": "() =>\n                {\n                    _event = 0;\n                    if (opcode == 10) { if (ValidateTransfer(false)) Finish(0, 0); }\n                    else if (opcode == 13) FormatTrack();\n                    else TransferSector();\n                }",
+      "start": 10386,
+      "end": 10689
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Fdc82077.cs",
+      "owner": "DOSEmulator.Hardware.Fdc82077",
+      "operation": "event2",
+      "arguments": [
+        [
+          "drive",
+          "int",
+          "drive"
+        ],
+        [
+          "target",
+          "byte",
+          "target"
+        ],
+        [
+          "recalibrate",
+          "bool",
+          "recalibrate"
+        ]
+      ],
+      "receiver": "_clock",
+      "delay": "delay",
+      "callback": "() =>\n        {\n            _seekEvents[drive] = 0; byte st0 = (byte)(0x20 | drive);\n            if (drive >= 2 || _geometry[drive] is null) st0 |= 0x50;\n            else\n            {\n                if (_media[drive] is not null && (recalibrate || target != _cylinder[drive])) _changed[drive] = false;\n                _cylinder[drive] = target;\n            }\n            _sense.Enqueue((st0, _cylinder[drive])); SetInterrupt(true);\n        }",
+      "start": 11368,
+      "end": 11840
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Fdc82077.cs",
+      "owner": "DOSEmulator.Hardware.Fdc82077",
+      "operation": "event3",
+      "arguments": [],
+      "receiver": "_clock",
+      "delay": "SectorDelay()",
+      "callback": "() => { _event = 0; TransferSector(); }",
+      "start": 13999,
+      "end": 14075
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Mpu401Uart.cs",
+      "owner": "DOSEmulator.Hardware.Mpu401Uart",
+      "operation": "event0",
+      "arguments": [
+        [
+          "reset",
+          "bool",
+          "reset"
+        ],
+        [
+          "enter",
+          "bool",
+          "enter"
+        ]
+      ],
+      "receiver": "_clock",
+      "delay": "reset ? ResetNanoseconds : enter ? ModeNanoseconds : IgnoredCommandNanoseconds",
+      "callback": "() =>\n        {\n            _commandEvent = 0; _busy = false;\n            if (reset || enter)\n            {\n                if (enter) UartMode = true;\n                _received.Enqueue((0xfe, enter)); Acknowledgements++; UpdateInterrupt();\n            }\n        }",
+      "start": 6962,
+      "end": 7328
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Mpu401Uart.cs",
+      "owner": "DOSEmulator.Hardware.Mpu401Uart",
+      "operation": "event1",
+      "arguments": [],
+      "receiver": "_clock",
+      "delay": "FrameNanoseconds",
+      "callback": "() =>\n        {\n            _transmitEvent = 0; _transmitting = false;\n            var frame = new MidiFrame(_transmitStart, _clock.Now, _transmitByte); TransmittedBytes++;\n            StartTransmit(); // Publish only after any next event exists, so a reset from an observer can cancel it.\n            Transmitted?.Invoke(frame);\n        }",
+      "start": 7673,
+      "end": 8052
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Mpu401Uart.cs",
+      "owner": "DOSEmulator.Hardware.Mpu401Uart",
+      "operation": "event2",
+      "arguments": [],
+      "receiver": "_clock",
+      "delay": "FrameNanoseconds",
+      "callback": "() =>\n        {\n            _receiveEvent = 0; _receiving = false; ReceivedFrames++;\n            var frame = new MidiFrame(_receiveStart, _clock.Now, _receiveByte);\n            bool eligible = _receiveUart && UartMode && _receiveGeneration == _generation;\n            bool accepted = eligible && _received.Count < ReceiveCapacity;\n            if (accepted) { _received.Enqueue((_receiveByte, true)); ReceivedBytes++; UpdateInterrupt(); }\n            else if (eligible) Overruns++; else IgnoredInputFrames++;\n            StartReceive(); Received?.Invoke(new(frame, accepted, eligible && !accepted));\n        }",
+      "start": 9062,
+      "end": 9710
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Opl2.cs",
+      "owner": "DOSEmulator.Hardware.Opl2",
+      "operation": "event0",
+      "arguments": [
+        [
+          "timerIndex",
+          "int",
+          "Array.IndexOf(_timers, timer)"
+        ]
+      ],
+      "receiver": "_clock",
+      "delay": "deadline - _clock.Now",
+      "callback": "() =>\n        {\n            timer.Event = 0; timer.Overflows++; if (!timer.Masked) timer.Flag = true;\n            if (ReferenceEquals(timer, _timers[0]) && CsmEnabled)\n            {\n                // Preserve the old waveform up to the timer edge. The model holds the CSM\n                // key source through one native sample, then releases it. TL changes\n                // become audible at the CSM edge. Subsample slot latency is not modeled.\n                _audio.AdvanceTo(_clock.Now);\n                LatchCsmLevels();\n                foreach (Operator op in _operators) SetKeySource(op, 2, true);\n                _csmReleaseSample = GeneratedSamples + 1; CsmKeyPulses++;\n            }\n            timer.DeadlineClocks += (uint)(256 - timer.Preset) * timer.UnitClocks;\n            ScheduleTimer(timer);\n        }",
+      "start": 9963,
+      "end": 10830
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Opl3.cs",
+      "owner": "DOSEmulator.Hardware.Opl3",
+      "operation": "event0",
+      "arguments": [
+        [
+          "timerIndex",
+          "int",
+          "Array.IndexOf(_timers, timer)"
+        ]
+      ],
+      "receiver": "_clock",
+      "delay": "due - _clock.Now",
+      "callback": "() =>\n        {\n            timer.Event = 0; timer.Overflows++; if (!timer.Masked) timer.Flag = true;\n            timer.Deadline += (uint)(256 - timer.Preset) * timer.Clocks; ScheduleTimer(timer);\n        }",
+      "start": 10777,
+      "end": 11023
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Pit8254.cs",
+      "owner": "DOSEmulator.Hardware.Pit8254",
+      "operation": "event0",
+      "arguments": [],
+      "receiver": "scheduler",
+      "delay": "delay",
+      "callback": "() => { InterruptPulses++; irqPulse(); if (_running) Schedule(); }",
+      "start": 5591,
+      "end": 5689
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/PitSpeakerCounter.cs",
+      "owner": "DOSEmulator.Hardware.PitSpeakerCounter",
+      "operation": "event0",
+      "arguments": [
+        [
+          "tick",
+          "ulong",
+          "tick"
+        ],
+        [
+          "startsHigh",
+          "bool",
+          "startsHigh"
+        ],
+        [
+          "resume",
+          "bool",
+          "resume"
+        ]
+      ],
+      "receiver": "clock",
+      "delay": "nanoseconds - clock.Now",
+      "callback": "() =>\n        {\n            BeforeChange?.Invoke(); _loadEvent = 0;\n            _reload = _programmed; _originTick = resume ? tick - _pausedElapsed : tick;\n            _startsHigh = startsHigh; _loaded = true; _running = _gate;\n            _frozenCount = (ushort)_reload;\n            if (!resume) { _pausedElapsed = 0; _fixedOutput = Mode != 0; }\n        }",
+      "start": 5881,
+      "end": 6283
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Ps2Mouse.cs",
+      "owner": "DOSEmulator.Hardware.Ps2Mouse",
+      "operation": "event0",
+      "arguments": [],
+      "receiver": "scheduler",
+      "delay": "delay",
+      "callback": "Sample",
+      "start": 6308,
+      "end": 6346
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/SoundBlasterDsp.cs",
+      "owner": "DOSEmulator.Hardware.SoundBlasterDsp",
+      "operation": "event0",
+      "arguments": [
+        [
+          "data",
+          "byte",
+          "data"
+        ]
+      ],
+      "receiver": "_clock",
+      "delay": "CommandNanoseconds",
+      "callback": "() =>\n        {\n            _commandEvent = 0; _commandBusy = false; Receive(data);\n        }",
+      "start": 8133,
+      "end": 8268
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/SoundBlasterDsp.cs",
+      "owner": "DOSEmulator.Hardware.SoundBlasterDsp",
+      "operation": "event1",
+      "arguments": [],
+      "receiver": "_clock",
+      "delay": "ResetReadyNanoseconds",
+      "callback": "() =>\n            {\n                _resetEvent = 0; _ready = true; _readBuffer.Enqueue(0xaa);\n            }",
+      "start": 9305,
+      "end": 9458
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/SoundBlasterDsp.cs",
+      "owner": "DOSEmulator.Hardware.SoundBlasterDsp",
+      "operation": "event2",
+      "arguments": [],
+      "receiver": "_clock",
+      "delay": "delay",
+      "callback": "Tick",
+      "start": 15144,
+      "end": 15177
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/SoundBlaster16.cs",
+      "owner": "DOSEmulator.Hardware.SoundBlaster16",
+      "operation": "event0",
+      "arguments": [
+        [
+          "data",
+          "byte",
+          "data"
+        ]
+      ],
+      "receiver": "_clock",
+      "delay": "SoundBlasterDsp.CommandNanoseconds",
+      "callback": "() =>\n        { _commandEvent = 0; _busy = false; Receive(data); }",
+      "start": 9959,
+      "end": 10083
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/SoundBlaster16.cs",
+      "owner": "DOSEmulator.Hardware.SoundBlaster16",
+      "operation": "event1",
+      "arguments": [],
+      "receiver": "_clock",
+      "delay": "SoundBlasterDsp.ResetReadyNanoseconds",
+      "callback": "() => { _resetEvent = 0; _ready = true; Reply(0xaa); }",
+      "start": 11071,
+      "end": 11186
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/SoundBlaster16.cs",
+      "owner": "DOSEmulator.Hardware.SoundBlaster16",
+      "operation": "event2",
+      "arguments": [],
+      "receiver": "_clock",
+      "delay": "delay",
+      "callback": "Tick",
+      "start": 16136,
+      "end": 16169
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Uart16550.cs",
+      "owner": "DOSEmulator.Hardware.Uart16550",
+      "operation": "event0",
+      "arguments": [],
+      "receiver": "scheduler",
+      "delay": "Interval(HalfBits(_lcr) * 4)",
+      "callback": "() =>\n            { _timeoutEvent = 0; _timeout = true; UpdateInterrupt(); }",
+      "start": 7911,
+      "end": 8042
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Uart16550.cs",
+      "owner": "DOSEmulator.Hardware.Uart16550",
+      "operation": "event1",
+      "arguments": [
+        [
+          "frame",
+          "(byte Data, byte Errors)",
+          "frame"
+        ],
+        [
+          "loop",
+          "bool",
+          "loop"
+        ],
+        [
+          "lcr",
+          "byte",
+          "lcr"
+        ]
+      ],
+      "receiver": "scheduler",
+      "delay": "Delay((ulong)HalfBits(lcr) * 8 * _divisor, ref _rxRemainder)",
+      "callback": "() =>\n        {\n            _rxEvent = 0; _rxBusy = false;\n            if (loop) ExternalCharactersIgnored++; else Receive((byte)(frame.Data & ((1 << (5 + (lcr & 3))) - 1)), frame.Errors);\n            StartReceive();\n        }",
+      "start": 9645,
+      "end": 9958
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Uart16550.cs",
+      "owner": "DOSEmulator.Hardware.Uart16550",
+      "operation": "event2",
+      "arguments": [],
+      "receiver": "scheduler",
+      "delay": "Interval(2)",
+      "callback": "() => { _startEvent = 0; StartTransmit(); }",
+      "start": 10215,
+      "end": 10296
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Uart16550.cs",
+      "owner": "DOSEmulator.Hardware.Uart16550",
+      "operation": "event3",
+      "arguments": [],
+      "receiver": "scheduler",
+      "delay": "Interval(HalfBits(lcr) - StopHalfBits(lcr))",
+      "callback": "() =>\n            { _threEvent = 0; if (_tx.Count == 0) _thre = _threPending = true; UpdateInterrupt(); }",
+      "start": 10975,
+      "end": 11150
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Uart16550.cs",
+      "owner": "DOSEmulator.Hardware.Uart16550",
+      "operation": "event4",
+      "arguments": [
+        [
+          "lcr",
+          "byte",
+          "lcr"
+        ],
+        [
+          "value",
+          "byte",
+          "value"
+        ],
+        [
+          "divisor",
+          "ushort",
+          "divisor"
+        ],
+        [
+          "start",
+          "ulong",
+          "start"
+        ],
+        [
+          "loop",
+          "bool",
+          "loop"
+        ],
+        [
+          "breaking",
+          "bool",
+          "breaking"
+        ]
+      ],
+      "receiver": "scheduler",
+      "delay": "Delay((ulong)HalfBits(lcr) * 8 * _divisor, ref _txRemainder)",
+      "callback": "() =>\n        {\n            _txEvent = 0; _txBusy = false; TransmittedCharacters++;\n            if (loop) { if (!breaking) Receive(value, 0); }\n            else Transmitted?.Invoke(new(start, scheduler.Now, breaking ? (byte)0 : value, breaking ? (byte)0x18 : (byte)0, lcr, divisor));\n            StartTransmit(); UpdateInterrupt();\n        }",
+      "start": 11181,
+      "end": 11609
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Uart16550.cs",
+      "owner": "DOSEmulator.Hardware.Uart16550",
+      "operation": "event5",
+      "arguments": [],
+      "receiver": "scheduler",
+      "delay": "Interval(HalfBits(_lcr))",
+      "callback": "() =>\n        { _breakEvent = 0; _breakDelivered = true; Receive(0, 0x18); }",
+      "start": 11991,
+      "end": 12118
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/VirtualParallelPrinter.cs",
+      "owner": "DOSEmulator.Hardware.VirtualParallelPrinter",
+      "operation": "event0",
+      "arguments": [],
+      "receiver": "_scheduler",
+      "delay": "InitializeDelay",
+      "callback": "() =>\n            { _initializeEvent = 0; _busy = false; Pins(); }",
+      "start": 3524,
+      "end": 3633
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/VirtualParallelPrinter.cs",
+      "owner": "DOSEmulator.Hardware.VirtualParallelPrinter",
+      "operation": "event1",
+      "arguments": [],
+      "receiver": "_scheduler",
+      "delay": "MinimumHold",
+      "callback": "Commit",
+      "start": 4365,
+      "end": 4410
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/VirtualParallelPrinter.cs",
+      "owner": "DOSEmulator.Hardware.VirtualParallelPrinter",
+      "operation": "event2",
+      "arguments": [],
+      "receiver": "_scheduler",
+      "delay": "AckDelay",
+      "callback": "() =>\n        {\n            _ackLowEvent = 0; _ack = false; Pins();\n            _ackHighEvent = _scheduler.ScheduleAfter(AckWidth, () =>\n            { _ackHighEvent = 0; _ack = true; _busy = false; Pins(); });\n        }",
+      "start": 4781,
+      "end": 5036
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/VirtualParallelPrinter.cs",
+      "owner": "DOSEmulator.Hardware.VirtualParallelPrinter",
+      "operation": "event3",
+      "arguments": [],
+      "receiver": "_scheduler",
+      "delay": "AckWidth",
+      "callback": "() =>\n            { _ackHighEvent = 0; _ack = true; _busy = false; Pins(); }",
+      "start": 4912,
+      "end": 5024
+    }
+  ]
+}

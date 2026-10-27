@@ -1,9 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Cpu.X86;
 using static ProtectedModeTests;
 
 internal static class BitDescriptorTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value, string message = "486 bit/selector invariant failed") { if (!value) throw new Exception(message); }
+    /// <summary>Registers the named bit descriptor regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
         foreach (byte opcode in new byte[] { 0xa3, 0xab, 0xb3, 0xbb })

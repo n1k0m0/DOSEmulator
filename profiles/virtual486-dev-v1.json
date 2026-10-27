@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "virtual486-dev-v1",
-  "name": "Virtual 486 AT - Development",
+  "name": "DOSE 486 AT - Development",
   "cpu": "i486dx-development",
   "cpuHz": 33000000,
   "ramMiB": 8,

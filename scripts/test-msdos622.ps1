@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
 param([switch]$SkipBuild, [switch]$Gui, [string]$OutputRoot = 'artifacts\m1-build')
@@ -16,11 +18,13 @@ $file = [IO.File]::Open($image,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write)
 try { $file.SetLength(33554432) } finally { $file.Dispose() }
 $baseHash = (Get-DosFileHash -LiteralPath $image -Algorithm SHA256).Hash
 $stages = @()
+# Writes an explicit private guest-input plan with bounded waits and required output markers.
 function Scenario([string]$Name, [object[]]$Plan) {
     $path = Join-Path $testRoot ($Name+'.scenario.json')
     ConvertTo-Json -InputObject $Plan -Depth 8 | Set-Content -LiteralPath $path -Encoding utf8
     return $path
 }
+# Runs the actual headless guest with explicit private media, captures evidence and rejects execution failures.
 function Guest([string]$Name, [string[]]$Arguments, [string[]]$Required) {
     $prefix = Join-Path $testRoot $Name
     dotnet $runner --disk $image --overlay $cow @Arguments --report ($prefix+'.json') --frame ($prefix+'.ppm') | Out-Null
@@ -49,12 +53,14 @@ $result = Guest install @('--floppy-a',$disks[0],'--boot','floppy-a','--steps','
     '--stop-screen','alle Disketten','--bios-trace',(Join-Path $testRoot 'install.bios.jsonl')) @()
 if (-not $result.text.Contains('alle Disketten') -or $result.scenario.mediaChanges -ne 2 -or $result.ataSectorsRead -lt 65500 -or $result.ataSectorsWritten -lt 12000 -or $result.floppySectorsWritten -ne 0) { throw 'Original three-disk installation or full disk verification did not complete.' }
 Copy-Item -LiteralPath $cow -Destination (Join-Path $testRoot 'installed-pristine.cow')
+# Checks the private installed FAT image with the independent read-only Python oracle.
 function Verify-Fat([string]$Name) {
     $verification = python (Join-Path $workspaceRoot 'tests\verify-msdos-install.py') $image $cow $disks[0]
     if ($LASTEXITCODE -ne 0) { throw "Independent MS-DOS FAT/source comparison failed: $Name" }
     $verification | Set-Content -LiteralPath (Join-Path $testRoot ($Name+'.verified.json')) -Encoding utf8
 }
 Verify-Fat installed
+# Builds the explicit keyboard-input/wait plan for the requested DOS command sequence.
 function Dos-Scenario([string]$Name, [string]$Commands) {
     # SETUP selected KEYB GR. The test typer emits physical US set-1, so 'kezb'
     # becomes 'keyb' under GR. Select US through the real DOS command first,

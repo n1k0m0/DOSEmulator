@@ -1,22 +1,28 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Buffers.Binary;
 
 namespace DOSEmulator.Cpu.X86;
 
 public sealed partial class X86Cpu
 {
+    /// <summary>Merges exception flags and the selected rounding direction into x87 status and its error summary.</summary>
     private void FpuNumericStatus(ushort exceptions, bool roundedUp)
     {
         FpuStatusWord = (ushort)((FpuStatusWord & ~0x200) | exceptions | (roundedUp ? 0x200 : 0));
         FpuSummary();
     }
+    /// <summary>Reads a validated 16-, 32- or 64-bit little-endian integer operand buffer.</summary>
     private static ulong FpuBits(ReadOnlySpan<byte> bytes) => bytes.Length switch
     {
         2 => BinaryPrimitives.ReadUInt16LittleEndian(bytes),
         4 => BinaryPrimitives.ReadUInt32LittleEndian(bytes),
         _ => BinaryPrimitives.ReadUInt64LittleEndian(bytes)
     };
+    /// <summary>Converts a signed width-selected integer operand into an exact raw extended value.</summary>
     private static Float80Value FpuInteger(ulong bits, int size) => Float80Math.FromInteger(size switch
     { 2 => (short)bits, 4 => (int)bits, _ => (long)bits });
+    /// <summary>Executes supported numeric transfers/arithmetic and separates precommit exceptions from committed stack changes.</summary>
     private bool ExecuteFpuNumeric(byte opcode, byte modrm)
     {
         int group = modrm >> 3 & 7, logical = modrm & 7;

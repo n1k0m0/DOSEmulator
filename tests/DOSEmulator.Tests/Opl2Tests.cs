@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Contracts;
 using DOSEmulator.Core;
 using DOSEmulator.Hardware;
@@ -11,13 +13,17 @@ internal static partial class Opl2Tests
         public readonly PcAudioMixer Mixer;
         public readonly Opl2 Opl;
         public readonly List<AudioBlock> Audio = [];
+        /// <summary>Builds the isolated rig fixture and initializes its caller-owned test state.</summary>
         public Rig() { Mixer = new(Clock); Opl = new(Clock, Mixer); Mixer.AudioReady += Audio.Add; }
+        /// <summary>Advances the fixture clock and integrated mixer together to the requested virtual instant.</summary>
         public void Advance(ulong delta) { Clock.AdvanceTo(Clock.Now + delta); Mixer.AdvanceTo(Clock.Now); }
+        /// <summary>Writes explicit private-fixture input data without modifying original user media.</summary>
         public ulong Write(byte register, byte value, ushort port = 0x388)
         {
             Opl.Write(port, register, 1); Advance(Opl2.AddressWaitNanoseconds);
             ulong committed = Clock.Now; Opl.Write((ushort)(port + 1), value, 1); Advance(Opl2.DataWaitNanoseconds); return committed;
         }
+        /// <summary>Programs an explicit reference FM tone through its actual address/data ports.</summary>
         public void Tone(int channel = 0, int fnum = 580, int block = 4, byte control = 0x21, byte attackDecay = 0xf0, byte sustainRelease = 0x0f)
         {
             int[] offsets = [0,1,2,8,9,10,16,17,18]; int m = offsets[channel], c = m + 3;
@@ -26,17 +32,22 @@ internal static partial class Opl2Tests
             Write((byte)(0x80 + c), sustainRelease); Write((byte)(0xa0 + channel), (byte)fnum);
             Write((byte)(0xb0 + channel), (byte)(0x20 | block << 2 | fnum >> 8));
         }
+        /// <summary>Flushes and collects completed fixture PCM blocks for the independent signal oracle.</summary>
         public float[] Samples() { Mixer.Flush(); return Audio.SelectMany(b => b.Samples).ToArray(); }
+        /// <summary>Computes RMS only over the explicitly selected trailing PCM frames.</summary>
         public double RmsTail(int count = 4800)
         { float[] samples = Samples(); return Math.Sqrt(samples.TakeLast(count * 2).Select(x => (double)x * x).Average()); }
     }
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition, string message = "OPL assertion failed.") { if (!condition) throw new Exception(message); }
+    /// <summary>Estimates the fixture signal's rising-edge period independently from the synthesizer's internal phase.</summary>
     private static double Pitch(float[] samples, int start = 4800)
     {
         var rises = new List<int>();
         for (int i = Math.Max(2, start * 2); i < samples.Length; i += 2) if (samples[i - 2] < 0 && samples[i] >= 0) rises.Add(i / 2);
         Check(rises.Count > 10); return (rises.Count - 1) * 48000.0 / (rises[^1] - rises[0]);
     }
+    /// <summary>Registers the named opl2 regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("OPL cold state is silent and data port is write-only", () =>
@@ -193,6 +204,7 @@ internal static partial class Opl2Tests
         });
         test("OPL FM connection and feedback affect the actual waveform", () =>
         {
+            // Executes the component's explicit runner with the supplied bounds and reports its resulting evidence.
             float[] Run(byte connection)
             {
                 var r = new Rig(); r.Tone(); r.Write(0x20, 0x22); r.Write(0x60, 0xf0); r.Write(0xc0, connection);

@@ -1,15 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Exact dyadic FSQRT inputs; no host floating-point arithmetic."""
 import argparse,json,random,struct
 from pathlib import Path
 
 J=1<<63
 def dyadic(n,scale=0,negative=False):
+ """Constructs a raw extended value from the specified exact dyadic integer/exponent pair."""
  if not n:return (0,0x8000 if negative else 0)
  bits=n.bit_length();assert bits<=64
  return (n<<(64-bits),(16383+scale+bits-1)|(0x8000 if negative else 0))
-def raw(v):return dict(significand=f'{v[0]:016X}',exponent=f'{v[1]:04X}')
+def raw(v):"""Serializes raw significand/exponent fields without numeric conversion."""; return dict(significand=f'{v[0]:016X}',exponent=f'{v[1]:04X}')
 
 def generate():
+ """Builds deterministic x87 sqrt vectors vectors and original guest data tables; no original media are modified."""
  positive=[dyadic(n) for n in (0,1,2,3,4,9,16,25,36,49,81,100)]+[dyadic(1,-2),dyadic(9,-2),
   (J-1,0),(1,0),(2,0),(J,0),((1<<64)-1,0),(J,1),(J+1,1),(J,2),(J+1,0x3fff),(J+3,0x3fff),
   ((1<<64)-1,0x7ffe),(J,0x7ffe),(J,0x7fff),(J|1<<62|0x42,0x7fff),(J|0x123,0x7fff),
@@ -23,7 +27,7 @@ def generate():
     if 0<n<1<<64:positive.append(dyadic(n,shift-2*p))
  positive+= [(J,exp) for exp in (3,0x1ffe,0x1fff,0x2000,0x3ffe,0x3fff,0x4000,0x5ffe,0x5fff,0x6000,0x7ffd)]
  positive=list(dict.fromkeys(positive));values=positive+[(s,e|0x8000) for s,e in positive];cases=[]
- def add(v,c,kind=0):cases.append(dict(id=f'sqrt-{len(cases)}',operation=0,control=c,a=raw(v),b=raw((J+0x1234,0x4003)),kind=kind,bits='0000000000000000'))
+ def add(v,c,kind=0):"""Adds one explicitly parameterized x87 sqrt vectors case to the deterministic test matrix."""; cases.append(dict(id=f'sqrt-{len(cases)}',operation=0,control=c,a=raw(v),b=raw((J+0x1234,0x4003)),kind=kind,bits='0000000000000000'))
  for pc in (0,2,3):
   for rc in range(4):
    for clear in (0,1,2,32,3,33,34,35):
@@ -43,6 +47,7 @@ if __name__=='__main__':
  cases=generate();(root/'vectors.json').write_text(json.dumps(cases,indent=2)+'\n',encoding='utf-8',newline='\n')
  selected=[]
  def pick(v,c,kind=0):
+  """Chooses a bounded, deterministic guest subset preserving the required architectural case families."""
   match=next(x for x in cases if x['a']==raw(v) and x['control']==c and x['kind']==kind)
   if match not in selected:selected.append(match)
  for pc in (0,2,3):
@@ -70,5 +75,5 @@ if __name__=='__main__':
   a,b=v['a'],v['b'];chunks.append(struct.pack('<4HQHQHIQ',v['control'],0,v['kind'],i,int(a['significand'],16),int(a['exponent'],16),int(b['significand'],16),int(b['exponent'],16),0,0))
  data=b''.join(chunks);source=f'%define VECTOR_COUNT {len(selected)}\n%macro sqrt_vectors 0\n'
  source+='\n'.join('db '+','.join(str(x) for x in data[i:i+40]) for i in range(0,len(data),40))+'\n%endmacro\n'
- (root/'x87-sqrt-data.inc').write_text(source,encoding='ascii',newline='\n')
+ (root/'x87-sqrt-data.inc').write_text('; SPDX-License-Identifier: Apache-2.0\n; Copyright 2026 Nils Kopal\n' + (source),encoding='ascii',newline='\n')
  print(json.dumps(dict(vectors=len(cases),guestVectors=len(selected))))

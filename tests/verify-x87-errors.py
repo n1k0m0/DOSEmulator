@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent IRQ/MF frame, pending-state, restart and DOS-return oracle."""
 import argparse
 import copy
@@ -13,6 +15,7 @@ NAMES=('start code_end proof rows original restored external_wait external_nop e
 
 
 def verify(report_path, memory_path, program_path, system, protected=False, paging=False):
+    """Validates x87 errors evidence from actual guest state, immutable program bytes and independently expected results."""
     r=json.loads(Path(report_path).read_text(encoding='utf-8-sig'));m=Path(memory_path).read_bytes();p=Path(program_path).read_bytes()
     c=r['cpu'];managed=system.startswith('emm386');output=r['status']['debugOutput']
     assert not (managed and protected) and (not paging or protected)
@@ -28,6 +31,7 @@ def verify(report_path, memory_path, program_path, system, protected=False, pagi
     labels=dict(zip(NAMES,struct.unpack_from('<23I',p,index+4)));basis=address-labels['proof']
     raw=lambda at:struct.unpack_from('<I',m,at)[0]
     def physical(at):
+        """Walks the reported classic 4-KiB page tables to translate a guest linear proof address."""
         if not c['pagingEnabled']:return at
         pde=raw((c['cr3']&0xfffff000)+((at>>20)&0xffc));assert pde&1
         pte=raw((pde&0xfffff000)+((at>>10)&0xffc));assert pte&1
@@ -68,7 +72,7 @@ def verify(report_path, memory_path, program_path, system, protected=False, pagi
         for name,vector in (('old_timer',8),('old_numeric',0x75),('old_int2',2)):
             assert read(at(name),4)==read(vector*4,4)
         # DOS may interpose its own IRQ75 entry. Check that actual RAM code;
-        # the own reference BIOS ROM entry has a separately known byte contract.
+        # the own DOSEBios ROM entry has a separately known byte contract.
         offset,segment=struct.unpack('<HH',read(at('old_numeric'),4));entry=segment*16+offset
         if entry>=0xf0000:assert proof[176:191]==bytes.fromhex('5030c0e6f0b020e6a0e620cd0258cf')
         else:assert proof[176:191]==read(entry,15)
@@ -98,6 +102,7 @@ def verify(report_path, memory_path, program_path, system, protected=False, pagi
 
 
 def negative_controls(report_path,memory_path,program_path,system,protected,paging,directory):
+    """Corrupts selected independent evidence fields and requires each corrupted oracle input to fail."""
     good=verify(report_path,memory_path,program_path,system,protected,paging)
     root=Path(directory);root.mkdir(parents=True,exist_ok=False)
     r=json.loads(Path(report_path).read_text(encoding='utf-8-sig'));m=Path(memory_path).read_bytes();p=Path(program_path).read_bytes()

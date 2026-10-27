@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Numerics;
 using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
@@ -5,14 +7,17 @@ using DOSEmulator.Runtime;
 
 internal static class Cp437FontTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition, string message = "CP437 assertion failed")
     { if (!condition) throw new Exception(message); }
+    /// <summary>Executes the real guest ROM service and checks its return to the test sentinel.</summary>
     private static void Bios(PcMachine m, ushort ax)
     {
         m.Cpu.SetSegment(Segment.Cs, 0); m.Cpu.Eip = 0x1000; m.Memory.WriteByte(0x1000, 0xf4);
         m.Cpu.SetRegister(Register.Ax, ax); m.Cpu.EnterRealModeInterrupt(0x10); m.RunSteps(200000);
         Check(m.Fault is null && m.Cpu.Halted, m.Fault ?? "INT10 did not return");
     }
+    /// <summary>Registers the named cp437 font regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         foreach (int height in new[] { 8, 14, 16 })
@@ -42,10 +47,12 @@ internal static class Cp437FontTests
                 for (int i = 0; i < arms.Length; i++)
                 {
                     int code = 0xb3 + i;
+                    // Selects the independent line-art style bits used by the font topology oracle.
                     int Rail(char style) => style switch { '0' => 0, '1' => 0x10, _ => 0x24 };
                     Check(font[code * height] == Rail(arms[i][0]) && font[code * height + height - 1] == Rail(arms[i][1]), $"{code:X2}: vertical boundary");
                     for (int y = 0; y < height; y++)
                     {
+                        // Tests whether the independent font oracle's horizontal rail reaches this scanline.
                         bool Reaches(char style) => style == '1' ? y == height / 2 : style == '2' && Math.Abs(y - height / 2) == 1;
                         Check(((font[code * height + y] & 128) != 0) == Reaches(arms[i][2]), $"{code:X2}: left boundary {y}");
                         Check(((font[code * height + y] & 1) != 0) == Reaches(arms[i][3]), $"{code:X2}: right boundary {y}");

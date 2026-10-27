@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Text.Json;
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
@@ -5,12 +7,17 @@ using static ProtectedModeTests;
 
 internal static class X87SquareRootTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value,string detail="FSQRT invariant") {if(!value)throw new Exception(detail);}
+    /// <summary>Places controlled bytes at a private guest address and executes through the normal decoder.</summary>
     private static void At(X86Cpu c,MemoryBus m,byte[] code,uint address=0x2200)
     {code.CopyTo(m.Ram,(int)address);c.Eip=address;c.Step();}
+    /// <summary>Builds explicit locked or unlocked memory-opcode bytes with the requested width and address.</summary>
     private static byte[] Mem(byte op,int group,uint address=0x31000)=>[op,(byte)(group*8+5),..BitConverter.GetBytes(address)];
+    /// <summary>Prepares the explicit test source required by the following guest instruction or BIOS operation.</summary>
     private static void Load(X86Cpu c,MemoryBus m,Float80Value v,uint address=0x30000)
     {m.WriteDword(address,(uint)v.Significand);m.WriteDword(address+4,(uint)(v.Significand>>32));m.WriteWord(address+8,v.SignExponent);At(c,m,Mem(0xdb,5,address));}
+    /// <summary>Builds and installs the controlled initial pixels required by the graphics regression.</summary>
     private static void Seed(X86Cpu c,MemoryBus m,ushort control,int kind)
     {
         int initial=(kind&12) switch {4=>0,8=>0x100,12=>0x4000,_=>0x4500};
@@ -18,7 +25,9 @@ internal static class X87SquareRootTests
         m.WriteWord(0x32004,(ushort)((c.FpuStatusWord&~0x4700)|0x200|initial|((kind&16)!=0?4:0)));
         At(c,m,Mem(0xd9,4,0x32000));
     }
+    /// <summary>Retrieves one explicitly named launch-option value or rejects a missing required argument.</summary>
     private static Float80Value Value(JsonElement v)=>new(Convert.ToUInt64(v.GetProperty("significand").GetString(),16),Convert.ToUInt16(v.GetProperty("exponent").GetString(),16));
+    /// <summary>Compares the independent reference-vector file with the actual numeric core/decoder results.</summary>
     public static int VerifyNativeVectors(string vectorsPath,string expectedPath)
     {
         using var input=JsonDocument.Parse(File.ReadAllText(vectorsPath));using var output=JsonDocument.Parse(File.ReadAllText(expectedPath));
@@ -54,6 +63,7 @@ internal static class X87SquareRootTests
         Console.WriteLine(JsonSerializer.Serialize(new{passed=failures.Count==0,vectors=vectors.Length,checkedCases,failed=failures.Count,failures},new JsonSerializerOptions{WriteIndented=true}));
         return failures.Count==0?0:1;
     }
+    /// <summary>Registers the named x87 square root regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
         foreach(int pc in new[]{0,2,3})foreach(int rc in Enumerable.Range(0,4))foreach(bool masked in new[]{false,true})

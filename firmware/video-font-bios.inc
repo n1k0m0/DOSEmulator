@@ -1,4 +1,6 @@
-; Original reference VGA character-generator services, Apache-2.0.
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
+; Original DOSE VGA character-generator services, Apache-2.0.
 ; IBM PS/2 BIOS Interface May 1988, pp. 2-25..2-30; Hardware Interface,
 ; Video Subsystem (Type 1), pp. 46..48 and 87. No imported ROM fonts.
 ; Called with the INT10 enter_service frame and DS=0.
@@ -146,7 +148,7 @@ video_font:
     mov dx,200
 .graphics_fits:
     cmp ax,dx
-    ja .done                     ; bounded reference BIOS: require a fitting grid
+    ja .done                     ; bounded DOSEBios: require a fitting grid
     mov [0x43*4],si
     mov [0x43*4+2],di
     mov [0x485],cx
@@ -412,6 +414,10 @@ video_select_scanlines:
 ; Buffer ranges crossing the caller's segment are rejected without a write.
 video_functionality:
     mov rAL,0
+    ; The IBM VGA state block has no 600/768-line encoding. Do not return a
+    ; misleading VGA color/scanline description for our new vendor SVGA modes.
+    cmp byte [0x449],0x13
+    ja .done
     cmp rBX,0
     jne .done
     mov di,rDI

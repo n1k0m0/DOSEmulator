@@ -1,8 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Check native constants against separately derived high precision math and stack rules."""
 import argparse,json,hashlib
 from pathlib import Path
 
 def verify(vectors,reference,derived):
+ """Checks x87 constant native values, status and preserved raw registers against the independent mathematical contract."""
  assert reference['referenceOnly'] and reference['architecture']=='host-x87-x64' and derived['passed']
  constants=derived['constants'];results={x['id']:x for x in reference['results']};overflows=unmasked=0;pcs=set();rcs=set();ops=set()
  for v in vectors:
@@ -30,6 +33,6 @@ def verify(vectors,reference,derived):
 
 if __name__=='__main__':
  p=argparse.ArgumentParser();p.add_argument('directory');a=p.parse_args();root=Path(a.directory)
- def load(n):return json.loads((root/n).read_text(encoding='utf-8'))
+ def load(n):"""Loads the explicit report, memory and program evidence without modifying its files."""; return json.loads((root/n).read_text(encoding='utf-8'))
  ref=load('native-reference.json');assert hashlib.sha256((root/'vectors.json').read_bytes()).hexdigest().upper()==ref['vectorsSha256']
  print(json.dumps(verify(load('vectors.json'),ref,load('derived-constants.json')),indent=2))

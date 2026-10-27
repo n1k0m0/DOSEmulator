@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
+version = 1
+
+# Data formats cannot contain source comments. This annotation covers original
+# project profiles and the hand-drawn font data; external media are not included.
+[[annotations]]
+path = ["profiles/*.json", "docs/state-schema-v1.json", "docs/state-events-v1.json", "firmware/fonts/*.txt", "src/SharpPixels/Properties/Resources.resx"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Nils Kopal"
+SPDX-License-Identifier = "Apache-2.0"

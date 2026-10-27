@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Verify genuine VCPI results, paged physical payloads and DOS return privately."""
 import argparse
 import hashlib
@@ -8,6 +10,7 @@ import struct
 
 
 def verify(report_path, memory_path, absent=False, program_source=None):
+    """Validates emm386 memory evidence from actual guest state, immutable program bytes and independently expected results."""
     report = json.loads(Path(report_path).read_text(encoding="utf-8-sig"))
     memory = Path(memory_path).read_bytes()
     output, cpu = report["status"]["debugOutput"], report["cpu"]
@@ -24,6 +27,7 @@ def verify(report_path, memory_path, absent=False, program_source=None):
     raw = lambda a: struct.unpack_from("<I", memory, a)[0]
 
     def physical(address):
+        """Walks the reported classic 4-KiB page tables to translate a guest linear proof address."""
         if not cpu["pagingEnabled"]:
             return address
         pde = raw((cpu["cr3"] & ~4095) + (address >> 22) * 4)
@@ -77,6 +81,7 @@ def verify(report_path, memory_path, absent=False, program_source=None):
 
 
 def negative_controls(report_path, memory_path, directory):
+    """Corrupts selected independent evidence fields and requires each corrupted oracle input to fail."""
     report = json.loads(Path(report_path).read_text(encoding="utf-8-sig"))
     memory = Path(memory_path).read_bytes()
     # This fixture's own conventional program is identity mapped; positive
@@ -88,6 +93,7 @@ def negative_controls(report_path, memory_path, directory):
     controls = []
 
     def reject(name, report_input=report_path, memory_input=memory_path):
+        """Requires an independently corrupted input to fail instead of accepting the guest's success marker alone."""
         try:
             verify(report_input, memory_input)
         except AssertionError:

@@ -1,8 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Globalization;
 
 namespace DOSEmulator.Hardware;
 
-/// <summary>Original reference-platform artwork. No host font or ROM-image dependency.</summary>
+/// <summary>Original DOSE platform artwork. No host font or ROM-image dependency.</summary>
 public static class Cp437Font
 {
     private static readonly byte[] Eight = ReadArtwork();
@@ -16,6 +18,7 @@ public static class Cp437Font
         _ => throw new ArgumentOutOfRangeException(nameof(height), "Reference fonts have 8, 14 or 16 rows.")
     };
 
+    /// <summary>Loads the original project font artwork and rejects invalid glyph dimensions or source data.</summary>
     private static byte[] ReadArtwork()
     {
         using var stream = typeof(Cp437Font).Assembly.GetManifestResourceStream("DOSEmulator.Cp437Artwork")
@@ -36,6 +39,7 @@ public static class Cp437Font
         return result;
     }
 
+    /// <summary>Resizes the reusable output surface only when its required storage changes.</summary>
     private static byte[] Resize(int height)
     {
         byte[] result = new byte[256 * height];

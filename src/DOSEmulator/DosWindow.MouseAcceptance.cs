@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using DOSEmulator.Contracts;
@@ -24,7 +26,10 @@ public sealed partial class DosWindow
     private readonly List<RelativeMouseInput.Input> _nativeGuestMouseEvents = [];
     private readonly HashSet<ushort> _nativePressedKeys = [];
     private int _nativePressedButtons;
+    private long _nativeInputsSent;
+    private string? _nativeCleanupFault;
 
+    /// <summary>Advances the separately authorized native-input harness; ordinary execution never calls it.</summary>
     private void AdvanceNativeMouseAcceptance()
     {
         try
@@ -33,8 +38,11 @@ public sealed partial class DosWindow
             if (_elapsed.ElapsedMilliseconds > 45000) throw new TimeoutException($"Native mouse stage {_nativeMouseStage} timed out.");
             if (_elapsed.ElapsedMilliseconds < _nativeMouseNext || _captureIndex >= 0) return;
             string text = Volatile.Read(ref _status)?.DebugOutput ?? "";
+            // Checks for an actual guest diagnostic marker before advancing the test sequence.
             bool Marker(string value) => text.Contains(value, StringComparison.Ordinal);
+            // Schedules the next acceptance-harness step after its required observation delay.
             void Later() => _nativeMouseNext = _elapsed.ElapsedMilliseconds + 300;
+            // Appends a concrete observation to the surrounding private acceptance report.
             void Evidence(string phase)
             {
                 if (!GetClipCursor(out NativeRect clip)) throw new InvalidOperationException("Cannot inspect Windows cursor clip.");
@@ -71,7 +79,7 @@ public sealed partial class DosWindow
                 case 3:
                     if (!Marker("NATIVE-MOUSE-MOVED") || !Marker("NATIVE-MOUSE-LEFT") || !Marker("NATIVE-MOUSE-RIGHT")) return;
                     RequireNativeCapture();
-                    _nativeFocusTarget = new Form { Text = "DOSEmulator native focus acceptance", Width = 260, Height = 100,
+                    _nativeFocusTarget = new Form { Text = "DOSE native focus acceptance", Width = 260, Height = 100,
                         ShowInTaskbar = false, StartPosition = FormStartPosition.CenterScreen };
                     _nativeFocusTarget.Show(); _nativeFocusTarget.Activate();
                     _nativeMouseStage++; Later(); break;
@@ -124,6 +132,7 @@ public sealed partial class DosWindow
             Close();
         }
     }
+    /// <summary>Targets only this test window's verified guest client area for an explicitly enabled native test.</summary>
     private void ClickOwnGuest()
     {
         if (GetForegroundWindow() != _nativeMouseWindow) throw new InvalidOperationException("Mouse target is not our own foreground window.");
@@ -133,6 +142,7 @@ public sealed partial class DosWindow
         _nativePointerMoved = true;
         OwnInput(new NativeInput { MouseFlags = 2 });
     }
+    /// <summary>Checks that this test process owns the actual Windows capture before native evidence is accepted.</summary>
     private void RequireNativeCapture()
     {
         if (!_mouseInput.Captured || CursorState != CursorState.Grabbed || !IsFocused)
@@ -140,13 +150,16 @@ public sealed partial class DosWindow
         if (!GetClipCursor(out NativeRect clip) || clip == _nativeOriginalClip)
             throw new InvalidOperationException("GLFW did not establish a Windows cursor clip.");
     }
+    /// <summary>Encodes a bounded native test keyboard event; ordinary guest input does not use this path.</summary>
     private static NativeInput KeyInput(ushort key,bool up = false) => new() { Type = 1, VirtualKey = key, KeyFlags = up ? 2u : 0 };
+    /// <summary>Sends native test events only after verifying this process owns the actual foreground target.</summary>
     private void OwnInput(params NativeInput[] input)
     {
         nint foreground = GetForegroundWindow();
         if (foreground != _nativeMouseWindow && foreground != _nativeFocusTarget?.Handle)
             throw new InvalidOperationException("Refusing test input outside our own windows.");
         uint sent = SendInput((uint)input.Length,input,Marshal.SizeOf<NativeInput>());
+        _nativeInputsSent += sent;
         for (int i = 0; i < sent; i++)
         {
             NativeInput e = input[i];
@@ -162,6 +175,7 @@ public sealed partial class DosWindow
         if (sent != input.Length)
             throw new InvalidOperationException("Windows rejected native test input.");
     }
+    /// <summary>Balances only input owned by the opt-in native test and restores its saved pointer/clip state.</summary>
     private void FinishNativeMouseInput()
     {
         if (!_nativeMouseAcceptance) return;
@@ -172,8 +186,14 @@ public sealed partial class DosWindow
             var up = _nativePressedKeys.Select(key => KeyInput(key,true)).ToList();
             uint buttons = (uint)(((_nativePressedButtons & 1) != 0 ? 4 : 0) | ((_nativePressedButtons & 2) != 0 ? 16 : 0));
             if (buttons != 0) up.Add(new() { MouseFlags = buttons });
-            if (up.Count != 0) SendInput((uint)up.Count,up.ToArray(),Marshal.SizeOf<NativeInput>());
-            if (_nativePointerMoved) SetCursorPos(_nativeOriginalPointer.X,_nativeOriginalPointer.Y);
+            if (up.Count != 0)
+            {
+                uint sent = SendInput((uint)up.Count,up.ToArray(),Marshal.SizeOf<NativeInput>());
+                _nativeInputsSent += sent;
+                if (sent != up.Count) _nativeCleanupFault = "Windows rejected part of this test's owned input release.";
+            }
+            if (_nativePointerMoved && !SetCursorPos(_nativeOriginalPointer.X,_nativeOriginalPointer.Y))
+                _nativeCleanupFault = (_nativeCleanupFault is null ? "" : _nativeCleanupFault + " ") + "Windows rejected this test's pointer restoration.";
         }
     }
     [StructLayout(LayoutKind.Sequential)] private record struct NativeRect { public int Left,Top,Right,Bottom; }
@@ -187,11 +207,18 @@ public sealed partial class DosWindow
         [FieldOffset(8)] public ushort VirtualKey;
         [FieldOffset(12)] public uint KeyFlags;
     }
+    /// <summary>Reads the actual foreground HWND before the opt-in test is allowed to send native events.</summary>
     [DllImport("user32.dll")] private static extern nint GetForegroundWindow();
+    /// <summary>Reads the current Windows pointer clip for capture/release evidence.</summary>
     [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool GetClipCursor(out NativeRect rect);
+    /// <summary>Reads the native client bounds of the explicitly selected test window.</summary>
     [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool GetClientRect(nint window,out NativeRect rect);
+    /// <summary>Calls the Windows coordinate conversion needed by the separately enabled own-window input test.</summary>
     [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool ClientToScreen(nint window,ref NativePoint point);
+    /// <summary>Reads the native pointer location for restoration by the opt-in own-window test.</summary>
     [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool GetCursorPos(out NativePoint point);
+    /// <summary>Calls the Windows pointer positioning API only from the separately authorized own-window test.</summary>
     [DllImport("user32.dll")] [return:MarshalAs(UnmanagedType.Bool)] private static extern bool SetCursorPos(int x,int y);
+    /// <summary>Invokes the native event API for the guarded opt-in own-window acceptance path.</summary>
     [DllImport("user32.dll",SetLastError=true)] private static extern uint SendInput(uint count,[In] NativeInput[] input,int size);
 }

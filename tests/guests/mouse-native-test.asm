@@ -1,7 +1,10 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own native input probe. Events must reach this real INT33 via KBC/IRQ12.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -87,6 +90,7 @@ failed:
     int 0x21
     mov ax,0x4c01
     int 0x21
+; Publishes the probe's actual output marker for the independent host observer.
 marker:
     push ax
     push si

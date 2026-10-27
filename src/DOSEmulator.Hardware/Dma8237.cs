@@ -1,13 +1,16 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
+using System.Buffers.Binary;
 using DOSEmulator.Core;
 
 namespace DOSEmulator.Hardware;
 
 public enum DmaReadResult { Transferred, Blocked, InvalidMode }
 
-/// <summary>AT DMA register/transfer foundation. Bus arbitration and device-paced timing are not yet modeled.</summary>
-public sealed class Dma8237(MemoryBus memory) : IIoPortDevice
+/// <summary>AT DMA registers and byte/word grants. Devices schedule requests; electrical bus arbitration is not modeled.</summary>
+public sealed partial class Dma8237(MemoryBus memory) : IIoPortDevice
 {
-    private sealed class Channel
+    private sealed partial class Channel
     {
         public ushort Address, BaseAddress, Count, BaseCount;
         public byte Page, Mode;
@@ -16,8 +19,11 @@ public sealed class Dma8237(MemoryBus memory) : IIoPortDevice
     private readonly Channel[] _channels = Enumerable.Range(0, 8).Select(_ => new Channel()).ToArray();
     private readonly bool[] _highByte = new bool[2];
     private readonly byte[] _status = new byte[2], _command = new byte[2];
+    /// <summary>Resolves an AT DMA page-register port to its byte or word channel.</summary>
     private static int PageChannel(ushort port) => port switch { 0x87 => 0, 0x83 => 1, 0x81 => 2, 0x82 => 3, 0x8f => 4, 0x8b => 5, 0x89 => 6, 0x8a => 7, _ => -1 };
+    /// <summary>Resolves a controller port into its channel/register selection without applying a transfer.</summary>
     private static (int Chip, int Register) Decode(ushort port) => port < 0x10 ? (0, port) : (1, (port - 0xc0) / 2);
+    /// <summary>Reports the transfer's terminal-count condition without inventing an additional data grant.</summary>
     public bool IsTerminalCount(int channel)
     {
         if ((uint)channel >= 8) throw new ArgumentOutOfRangeException(nameof(channel));
@@ -45,6 +51,31 @@ public sealed class Dma8237(MemoryBus memory) : IIoPortDevice
         Span<byte> data = stackalloc byte[1]; data[0] = value;
         return Transfer(channel, data, true) == 1 ? DmaReadResult.Transferred : DmaReadResult.Blocked;
     }
+    /// <summary>One device-paced 16-bit memory read on AT channel 5, 6 or 7. Address/count advance in words.</summary>
+    public DmaReadResult TryReadWord(int channel, out ushort value)
+    {
+        if (channel is < 5 or > 7) throw new ArgumentOutOfRangeException(nameof(channel));
+        value = 0;
+        Channel c = _channels[channel];
+        if (c.Masked || (_command[1] & 4) != 0) return DmaReadResult.Blocked;
+        if (((c.Mode >> 2) & 3) != 2 || (c.Mode & 0xc0) == 0xc0) return DmaReadResult.InvalidMode;
+        Span<byte> data = stackalloc byte[2];
+        if (Transfer(channel, data, false) != 2) return DmaReadResult.Blocked;
+        value = BinaryPrimitives.ReadUInt16LittleEndian(data);
+        return DmaReadResult.Transferred;
+    }
+    /// <summary>One device-paced word into memory. Verify/read/cascade never consume device data.</summary>
+    public DmaReadResult TryWriteWord(int channel, ushort value)
+    {
+        if (channel is < 5 or > 7) throw new ArgumentOutOfRangeException(nameof(channel));
+        Channel c = _channels[channel];
+        if (c.Masked || (_command[1] & 4) != 0) return DmaReadResult.Blocked;
+        if (((c.Mode >> 2) & 3) != 1 || (c.Mode & 0xc0) == 0xc0) return DmaReadResult.InvalidMode;
+        Span<byte> data = stackalloc byte[2];
+        BinaryPrimitives.WriteUInt16LittleEndian(data, value);
+        return Transfer(channel, data, true) == 2 ? DmaReadResult.Transferred : DmaReadResult.Blocked;
+    }
+    /// <summary>Reads the selected DMA register under the byte-pointer and terminal-count status rules.</summary>
     public uint Read(ushort port, int width)
     {
         if (width != 1) return 0xff;
@@ -68,6 +99,7 @@ public sealed class Dma8237(MemoryBus memory) : IIoPortDevice
         }
         return 0xff;
     }
+    /// <summary>Programs the selected byte/word DMA controller register, mask, mode or page latch.</summary>
     public void Write(ushort port, uint value, int width)
     {
         if (width != 1) return;
@@ -92,12 +124,13 @@ public sealed class Dma8237(MemoryBus memory) : IIoPortDevice
             case 12: _highByte[chip] = false; break;
             case 13:
                 _highByte[chip] = false; _status[chip] = _command[chip] = 0;
-                for (int i = chip * 4; i < chip * 4 + 4; i++) { _channels[i].Masked = true; _channels[i].Requested = false; }
+                for (int i = chip * 4; i < chip * 4 + 4; i++) { _channels[i].Masked = true; _channels[i].Requested = false; _channels[i].TerminalCount = false; }
                 break;
             case 14: for (int i = chip * 4; i < chip * 4 + 4; i++) _channels[i].Masked = false; break;
             case 15: for (int i = 0; i < 4; i++) _channels[chip * 4 + i].Masked = (value & (1u << i)) != 0; break;
         }
     }
+    /// <summary>Performs the requested bounded controller transfer while preserving count, address and terminal-count semantics.</summary>
     public int Transfer(int channel, Span<byte> deviceBytes, bool deviceToMemory)
     {
         if ((uint)channel >= 8 || channel == 4) throw new ArgumentOutOfRangeException(nameof(channel));

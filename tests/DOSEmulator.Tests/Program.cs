@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Buffers.Binary;
 using System.IO.Pipes;
 using System.Security.Cryptography;
@@ -8,6 +10,22 @@ using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
 
+if (args.Length == 2 && args[0] == "--opl-audit-benchmark") return OplAuditTests.Run(args[1]);
+if (args.Length == 2 && args[0] == "--cow-audit-benchmark") return CowAuditPerformanceTests.Run(args[1]);
+if (args.Length == 2 && args[0] == "--audit-cpu-benchmark") return CpuAuditTests.Benchmark(args[1]);
+if (args.Length == 2 && args[0] == "--audit2-cpu-guest") return Audit2CpuGuestRunner.Run(args[1]);
+if (args.Length == 2 && args[0] == "--fx-host-guest") return FxHostGuestRunner.Run(args[1]);
+if (args.Length == 2 && args[0] == "--p54c-pc-guest") return P54cPcGuestRunner.Run(args[1]);
+if (args.Length == 2 && args[0] == "--p54c-debug-guest") return DebugGuestRunner.Run(args[1]);
+if (args.Length == 2 && args[0] == "--selector-guest") return SelectorGuestRunner.Run(args[1]);
+if (args.Length == 2 && args[0] == "--tsc-guest") return TimestampGuestRunner.Run(args[1]);
+if (args.Length == 2 && args[0] == "--p54c-core-guest") return P54cCoreGuestRunner.Run(args[1]);
+if (args.Length == 2 && args[0] == "--combined-audio-guest") return CombinedAudioGuestRunner.Run(args[1]);
+if (args.Length == 2 && args[0] == "--lss-boundary-guest") return LssGuestRunner.Run(args[1]);
+if (args.Length == 2 && args[0] == "--snapshot-doom") return SnapshotDoomRunner.Run(args[1]);
+if (args.Length == 2 && args[0] == "--snapshot-guest") return SnapshotGuestRunner.Run(args[1]);
+if (args.Length == 2 && args[0] == "--dma16-guest") return DmaWordGuestRunner.Run(args[1]);
+if (args.Length == 1 && args[0] == "--ipc-shutdown-check") { IpcLifecycleTests.CheckShutdown(); return 0; }
 if (args.Length == 3 && args[0] == "--x87-native-vectors") return X87NumericTests.VerifyNativeVectors(args[1], args[2]);
 if (args.Length == 3 && args[0] == "--x87-compare-native") return X87ComparisonTests.VerifyNativeVectors(args[1], args[2]);
 if (args.Length == 3 && args[0] == "--x87-round-native") return X87RoundingTests.VerifyNativeVectors(args[1], args[2]);
@@ -15,28 +33,46 @@ if (args.Length == 3 && args[0] == "--x87-round-native") return X87RoundingTests
 if (args.Length == 3 && args[0] == "--x87-sqrt-native") return X87SquareRootTests.VerifyNativeVectors(args[1], args[2]);
 
 if (args.Length == 3 && args[0] == "--x87-constant-native") return X87ConstantTests.VerifyNativeVectors(args[1], args[2]);
+if (args.Length == 3 && args[0] == "--x87-bcd-native") return X87PackedBcdTests.VerifyNativeVectors(args[1], args[2]);
+if (args.Length == 3 && args[0] == "--x87-scale-native") return X87ScalingTests.VerifyNativeVectors(args[1], args[2]);
+if (args.Length == 3 && args[0] == "--x87-extract-native") return X87ExtractionTests.VerifyNativeVectors(args[1], args[2]);
+if (args.Length == 3 && args[0] == "--x87-remainder-native") return X87RemainderTests.VerifyNativeVectors(args[1], args[2]);
+if (args.Length == 3 && args[0] == "--x87-exp2m1-math") return X87ExponentialTests.VerifyNativeVectors(args[1], args[2]);
+if (args.Length == 3 && args[0] == "--x87-logarithm-math") return X87LogarithmTests.VerifyMathVectors(args[1], args[2]);
+if (args.Length == 3 && args[0] == "--x87-atan-math") return X87ArcTangentTests.VerifyMathVectors(args[1], args[2]);
+if (args.Length == 3 && args[0] == "--x87-tangent-math") return X87TangentTests.VerifyMathVectors(args[1], args[2]);
+if (args.Length == 3 && args[0] == "--x87-sincos-math") return X87SineCosineTests.VerifyMathVectors(args[1], args[2]);
+if (args.Length == 3 && args[0] == "--x87-fsincos-math") return X87SinCosPairTests.VerifyMathVectors(args[1], args[2]);
 
 var tests = new List<(string Name, Func<Task> Run)>();
+// Registers one named synchronous regression in the surrounding runner.
 void Test(string name, Action action) => tests.Add((name, () => { action(); return Task.CompletedTask; }));
+// Registers one named asynchronous regression in the surrounding runner.
 void AsyncTest(string name, Func<Task> action) => tests.Add((name, action));
+// Compares expected and actual regression values using their normal equality contract.
 static void Equal<T>(T expected, T actual) { if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new Exception($"Expected {expected}, got {actual}."); }
+// Requires a regression condition to hold before the test continues.
 static void True(bool condition, string message = "Assertion failed.") { if (!condition) throw new Exception(message); }
+// Requires a regression action to reject its input with the selected exception type.
 static void Throws<T>(Action action) where T : Exception
 {
     try { action(); } catch (T) { return; }
     throw new Exception($"Expected {typeof(T).Name}.");
 }
+// Builds an isolated CPU/bus fixture with caller-supplied guest instruction bytes.
 static (X86Cpu Cpu, MemoryBus Memory, IoPortBus Io) Rig(params byte[] code)
 {
     var memory = new MemoryBus(2 * 1024 * 1024); var io = new IoPortBus(); var cpu = new X86Cpu(memory, io);
     cpu.SetSegment(Segment.Cs, 0); cpu.Eip = 0x1000; cpu.SetRegister(Register.Sp, 0x9000);
     code.CopyTo(memory.Ram, 0x1000); return (cpu, memory, io);
 }
+// Executes the component's explicit runner with the supplied bounds and reports its resulting evidence.
 static void Run(X86Cpu cpu, int limit = 10000)
 {
     for (int i = 0; i < limit && !cpu.Halted; i++) cpu.Step();
     True(cpu.Halted, "CPU did not halt within the test budget.");
 }
+// Programs an actual one-channel LBA28 read request through ATA task-file ports.
 static void AtaRead(AtaPioController ata, int count = 1, int lba = 0)
 {
     ata.Write(0x1f6, (uint)(0xe0 | ((lba >> 24) & 15)), 1);
@@ -200,10 +236,12 @@ Test("BSWAP reverses all four bytes",()=>{var(c,_,_)=Rig(0x66,0xb8,0x78,0x56,0x3
 Test("RTC date is deterministic and uses BCD",()=>{var s=new DeviceScheduler();var r=new RtcCmos(s,8);r.Write(0x70,9,1);Equal(0x26u,r.Read(0x71,1));r.Write(0x70,7,1);Equal(0x24u,r.Read(0x71,1));s.AdvanceTo(2_000_000_000);r.Write(0x70,0,1);Equal(2u,r.Read(0x71,1));});
 Test("keyboard test encoding maps digits and shift correctly",()=>{True(GuestKeyboard.Encode("1A\r\n").AsSpan().SequenceEqual(new byte[]{2,0x82,0x2a,0x1e,0x9e,0xaa,0x1c,0x9c}));});
 
+// Boots the original project test sector before running real ROM service assertions.
 static PcMachine BiosMachine()
 {
     var m=PcMachine.CreateDemo();m.RunSteps(100000);True(m.Fault is null);return m;
 }
+// Enters an actual guest BIOS service with controlled registers and waits for its architectural return.
 static void BiosCall(PcMachine m,byte vector,ushort ax)
 {
     m.Cpu.SetSegment(Segment.Cs,0);m.Cpu.Eip=0x1000;m.Memory.WriteByte(0x1000,0xf4);
@@ -224,10 +262,42 @@ Test("8237 auto-init reloads address and count",()=>{var m=new MemoryBus(1048576
 Test("8237 memory-to-device and master disable",()=>{var m=new MemoryBus(1048576);m.WriteByte(0x2000,0xab);var d=new Dma8237(m);d.Write(0x0c,0,1);d.Write(2,0,1);d.Write(2,0x20,1);d.Write(3,0,1);d.Write(3,0,1);d.Write(0x0b,0x49,1);d.Write(0x0a,1,1);d.Write(8,4,1);byte[] buffer=new byte[1];Equal(0,d.Transfer(1,buffer,false));d.Write(8,0,1);Equal(1,d.Transfer(1,buffer,false));Equal((byte)0xab,buffer[0]);});
 
 StorageTests.AddTo(Test);
+MachineStorageTests.AddTo(Test);
+SnapshotTests.AddTo(Test);
+SnapshotMediaTests.AddTo(Test);
+SnapshotEventTests.AddTo(Test);
+MediaCheckpointTests.AddTo(Test);
+DmaWordTests.AddTo(Test);
+SoundBlaster16Tests.AddTo(Test);
 MemoryBusFastPathTests.AddTo(Test);
 ShiftOptimizationTests.AddTo(Test);
 CpuSystemTests.AddTo(Test);
 ProtectedModeTests.AddTo(Test);
+LssBoundaryTests.AddTo(Test);
+GameportBiosTests.AddTo(Test);
+SsContractTests.AddTo(Test);
+X87EncodingCoverageTests.AddTo(Test);
+PciConfigurationTests.AddTo(Test);
+MemoryDecodeTests.AddTo(Test);
+Audit2CpuTests.AddTo(Test);
+Audit2StateMediaTests.AddTo(Test);
+Audit2InputTests.AddTo(Test);
+Audit2PerformanceTests.AddTo(Test);
+FxHostPcTests.AddTo(Test);
+P54cTests.AddTo(Test);
+P54cProfileTests.AddTo(Test);
+P54cPcTests.AddTo(Test);
+TimestampTests.AddTo(Test);
+TimestampMsrTests.AddTo(Test);
+SelectorStackTests.AddTo(Test);
+DebugExtensionTests.AddTo(Test);
+PopMemoryTests.AddTo(Test);
+CpuAuditTests.AddTo(Test);
+SchedulerAuditTests.AddTo(Test);
+BiosAuditBoundaryTests.AddTo(Test);
+InputHostAuditTests.AddTo(Test);
+CowAuditPerformanceTests.AddTo(Test);
+OplAuditTests.AddTo(Test);
 PrivilegeTests.AddTo(Test);
 CallGateTests.AddTo(Test);
 HardwareTaskTests.AddTo(Test);
@@ -244,11 +314,36 @@ X87ComparisonTests.AddTo(Test);
 X87RoundingTests.AddTo(Test);
 X87SquareRootTests.AddTo(Test);
 X87ConstantTests.AddTo(Test);
+X87PackedBcdTests.AddTo(Test);
+X87ScalingTests.AddTo(Test);
+X87ExtractionTests.AddTo(Test);
+X87RemainderTests.AddTo(Test);
+X87ExponentialTests.AddTo(Test);
+X87LogarithmTests.AddTo(Test);
+X87ArcTangentTests.AddTo(Test);
+X87TangentTests.AddTo(Test);
+X87SineCosineTests.AddTo(Test);
+X87SinCosPairTests.AddTo(Test);
+RepBatchTests.AddTo(Test);
+ReviewPipelineTests.AddTo(Test);
+CheckpointOptimizationTests.AddTo(Test);
+FetchThroughputTests.AddTo(Test);
+AluThroughputTests.AddTo(Test);
+RomRepBatchTests.AddTo(Test);
+BiosReviewTests.AddTo(Test);
+ReviewDeviceTests.AddTo(Test);
 BiosBlockMoveTests.AddTo(Test);
 FloppyTests.AddTo(Test);
 FloppyFormatBiosTests.AddTo(Test);
 FloppyDmaBoundaryTests.AddTo(Test);
 VgaTests.AddTo(Test);
+Et4000Tests.AddTo(Test);
+VbeTests.AddTo(Test);
+GameportTests.AddTo(Test);
+SerialTests.AddTo(Test);
+ParallelTests.AddTo(Test);
+MidiTests.AddTo(Test);
+Test("IPC shutdown does not depend on a stopped GUI synchronization context", IpcLifecycleTests.CheckShutdown);
 VgaFontTests.AddTo(Test);
 Cp437FontTests.AddTo(Test);
 CursorEmulationTests.AddTo(Test);
@@ -263,12 +358,18 @@ SoundBlasterResourceTests.AddTo(Test);
 Opl2Tests.AddTo(Test);
 Opl2Tests.AddCsmTo(Test);
 Opl2Tests.AddRhythmTo(Test);
+Opl3Tests.AddTo(Test);
 IoTimingTests.AddTo(Test);
 RealtimePacerTests.AddTo(Test);
 GuestScenarioTests.AddTo(Test);
 MouseTests.AddTo(Test);
 ResetTests.AddTo(Test);
 
+if (args.Length == 2 && args[0] == "--filter")
+{
+    tests.RemoveAll(t => !t.Name.Contains(args[1], StringComparison.OrdinalIgnoreCase));
+    if (tests.Count == 0) throw new ArgumentException("No tests matched the requested filter.");
+}
 var results=new List<object>(); int failed=0;
 foreach(var test in tests)
 {

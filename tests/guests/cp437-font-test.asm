@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original CP437 ROM-font acceptance under real DOS, Apache-2.0.
 ; No OS or font bytes. Query ROM pointers, copy their packed data into this
 ; program's RAM, upload it through AH1110 (also with resident DISPLAY.SYS),
@@ -8,6 +10,7 @@
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cld
     push cs
@@ -279,6 +282,7 @@ start:
     mov ax,0x4c00
     int 0x21
 
+; Transfers the selected real VGA font plane to or from the probe's own buffer.
 transfer_plane:
     mov dx,0x3c4
     in al,dx
@@ -360,6 +364,7 @@ transfer_plane:
     mov al,[saved_seq_index]
     out dx,al
     ret
+; Builds the expected horizontal glyph/frame line in the probe's private buffer.
 horizontal:
     stosw
     mov al,dl
@@ -368,6 +373,7 @@ horizontal:
     mov al,dh
     stosw
     ret
+; Prints the explicit guest text through the real DOS/BIOS path.
 text:
     lodsb
     test al,al
@@ -377,6 +383,7 @@ text:
     jmp text
 .done:
     ret
+; Writes one actual guest debug-port byte for the independent evidence trace.
 debug:
     lodsb
     test al,al
@@ -385,6 +392,7 @@ debug:
     jmp debug
 .done:
     ret
+; Writes the requested value as hexadecimal guest debug-port evidence.
 debug_hex:
     pushad
     mov cx,4
@@ -428,8 +436,9 @@ saved_gc_index: db 0
 verify_source: dw 0
 checked_points: dw 0
 capture: db 0
+; Emits a hexadecimal diagnostic value through the probe's output path.
 hex: db '0123456789ABCDEF'
-title: db 'ORIGINAL CP437 / REFERENCE VGA',0
+title: db 'ORIGINAL CP437 / DOSE VGA',0
 details: db '256 video glyphs / 8, 14 and 16 rows',0
 source: db 'Own artwork / ROM bytes + real VGA plane 2',0
 german: db 'Gr',0x81,0xe1,'e: ',0x84,' ',0x94,' ',0x81,' ',0x8e,' ',0x99,' ',0x9a,' ',0xe1,0

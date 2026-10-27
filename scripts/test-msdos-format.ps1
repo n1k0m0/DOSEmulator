@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Disk, [Parameter(Mandatory)][string]$Overlay,
@@ -20,9 +22,11 @@ $base = Join-Path $root 'private-scratch.img'; $cow = Join-Path $root 'private-b
 $scratch = [byte[]]::new(1474560); [Array]::Fill[byte]($scratch,0x39)
 $file = [IO.File]::Open($base,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write); try { $file.Write($scratch) } finally { $file.Dispose() }
 $baseHash = (Get-DosFileHash -LiteralPath $base).Hash; $hddHash = (Get-DosFileHash -LiteralPath $privateHdd).Hash
+# Writes the bounded DOS format/test plan into this run's private output directory.
 function Plan([string]$Name, [object[]]$Steps) {
     $path = Join-Path $root ($Name+'.scenario.json'); ConvertTo-Json -InputObject $Steps -Depth 8 | Set-Content -LiteralPath $path -Encoding utf8; return $path
 }
+# Runs the actual headless guest with explicit private media, captures evidence and rejects execution failures.
 function Guest([string]$Name, [string]$Scenario, [string]$Limit) {
     $prefix = Join-Path $root $Name
     dotnet $runner --disk $Disk --overlay $privateHdd --floppy-a $base --floppy-b $base --floppy-b-overlay $cow --boot ide --steps $Limit --scenario $Scenario --report ($prefix+'.json') --frame ($prefix+'.ppm') --memory-dump ($prefix+'.ram') --floppy-io-trace ($prefix+'.io.jsonl') | Out-Null

@@ -1,0 +1,5119 @@
+{
+  "version": 1,
+  "nodes": {
+    "DOSEmulator.Core.MemoryBus": {
+      "namespace": "DOSEmulator.Core",
+      "type": "MemoryBus",
+      "fields": [
+        {
+          "name": "_mappings",
+          "type": "List<Mapping>",
+          "mode": "excluded",
+          "reason": "fixed bus graph checked separately"
+        },
+        {
+          "name": "_mappedRamPages",
+          "type": "bool[]",
+          "mode": "excluded",
+          "reason": "derived mapping cache"
+        },
+        {
+          "name": "_devicePages",
+          "type": "Mapping?[]",
+          "mode": "excluded",
+          "reason": "derived mapping cache"
+        },
+        {
+          "name": "Ram",
+          "type": "byte[]",
+          "mode": "excluded",
+          "reason": "authoritative bytes stored in ram.bin"
+        },
+        {
+          "name": "_ramHoleStart",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_ramHoleLength",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "DecodedRamBytes",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "A20Enabled",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Core/MemoryBus.cs"
+      ],
+      "primaryParameters": [],
+      "afterLoad": [
+        "ValidateRamDecode();"
+      ]
+    },
+    "DOSEmulator.Core.Isa8BitIoTiming": {
+      "namespace": "DOSEmulator.Core",
+      "type": "Isa8BitIoTiming",
+      "fields": [
+        {
+          "name": "Accesses",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ByteCycles",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ElapsedNanoseconds",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Core/Isa8BitIoTiming.cs"
+      ],
+      "primaryParameters": [
+        {
+          "name": "clock",
+          "type": "DeviceScheduler",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        }
+      ]
+    },
+    "DOSEmulator.Cpu.X86.X86Cpu": {
+      "namespace": "DOSEmulator.Cpu.X86",
+      "type": "X86Cpu",
+      "fields": [
+        {
+          "name": "Model",
+          "type": "X86CpuModel",
+          "mode": "invariant",
+          "reason": "constructor-fixed explicitly selected core instruction subset"
+        },
+        {
+          "name": "TimestampFrequency",
+          "type": "uint",
+          "mode": "invariant",
+          "reason": "fixed virtual clock binding/frequency; zero denotes the unclocked existing subset"
+        },
+        {
+          "name": "_timestampSource",
+          "type": "DeviceScheduler?",
+          "mode": "excluded",
+          "reason": "constructor-fixed virtual clock peer; PcMachine verifies its own Scheduler reference and captures SchedulerState"
+        },
+        {
+          "name": "_tscEpochTicks",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Cr4",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "CallGateTransfers",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_memory",
+          "type": "MemoryBus",
+          "mode": "excluded",
+          "reason": "owner graph binding"
+        },
+        {
+          "name": "_io",
+          "type": "IoPortBus",
+          "mode": "excluded",
+          "reason": "owner graph binding"
+        },
+        {
+          "name": "_registers",
+          "type": "uint[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_segments",
+          "type": "ushort[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_instructionBytes",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_operand32",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_address32",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_override",
+          "type": "Segment?",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_repeat",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_interruptShadow",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_instructionStart",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_firstInstructionPhysical",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Eip",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Eflags",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Cr0",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Halted",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Instructions",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_debugAddresses",
+          "type": "uint[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_debugDataActive",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_debugStepShadowed",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_debugInterruptTransfer",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_debugDataMatches",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_debugDeferredStatus",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_debugDataTriggered",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_debugDeferredTrigger",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_debugDeferredData",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_debugShadow",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Dr6",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Dr7",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "InstructionBreakpointFaults",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "DataBreakpointTraps",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "SingleStepTraps",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "GeneralDetectFaults",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_taskSwitchEpoch",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "HardwareTaskSwitches",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "HardwareTaskReturns",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "TaskGateTransfers",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "TaskDebugTraps",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_lockPrefix",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_lockedMemory",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "LockedMemoryInstructions",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "InvalidLockPrefixes",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "AlignmentFaults",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_tlb",
+          "type": "Translation[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_translationAge",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "PageFaults",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "PageWalks",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "TlbHits",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "TlbInvalidations",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_repCode",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_repValid",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_repAddress32",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_repCode32",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_repOpcode",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_repLength",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_repSize",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_repStart",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_repEnd",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_repCsBase",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_repCs",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_repSource",
+          "type": "Segment",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_repTask",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RepBatchedElements",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_checkpointProtected",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_controlCheckpointSaved",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_checkpointIp",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_checkpointFlags",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_checkpointEsp",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_controlCheckpoint",
+          "type": "ControlCheckpoint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ControlCheckpointsSaved",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_segmentCaches",
+          "type": "SegmentDescriptorCache[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_cpl",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_ldtCache",
+          "type": "SegmentDescriptorCache",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trCache",
+          "type": "SegmentDescriptorCache",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Ldtr",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Tr",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Gdtr",
+          "type": "DescriptorTableRegister",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Idtr",
+          "type": "DescriptorTableRegister",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Cr2",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Cr3",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ProtectedModeEntries",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ProtectedModeExits",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ProtectedInstructions",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "PrivilegeStackSwitches",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "OuterPrivilegeReturns",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "TripleFaulted",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Virtual8086Entries",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Virtual8086Exits",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Virtual8086Instructions",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_publishedFpuError",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_waitingForNumericError",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "FpuControlWord",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "FpuStatusWord",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "X87Instructions",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "IgnoreNumericError",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "NumericErrorWaits",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "NumericErrorFaults",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_fpuRegisters",
+          "type": "Float80Value[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_fpuEmpty",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_fpuIp",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_fpuData",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_fpuRealIp",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_fpuRealData",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_fpuCs",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_fpuDs",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_fpuOpcode",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Cpu.X86/X86Cpu.CallGates.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.Debug.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.HardwareTasks.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.LockAlignment.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.Paging.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.RepBatch.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.Restart.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.Segmentation.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.System.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.Transfers.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.Virtual8086.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.X87.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.X87State.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.P54c.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.Timestamp.cs",
+        "src/DOSEmulator.Cpu.X86/X86Cpu.Msr.cs"
+      ],
+      "primaryParameters": [],
+      "afterLoad": [
+        "ValidateTimestampState();"
+      ]
+    },
+    "DOSEmulator.Hardware.AnalogGameport": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "AnalogGameport",
+      "fields": [
+        {
+          "name": "_sampled",
+          "type": "GameportInput",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Input",
+          "type": "GameportInput",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ConversionStarted",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "TriggerTime",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ReadCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "TriggerCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "InputUpdates",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/AnalogGameport.cs"
+      ],
+      "primaryParameters": [
+        {
+          "name": "scheduler",
+          "type": "DeviceScheduler",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        }
+      ]
+    },
+    "DOSEmulator.Hardware.AtaPioController": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "AtaPioController",
+      "fields": [
+        {
+          "name": "_drives",
+          "type": "AtaPioDrive[]",
+          "mode": "children",
+          "reason": null
+        },
+        {
+          "name": "_basePort",
+          "type": "ushort",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "_controlPort",
+          "type": "ushort",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "_selected",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_interrupt",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/AtaPioController.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.AtaPioDrive": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "AtaPioDrive",
+      "fields": [
+        {
+          "name": "_scheduler",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_disk",
+          "type": "IReadOnlyBlockDevice?",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_data",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_task",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_offset",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_remaining",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_lba",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_identify",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_resetActive",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_writing",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_event",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_control",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pendingInterrupt",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Status",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ReadSectorCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "WrittenSectorCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/AtaPioDrive.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.CreativeAdpcmDecoder": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "CreativeAdpcmDecoder",
+      "fields": [
+        {
+          "name": "Predictor",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Step",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/CreativeAdpcmDecoder.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.DevelopmentBoardPorts": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "DevelopmentBoardPorts",
+      "fields": [
+        {
+          "name": "_debug",
+          "type": "StringBuilder",
+          "mode": "builder",
+          "reason": null
+        },
+        {
+          "name": "_debugSnapshot",
+          "type": "string?",
+          "mode": "excluded",
+          "reason": "derived debug string cache"
+        },
+        {
+          "name": "_port92",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "PostCode",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Post10Count",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ResetRequested",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/DevelopmentBoardPorts.cs"
+      ],
+      "afterLoad": [
+        "_debugSnapshot = null;"
+      ],
+      "primaryParameters": [
+        {
+          "name": "memory",
+          "type": "MemoryBus",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        }
+      ]
+    },
+    "DOSEmulator.Hardware.Dma8237": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Dma8237",
+      "fields": [
+        {
+          "name": "_channels",
+          "type": "Channel[]",
+          "mode": "children",
+          "reason": null
+        },
+        {
+          "name": "_highByte",
+          "type": "bool[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_status",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_command",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Dma8237.cs"
+      ],
+      "primaryParameters": [
+        {
+          "name": "memory",
+          "type": "MemoryBus",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        }
+      ]
+    },
+    "DOSEmulator.Hardware.Dma8237.Channel": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Dma8237.Channel",
+      "fields": [
+        {
+          "name": "Address",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "BaseAddress",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Count",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "BaseCount",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Page",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Mode",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Masked",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Requested",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "TerminalCount",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Dma8237.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.Fdc82077": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Fdc82077",
+      "fields": [
+        {
+          "name": "_clock",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "owner scheduler"
+        },
+        {
+          "name": "_dma",
+          "type": "Dma8237",
+          "mode": "excluded",
+          "reason": "owner DMA"
+        },
+        {
+          "name": "_irq",
+          "type": "Action<bool>",
+          "mode": "excluded",
+          "reason": "owner IRQ delegate"
+        },
+        {
+          "name": "_geometry",
+          "type": "FloppyGeometry?[]",
+          "mode": "excluded",
+          "reason": "profile-fixed drive geometry"
+        },
+        {
+          "name": "_media",
+          "type": "IReadOnlyBlockDevice?[]",
+          "mode": "excluded",
+          "reason": "sealed media bindings"
+        },
+        {
+          "name": "_cylinder",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_command",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_changed",
+          "type": "bool[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_motorReadyAt",
+          "type": "ulong[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_seekEvents",
+          "type": "long[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_result",
+          "type": "Queue<byte>",
+          "mode": "queue",
+          "reason": null
+        },
+        {
+          "name": "_sense",
+          "type": "Queue<(byte Status, byte Cylinder)>",
+          "mode": "queue",
+          "reason": null
+        },
+        {
+          "name": "_dor",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_rate",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_tape",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_specify1",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_specify2",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_configure",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_precomp",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_executing",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_interrupt",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_locked",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_received",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_expected",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_drive",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_c",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_h",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_r",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_eot",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_write",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_multiTrack",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_event",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_sector",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "ReadSectorCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "WrittenSectorCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Fdc82077.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.FpuErrorLatch": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "FpuErrorLatch",
+      "fields": [
+        {
+          "name": "FerrAsserted",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "InterruptAsserted",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "IgnoreNumericError",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ErrorEdges",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Acknowledgements",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/FpuErrorLatch.cs"
+      ],
+      "primaryParameters": [
+        {
+          "name": "interrupt",
+          "type": "Action<bool>",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        },
+        {
+          "name": "ignore",
+          "type": "Action<bool>",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        }
+      ]
+    },
+    "DOSEmulator.Hardware.Keyboard8042": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Keyboard8042",
+      "fields": [
+        {
+          "name": "memory",
+          "type": "MemoryBus",
+          "mode": "excluded",
+          "reason": "owner memory"
+        },
+        {
+          "name": "irq",
+          "type": "Action<bool>",
+          "mode": "excluded",
+          "reason": "owner IRQ delegate"
+        },
+        {
+          "name": "_auxIrq",
+          "type": "Action<bool>?",
+          "mode": "excluded",
+          "reason": "owner IRQ delegate"
+        },
+        {
+          "name": "_mouse",
+          "type": "Ps2Mouse?",
+          "mode": "excluded",
+          "reason": "owner mouse binding"
+        },
+        {
+          "name": "_output",
+          "type": "Queue<(byte Value, bool Aux)>",
+          "mode": "queue",
+          "reason": null
+        },
+        {
+          "name": "_commandByte",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_outputPort",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_expectedController",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_expectedKeyboard",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_enabled",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_scanning",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_resetPulse",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "UnsupportedCommand",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Keyboard8042.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.Mpu401Uart": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Mpu401Uart",
+      "fields": [
+        {
+          "name": "_clock",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_received",
+          "type": "Queue<(byte Data, bool Interrupt)>",
+          "mode": "queue",
+          "reason": null
+        },
+        {
+          "name": "_external",
+          "type": "Queue<byte>",
+          "mode": "queue",
+          "reason": null
+        },
+        {
+          "name": "_busy",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_transmitting",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_receiving",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_receiveUart",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_holding",
+          "type": "byte?",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_transmitByte",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_receiveByte",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_transmitStart",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_receiveStart",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_commandEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_transmitEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_receiveEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_generation",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_receiveGeneration",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "BasePort",
+          "type": "ushort",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "UartMode",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "InterruptAsserted",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "InterruptEdges",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "TransmittedBytes",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ReceivedFrames",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ReceivedBytes",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "IgnoredInputFrames",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Overruns",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Resets",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Acknowledgements",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RejectedWrites",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "IgnoredCommands",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "AbortedOutputBytes",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Mpu401Uart.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.Opl2": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Opl2",
+      "fields": [
+        {
+          "name": "_clock",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_audio",
+          "type": "PcAudioMixer",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_input",
+          "type": "PcAudioMixer.Input",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_aliasBase",
+          "type": "ushort?",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "_registers",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_timers",
+          "type": "Timer[]",
+          "mode": "children",
+          "reason": null
+        },
+        {
+          "name": "_operators",
+          "type": "Operator[]",
+          "mode": "children",
+          "reason": null
+        },
+        {
+          "name": "_channels",
+          "type": "Channel[]",
+          "mode": "children",
+          "reason": null
+        },
+        {
+          "name": "_address",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_busyUntil",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_position",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_nextSample",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_csmReleaseSample",
+          "type": "long?",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_output",
+          "type": "short",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_noise",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "GeneratedSamples",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RegisterWrites",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RejectedWrites",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "KeyOnCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "CsmKeyPulses",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Opl2.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.Opl2.Timer": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Opl2.Timer",
+      "fields": [
+        {
+          "name": "UnitClocks",
+          "type": "uint",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "Preset",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Running",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Masked",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Flag",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Event",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Overflows",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "DeadlineClocks",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Opl2.cs"
+      ],
+      "primaryParameters": [
+        {
+          "name": "unitClocks",
+          "type": "uint",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        }
+      ]
+    },
+    "DOSEmulator.Hardware.Opl2.Operator": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Opl2.Operator",
+      "fields": [
+        {
+          "name": "Phase",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Increment",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "KeySources",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Sustain",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Am",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Vibrato",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Multiple",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "AttackRate",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "DecayRate",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ReleaseRate",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Wave",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Attenuation",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "TotalLevel",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "SustainLevel",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "KeyScaleLevel",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "AttackFactor",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "DecayAmount",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ReleaseAmount",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Stage",
+          "type": "OplEnvelopeStage",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Previous",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Older",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Opl2.Synthesis.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.Opl2.Channel": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Opl2.Channel",
+      "fields": [
+        {
+          "name": "Fnum",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Block",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Feedback",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Additive",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Opl2.Synthesis.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.Opl3": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Opl3",
+      "fields": [
+        {
+          "name": "_clock",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_audio",
+          "type": "PcAudioMixer",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_left",
+          "type": "PcAudioMixer.Input",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_right",
+          "type": "PcAudioMixer.Input",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_base",
+          "type": "ushort",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "_registers",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_operators",
+          "type": "Operator[]",
+          "mode": "children",
+          "reason": null
+        },
+        {
+          "name": "_channels",
+          "type": "Channel[]",
+          "mode": "children",
+          "reason": null
+        },
+        {
+          "name": "_timers",
+          "type": "Timer[]",
+          "mode": "children",
+          "reason": null
+        },
+        {
+          "name": "_outputs",
+          "type": "short[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_areas",
+          "type": "Int128[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_address",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pairMask",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_noise",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_position",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_nextSample",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_lastStart",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_lastEnd",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "GeneratedSamples",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RegisterWrites",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RejectedWrites",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "IgnoredBankWrites",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "CompatibilityAliases",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "UnsupportedWrites",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "KeyOnCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Opl3.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.Opl3.Timer": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Opl3.Timer",
+      "fields": [
+        {
+          "name": "Clocks",
+          "type": "uint",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "Preset",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Running",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Masked",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Flag",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Event",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Overflows",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Deadline",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Opl3.cs"
+      ],
+      "primaryParameters": [
+        {
+          "name": "clocks",
+          "type": "uint",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        }
+      ]
+    },
+    "DOSEmulator.Hardware.Opl3.Operator": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Opl3.Operator",
+      "fields": [
+        {
+          "name": "Phase",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Increment",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Keyed",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Sustain",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Am",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Vibrato",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Multiple",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "AttackRate",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "DecayRate",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ReleaseRate",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Wave",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Attenuation",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "TotalLevel",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "SustainLevel",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "KeyScaleLevel",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "AttackFactor",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "DecayAmount",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ReleaseAmount",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Stage",
+          "type": "OplEnvelopeStage",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Previous",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Older",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Opl3.Synthesis.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.Opl3.Channel": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Opl3.Channel",
+      "fields": [
+        {
+          "name": "Fnum",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Block",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Feedback",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Routing",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Additive",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Opl3.Synthesis.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.ParallelPrinterPort": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "ParallelPrinterPort",
+      "fields": [
+        {
+          "name": "_data",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_control",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pins",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "DataChangedAt",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "InterruptAsserted",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "InterruptEdges",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ReadCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "WriteCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Printer",
+          "type": "VirtualParallelPrinter?",
+          "mode": "children",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/ParallelPrinterPort.cs"
+      ],
+      "primaryParameters": [
+        {
+          "name": "scheduler",
+          "type": "DeviceScheduler",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        },
+        {
+          "name": "interrupt",
+          "type": "Action<bool>",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        }
+      ]
+    },
+    "DOSEmulator.Hardware.VirtualParallelPrinter": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "VirtualParallelPrinter",
+      "fields": [
+        {
+          "name": "_port",
+          "type": "ParallelPrinterPort",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_scheduler",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_lastControl",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_busy",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_ack",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_reset",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pulse",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_valid",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_holding",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_sample",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_sampleControl",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_asserted",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_released",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_holdEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_ackLowEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_ackHighEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_initializeEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "AcceptedBytes",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RejectedStrobes",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Initializations",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/VirtualParallelPrinter.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.PcAudioMixer": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "PcAudioMixer",
+      "fields": [
+        {
+          "name": "_dcDecay",
+          "type": "double",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "_inputs",
+          "type": "List<Input>",
+          "mode": "children",
+          "reason": null
+        },
+        {
+          "name": "_position",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_sampleStart",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_blockStart",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_nextSample",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_samples",
+          "type": "float[]",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_count",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "GeneratedFrames",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "SilentFramesSkipped",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/PcAudioMixer.cs"
+      ],
+      "primaryParameters": [
+        {
+          "name": "clock",
+          "type": "DeviceScheduler",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        }
+      ]
+    },
+    "DOSEmulator.Hardware.PcAudioMixer.Input": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "PcAudioMixer.Input",
+      "fields": [
+        {
+          "name": "_mixer",
+          "type": "PcAudioMixer",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "Integrate",
+          "type": "Func<ulong, ulong, Int128>",
+          "mode": "excluded",
+          "reason": "factory signal integrator"
+        },
+        {
+          "name": "Amplitude",
+          "type": "double",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "ExactlySilent",
+          "type": "Func<bool>?",
+          "mode": "excluded",
+          "reason": "factory silence predicate"
+        },
+        {
+          "name": "Channels",
+          "type": "int",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "Area",
+          "type": "Int128",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "DeviceArea",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "UsesDeviceGain",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "PreviousInput",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Filtered",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_gain",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_deviceGain",
+          "type": "double",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/PcAudioMixer.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.PcSpeaker": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "PcSpeaker",
+      "fields": [
+        {
+          "name": "_clock",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_counter",
+          "type": "PitSpeakerCounter",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_audio",
+          "type": "PcAudioMixer",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_input",
+          "type": "PcAudioMixer.Input",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_control",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/PcSpeaker.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.Pic8259": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Pic8259",
+      "fields": [
+        {
+          "name": "_master",
+          "type": "Chip",
+          "mode": "children",
+          "reason": null
+        },
+        {
+          "name": "_slave",
+          "type": "Chip",
+          "mode": "children",
+          "reason": null
+        },
+        {
+          "name": "_pendingMaster",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Pic8259.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.Pic8259.Chip": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Pic8259.Chip",
+      "fields": [
+        {
+          "name": "Vector",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Mask",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Irr",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Isr",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Lines",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "InitStep",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "NeedsIcw4",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Single",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "AutoEoi",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ReadIsr",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Pic8259.cs"
+      ],
+      "primaryParameters": [
+        {
+          "name": "vector",
+          "type": "byte",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        }
+      ]
+    },
+    "DOSEmulator.Hardware.Pit8254": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Pit8254",
+      "fields": [
+        {
+          "name": "scheduler",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "irqPulse",
+          "type": "Action",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_reload",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_access",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_low",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_writeHigh",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_readHigh",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_mode",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_latch",
+          "type": "ushort?",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_event",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_start",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_remainder",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_running",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_unsupportedProgramming",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_statusLatch",
+          "type": "byte?",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "SpeakerCounter",
+          "type": "PitSpeakerCounter",
+          "mode": "children",
+          "reason": null
+        },
+        {
+          "name": "InterruptPulses",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Pit8254.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.PitSpeakerCounter": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "PitSpeakerCounter",
+      "fields": [
+        {
+          "name": "_control",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_low",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_writeHigh",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_readHigh",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_latchHigh",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_gate",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_running",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_loaded",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_fixedOutput",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_startsHigh",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_reload",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_programmed",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_originTick",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pausedElapsed",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_frozenCount",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_latchedCount",
+          "type": "ushort?",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_latchedStatus",
+          "type": "byte?",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_loadEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "UnsupportedProgramming",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/PitSpeakerCounter.cs"
+      ],
+      "primaryParameters": [
+        {
+          "name": "clock",
+          "type": "DeviceScheduler",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        }
+      ]
+    },
+    "DOSEmulator.Hardware.Ps2Mouse": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Ps2Mouse",
+      "fields": [
+        {
+          "name": "_output",
+          "type": "Func<byte[], bool>?",
+          "mode": "excluded",
+          "reason": "owner keyboard packet delegate"
+        },
+        {
+          "name": "_sampleEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_sampleRemainder",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_parameter",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_buttons",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_reportedButtons",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_x",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_y",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_wrap",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_clockEnabled",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_lastReply",
+          "type": "byte[]",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Enabled",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Remote",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Scaling2To1",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Resolution",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "SampleRate",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "PacketCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "CommandCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Ps2Mouse.cs"
+      ],
+      "primaryParameters": [
+        {
+          "name": "scheduler",
+          "type": "DeviceScheduler",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        }
+      ]
+    },
+    "DOSEmulator.Hardware.RtcCmos": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "RtcCmos",
+      "fields": [
+        {
+          "name": "_nvram",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_epoch",
+          "type": "DateTime",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "_index",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_statusB",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_batteryNanoseconds",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/RtcCmos.cs"
+      ],
+      "primaryParameters": [
+        {
+          "name": "scheduler",
+          "type": "DeviceScheduler",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        },
+        {
+          "name": "ramMiB",
+          "type": "int",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        },
+        {
+          "name": "floppyTypes",
+          "type": "byte",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        }
+      ]
+    },
+    "DOSEmulator.Hardware.SoundBlaster16": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "SoundBlaster16",
+      "fields": [
+        {
+          "name": "_clock",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_dma",
+          "type": "Dma8237",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_audio",
+          "type": "PcAudioMixer",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_left",
+          "type": "PcAudioMixer.Input",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_right",
+          "type": "PcAudioMixer.Input",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_irq",
+          "type": "Action<int, bool>",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_responses",
+          "type": "Queue<byte>",
+          "mode": "queue",
+          "reason": null
+        },
+        {
+          "name": "_parameters",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_command",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_mixerIndex",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_interruptSources",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_received",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_expected",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_blockLength",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_legacyLength",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_activeRate",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_rateRemainder",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_ready",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_resetHigh",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_busy",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_auto",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_exitAuto",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_recording",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_signed",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_stereo",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_word",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_rightNext",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_halfPending",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_lineHigh",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_midi",
+          "type": "Mpu401Uart?",
+          "mode": "excluded",
+          "reason": "owner MIDI binding"
+        },
+        {
+          "name": "_partialRaw",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_resetSince",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_sampleDeadline",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pausedDelay",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_inputPeriod",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_outputPeriod",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_activePeriod",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_resetEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_commandEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_sampleEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "IoBasePort",
+          "type": "ushort",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "Irq",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Dma8Channel",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Dma16Channel",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "OutputRate",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "InputRate",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RemainingSamples",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Paused",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "SpeakerEnabled",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "FifoRequested",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "DacLeft",
+          "type": "short",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "DacRight",
+          "type": "short",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "TransferredSamples",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RecordedSamples",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ConvertedSamples",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Dma8Grants",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Dma16Grants",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "CompletedBlocks",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Irq8Requests",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "SoftwareIrq8Requests",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "SoftwareIrq16Requests",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Irq16Requests",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ResetCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RejectedWrites",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RejectedParameters",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "UnsupportedCommands",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "LastUnsupportedCommand",
+          "type": "byte?",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "LastDmaResult",
+          "type": "DmaReadResult",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "AdcInput",
+          "type": "Func<ulong, bool, short>?",
+          "mode": "excluded",
+          "reason": "opaque ADC source requires explicit capture guard"
+        },
+        {
+          "name": "_mixer",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_fm",
+          "type": "Opl3?",
+          "mode": "excluded",
+          "reason": "owner FM binding"
+        },
+        {
+          "name": "UnsupportedMixerAccesses",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "LegacyOutputControlAccesses",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RejectedResourceWrites",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/SoundBlaster16.Mixer.cs",
+        "src/DOSEmulator.Hardware/SoundBlaster16.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.SoundBlasterDsp": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "SoundBlasterDsp",
+      "fields": [
+        {
+          "name": "_clock",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_dma",
+          "type": "Dma8237",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_audio",
+          "type": "PcAudioMixer",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_input",
+          "type": "PcAudioMixer.Input",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_irq",
+          "type": "Action<bool>",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_readBuffer",
+          "type": "Queue<byte>",
+          "mode": "queue",
+          "reason": null
+        },
+        {
+          "name": "_parameters",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_command",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dac",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_adc",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_timeConstant",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_parameterCount",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_parameterLength",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_blockLength",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_remaining",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_queuedSingleLength",
+          "type": "int?",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_adpcm",
+          "type": "CreativeAdpcmDecoder",
+          "mode": "children",
+          "reason": null
+        },
+        {
+          "name": "_adpcmBits",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_adpcmIndex",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_queuedSingleBits",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_adpcmPacked",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_adpcmReferencePending",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_queuedSingleReference",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_resetHigh",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_ready",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_commandBusy",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_autoInit",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_exitAuto",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_silence",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_recording",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_queuedSingleRecording",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_resetSince",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_sampleDeadline",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pausedDelay",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_resetEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_commandEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_sampleEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "IoBasePort",
+          "type": "ushort",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "SpeakerEnabled",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "HighSpeed",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Paused",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "InterruptAsserted",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "AdpcmDmaBytes",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "AdpcmDecodedSamples",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "AdcInput",
+          "type": "Func<ulong, byte>?",
+          "mode": "excluded",
+          "reason": "opaque ADC source requires explicit capture guard"
+        },
+        {
+          "name": "TransferredSamples",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RecordedSamples",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ConvertedSamples",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "HighSpeedRecordedSamples",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "HighSpeedSamples",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "HighSpeedTransfers",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "HighSpeedResets",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "IgnoredHighSpeedWrites",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "CompletedBlocks",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "InterruptRequests",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ResetCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RejectedWrites",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "UnsupportedCommands",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "LastUnsupportedCommand",
+          "type": "byte?",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "LastDmaResult",
+          "type": "DmaReadResult",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/SoundBlasterDsp.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.Uart16550": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Uart16550",
+      "fields": [
+        {
+          "name": "_rx",
+          "type": "Received[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_tx",
+          "type": "Queue<byte>",
+          "mode": "queue",
+          "reason": null
+        },
+        {
+          "name": "_wire",
+          "type": "Queue<(byte Data, byte Errors)>",
+          "mode": "queue",
+          "reason": null
+        },
+        {
+          "name": "_rxHead",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_rxCount",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_ier",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_lcr",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_mcr",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_fcr",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_scratch",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_physicalModem",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_effectiveModem",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_modemDelta",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_divisor",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_overrun",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_timeout",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_thre",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_threPending",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_txBusy",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_rxBusy",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_burst",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_breakDelivered",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_startEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_txEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_rxEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_timeoutEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_threEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_breakEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_txRemainder",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_rxRemainder",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "InterruptAsserted",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "InterruptEdges",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "TransmittedCharacters",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ReceivedCharacters",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Overruns",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RejectedTransmitWrites",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ExternalCharactersQueued",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ExternalCharactersIgnored",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Uart16550.cs"
+      ],
+      "primaryParameters": [
+        {
+          "name": "scheduler",
+          "type": "DeviceScheduler",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        },
+        {
+          "name": "interrupt",
+          "type": "Action<bool>",
+          "reason": "factory graph dependency or initializer copied into separately enumerated fields/profile invariants"
+        }
+      ]
+    },
+    "DOSEmulator.Hardware.VgaAdapter": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "VgaAdapter",
+      "fields": [
+        {
+          "name": "_planes",
+          "type": "byte[][]",
+          "mode": "planes",
+          "reason": null
+        },
+        {
+          "name": "_latch",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_seq",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_gc",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_crtc",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_attr",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_dac",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_rgb",
+          "type": "uint[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_clock",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "factory-owned graph/delegate binding"
+        },
+        {
+          "name": "_seqIndex",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_gcIndex",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_crtcIndex",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_attrIndex",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_misc",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pelMask",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_readIndex",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_writeIndex",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_readComponent",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_writeComponent",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dacState",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_attributeData",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_displayEnabled",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_frame",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_generation",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pixelRevision",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_modeKey",
+          "type": "(bool Graphics, bool Indexed, int Width, int Height)",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_segmentSelect",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_hercules",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_modeControl",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_etKey",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_etSegmentEnabled",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "IsEt4000",
+          "type": "bool",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "BankSwitchWrites",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/VgaAdapter.Et4000.cs",
+        "src/DOSEmulator.Hardware/VgaAdapter.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Runtime.PcMachine": {
+      "namespace": "DOSEmulator.Runtime",
+      "type": "PcMachine",
+      "fields": [
+        {
+          "name": "_definitionId",
+          "type": "string",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_definitionName",
+          "type": "string?",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_disk",
+          "type": "IReadOnlyBlockDevice?",
+          "mode": "excluded",
+          "reason": "media binding"
+        },
+        {
+          "name": "_disks",
+          "type": "IReadOnlyBlockDevice?[]",
+          "mode": "excluded",
+          "reason": "media binding graph"
+        },
+        {
+          "name": "_hardDiskStatus",
+          "type": "IReadOnlyList<HardDiskStatus>",
+          "mode": "excluded",
+          "reason": "derived media labels"
+        },
+        {
+          "name": "_mediaName",
+          "type": "string",
+          "mode": "excluded",
+          "reason": "derived media label"
+        },
+        {
+          "name": "_diskWritable",
+          "type": "bool",
+          "mode": "excluded",
+          "reason": "derived media property"
+        },
+        {
+          "name": "_disposed",
+          "type": "bool",
+          "mode": "excluded",
+          "reason": "fresh graph lifecycle"
+        },
+        {
+          "name": "_keyboardResetWasAsserted",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_resetPulseUntil",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Profile",
+          "type": "MachineProfile",
+          "mode": "excluded",
+          "reason": "validated manifest profile"
+        },
+        {
+          "name": "Memory",
+          "type": "MemoryBus",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Ports",
+          "type": "IoPortBus",
+          "mode": "excluded",
+          "reason": "profile port graph"
+        },
+        {
+          "name": "Scheduler",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Cpu",
+          "type": "X86Cpu",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "FpuError",
+          "type": "FpuErrorLatch",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Video",
+          "type": "VgaAdapter",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Ata",
+          "type": "AtaPioController",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "SecondaryAta",
+          "type": "AtaPioController",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Board",
+          "type": "DevelopmentBoardPorts",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Pic",
+          "type": "Pic8259",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Pit",
+          "type": "Pit8254",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Speaker",
+          "type": "PcSpeaker",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Audio",
+          "type": "PcAudioMixer",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "SoundBlaster",
+          "type": "SoundBlasterDsp?",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "SoundBlaster16",
+          "type": "SoundBlaster16?",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Opl",
+          "type": "Opl2?",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Opl3",
+          "type": "Opl3?",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "FmIoTiming",
+          "type": "Isa8BitIoTiming?",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Keyboard",
+          "type": "Keyboard8042",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Mouse",
+          "type": "Ps2Mouse?",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Gameport",
+          "type": "AnalogGameport?",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Serial",
+          "type": "Uart16550?",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Parallel",
+          "type": "ParallelPrinterPort?",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Midi",
+          "type": "Mpu401Uart?",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Rtc",
+          "type": "RtcCmos",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Dma",
+          "type": "Dma8237",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Floppy",
+          "type": "Fdc82077",
+          "mode": "excluded",
+          "reason": "root graph"
+        },
+        {
+          "name": "Fault",
+          "type": "string?",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Running",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "HardwareResetCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "LastResetSource",
+          "type": "string?",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "LastResetTime",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "LastWarmBootFlag",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_executing",
+          "type": "bool",
+          "mode": "excluded",
+          "reason": "owner guard or explicit HardwareState peer/source prelude; never a persisted delegate"
+        },
+        {
+          "name": "_serialEcho",
+          "type": "bool",
+          "mode": "excluded",
+          "reason": "owner guard or explicit HardwareState peer/source prelude; never a persisted delegate"
+        },
+        {
+          "name": "_adcSource",
+          "type": "string?",
+          "mode": "excluded",
+          "reason": "owner guard or explicit HardwareState peer/source prelude; never a persisted delegate"
+        },
+        {
+          "name": "_adc16Source",
+          "type": "string?",
+          "mode": "excluded",
+          "reason": "owner guard or explicit HardwareState peer/source prelude; never a persisted delegate"
+        },
+        {
+          "name": "_snapshotAdc",
+          "type": "Func<ulong, byte>?",
+          "mode": "excluded",
+          "reason": "owner guard or explicit HardwareState peer/source prelude; never a persisted delegate"
+        },
+        {
+          "name": "_snapshotAdc16",
+          "type": "Func<ulong, bool, short>?",
+          "mode": "excluded",
+          "reason": "owner guard or explicit HardwareState peer/source prelude; never a persisted delegate"
+        },
+        {
+          "name": "IsRestoredSnapshot",
+          "type": "bool",
+          "mode": "excluded",
+          "reason": "transient frontend startup/adoption policy; never guest hardware state"
+        },
+        {
+          "name": "_factoryPortCount",
+          "type": "int",
+          "mode": "excluded",
+          "reason": "constructor-derived bus topology validation cache"
+        },
+        {
+          "name": "_factoryMemoryCount",
+          "type": "int",
+          "mode": "excluded",
+          "reason": "constructor-derived bus topology validation cache"
+        },
+        {
+          "name": "HostBridge",
+          "type": "Intel82437Fx?",
+          "mode": "excluded",
+          "reason": "root graph, fixed memory and PCI peers checked before capture"
+        },
+        {
+          "name": "Pci",
+          "type": "PciConfigurationBus?",
+          "mode": "excluded",
+          "reason": "root graph, fixed function registry checked before capture"
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Runtime/PcMachine.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.Intel82437Fx": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Intel82437Fx",
+      "fields": [
+        {
+          "name": "_memory",
+          "type": "MemoryBus",
+          "mode": "excluded",
+          "reason": "fixed peer, checked by the PC boundary"
+        },
+        {
+          "name": "_firmware",
+          "type": "byte[]",
+          "mode": "excluded",
+          "reason": "private immutable ROM, checked by SHA256 invariant"
+        },
+        {
+          "name": "_firmwareSha256",
+          "type": "string",
+          "mode": "invariant",
+          "reason": "exact fixed low BIOS target"
+        },
+        {
+          "name": "_config",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Intel82437Fx.cs"
+      ],
+      "primaryParameters": [],
+      "afterLoad": [
+        "ValidateState();"
+      ]
+    },
+    "DOSEmulator.Hardware.PciConfigurationBus": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "PciConfigurationBus",
+      "fields": [
+        {
+          "name": "_functions",
+          "type": "Dictionary<ushort, IPciConfigurationFunction>",
+          "mode": "excluded",
+          "reason": "constructor registry checked by BDF and reference identity"
+        },
+        {
+          "name": "_address",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/PciConfigurationBus.cs"
+      ],
+      "primaryParameters": [],
+      "afterLoad": [
+        "ValidateState();"
+      ]
+    }
+  }
+}

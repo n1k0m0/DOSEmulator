@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own real DOS guest probe. No OS bytes. Apache-2.0.
 ; RESET.COM: flush real DOS buffers, set the BIOS warm flag, then reset via KBC.
 ; RESET.COM /92: the same path through the alternate CPU-reset port.
@@ -49,4 +51,5 @@ org 0x100
 .failed:
     hlt
     jmp .failed
+; Publishes the probe's actual output marker for the independent host observer.
 marker: db 13,10,'GUEST-CPU-RESET-REQUEST',13,10,0

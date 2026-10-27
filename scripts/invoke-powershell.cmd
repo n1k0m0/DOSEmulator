@@ -1,3 +1,5 @@
+@rem SPDX-License-Identifier: Apache-2.0
+@rem Copyright 2026 Nils Kopal
 @echo off
 setlocal
 set "DOSE_PWSH="
@@ -9,7 +11,7 @@ if exist "%ProgramFiles%\PowerShell\7\pwsh.exe" set "DOSE_PWSH=%ProgramFiles%\Po
 if defined DOSE_PWSH goto run
 if exist "%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe" set "DOSE_PWSH=%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe"
 if defined DOSE_PWSH goto run
-echo DOSEmulator requires PowerShell 7.4 or later ^(pwsh.exe^). Windows PowerShell 5.1 is not supported. 1>&2
+echo DOSE requires PowerShell 7.4 or later ^(pwsh.exe^). Windows PowerShell 5.1 is not supported. 1>&2
 echo Install PowerShell 7 and make pwsh.exe available on PATH, then run this launcher again. 1>&2
 exit /b 1
 :run

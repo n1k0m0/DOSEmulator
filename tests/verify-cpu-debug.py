@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent opcode/RAM/frame oracle for the private 486 CPUDEBUG guest."""
 import argparse
 import copy
@@ -13,6 +15,7 @@ SYMBOLS = ('start code_end proof gdt tss kernel_sp user_sp gd_read after_gd exec
 
 
 def verify(report_path, memory_path, program_path, os_name, paging=False):
+    """Validates cpu debug evidence from actual guest state, immutable program bytes and independently expected results."""
     report = json.loads(Path(report_path).read_text(encoding='utf-8-sig'))
     memory = Path(memory_path).read_bytes()
     program = Path(program_path).read_bytes()
@@ -41,6 +44,24 @@ def verify(report_path, memory_path, program_path, os_name, paging=False):
     full = lambda name: 0x10000+labels[name]
     assert labels['start'] == 0x100 and labels['end'] == len(program)+0x100
     assert basis == u32(80) and basis & 15 == 0
+    ss_table = program.index(b'SSGDADDR') + 8
+    ss_labels = struct.unpack_from('<8I', program, ss_table)
+    ss_address = basis + ss_labels[0]
+    ss_proof = memory[ss_address:ss_address+224]
+    assert memory[basis+256+ss_table:basis+256+ss_table+32] == program[ss_table:ss_table+32]
+    assert ss_proof[:8] == b'SSGD0001'
+    count, stack, read_result, write_result, stack_segment, guard = struct.unpack_from('<6I', ss_proof, 8)
+    assert (count, stack, read_result, write_result, stack_segment, guard) == (6, 0x10000+ss_labels[7]-4, 0, 0x12345678, 40, 0xc0de5584)
+    for index, point in enumerate(ss_labels[1:7]):
+        dr6, dr7, ip, cs, flags, eax, esp, ss = struct.unpack_from('<8I', ss_proof, 32+index*32)
+        assert dr6 == (0xffff2ff0 if index < 2 else 0xffff4ff0) and dr7 == 0x400
+        assert (ip,cs,esp,ss) == (0x10000+point,24,stack,40)
+        assert flags == ((0x86 if paging else 2) if index < 2 else 0x146)
+        if index >= 2:
+            assert eax == 0
+        if index < 2:
+            assert eax == (0x2000 if index == 0 else 0x12345678)
+            assert program[point-256:point-253] == (b'\x0f\x21\xc0' if index == 0 else b'\x0f\x23\xc0')
     assert memory[basis+0x100:basis+labels['code_end']] == program[:labels['code_end']-0x100]
     assert (u32(8), u32(12), u32(16), u32(20)) == (1, 1, 15, 0)
     for first, last in ((24,28),(32,36),(40,44),(48,52),(56,60),(64,68),(72,76)):
@@ -105,7 +126,7 @@ def verify(report_path, memory_path, program_path, os_name, paging=False):
     assert cpu['ldtr']==0 and not cpu['ldtrCache']['usable']
     assert cpu['gdtr']==dict(base=u32(40),limit=u32(48)) and cpu['idtr']==dict(base=u32(56),limit=u32(64))
     assert [cpu[k] for k in ('dr0','dr1','dr2','dr3','dr6','dr7')]==[u32(i) for i in range(128,152,4)]
-    assert [cpu[k] for k in ('instructionBreakpointFaults','dataBreakpointTraps','singleStepTraps','generalDetectFaults')]==[1,3+int(paging),2,1]
+    assert [cpu[k] for k in ('instructionBreakpointFaults','dataBreakpointTraps','singleStepTraps','generalDetectFaults')]==[1,3+int(paging),6,3]
     assert cpu['privilegeStackSwitches']==cpu['outerPrivilegeReturns']==8+2*int(paging)
     assert cpu['hardwareTaskSwitches']==cpu['callGateTransfers']==cpu['taskDebugTraps']==cpu['alignmentFaults']==0
     assert cpu['protectedModeEntries']==cpu['protectedModeExits']==(2 if os_name=='msdos' else 1)
@@ -123,15 +144,16 @@ def verify(report_path, memory_path, program_path, os_name, paging=False):
             assert pte&0xfffff000==i*4096 and pte&7==7 and pte&0xf98==0
     else:
         assert proof[672:700]==bytes(28) and u32(88)==u32(92)==0
-    return dict(guestReturned=True,os=os_name,identityPaging=paging,proofSha256=hashlib.sha256(proof).hexdigest().upper(),
-                proofAddress=address,executableSha256=hashlib.sha256(program).hexdigest().upper(),debugEntries=7+int(paging),
-                instructionFaults=1,generalDetectFaults=1,dataTraps=3+int(paging),singleStepTraps=2,userGpFaults=1,
+    return dict(guestReturned=True,os=os_name,identityPaging=paging,proofSha256=hashlib.sha256(proof+ss_proof).hexdigest().upper(),
+                proofAddress=address,executableSha256=hashlib.sha256(program).hexdigest().upper(),debugEntries=13+int(paging),ssContractFrames=6,
+                instructionFaults=1,generalDetectFaults=3,dataTraps=3+int(paging),singleStepTraps=6,userGpFaults=1,
                 actualPageFaults=int(paging),faultHasUnexecutedRegisters=True,trapHasCommittedMemory=True,
                 rfRetry=True,ssShadowSuppressesInstructionFault=True,repKeepsCompletedElement=True,debugRegistersRestored=True,
                 privateTrRemainsUntilReset=True,cleanDosReturn=True,allDebugOrSiliconPrecisionAccepted=False)
 
 
 def negative_controls(report_path,memory_path,program_path,os_name,paging,directory):
+    """Corrupts selected independent evidence fields and requires each corrupted oracle input to fail."""
     root=Path(directory);root.mkdir(parents=True,exist_ok=False)
     report=json.loads(Path(report_path).read_text(encoding='utf-8-sig'))
     original=Path(memory_path).read_bytes();program=Path(program_path).read_bytes()
@@ -140,7 +162,11 @@ def negative_controls(report_path,memory_path,program_path,os_name,paging,direct
     labels=dict(zip(SYMBOLS,struct.unpack_from('<31I',program,symbols)))
     basis=address-labels['proof']
     changes=[]
-    def ram(name,offset):changes.append((name,'memory',offset))
+    ss_table = program.index(b'SSGDADDR')+8
+    ss_address = basis+struct.unpack_from('<I',program,ss_table)[0]
+    def ram(name,offset):"""Reads the requested actual guest-memory proof through the reported paging translation."""; changes.append((name,'memory',offset))
+    for offset in range(0,224,4):
+        ram('ss-contract-'+str(offset),ss_address+offset)
     for offset in (12,16,20,28,36,44,52,60,68,76,100,104,108,124,152,168,172,200,204,208,212,216,220,224,228):
         ram('proof-'+str(offset),address+offset)
     for i in range(7+int(paging)):

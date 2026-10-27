@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent oracle: executed bytes, TSS RAM, actual faults, task counters and DOS return."""
 import argparse
 import copy
@@ -14,6 +16,7 @@ SYMBOLS = ('start code_end proof gdt ldt main child word jump bad handler mainsp
 
 
 def verify(report_path, memory_path, program_path, os_name, paging=False):
+    """Validates cpu hardware tasks evidence from actual guest state, immutable program bytes and independently expected results."""
     report = json.loads(Path(report_path).read_text(encoding='utf-8-sig'))
     memory = Path(memory_path).read_bytes()
     program = Path(program_path).read_bytes()
@@ -133,6 +136,7 @@ def verify(report_path, memory_path, program_path, os_name, paging=False):
 
 
 def negative_controls(paths, directory):
+    """Corrupts selected independent evidence fields and requires each corrupted oracle input to fail."""
     rp, mp, pp, os_name, paging = paths
     directory = Path(directory)
     directory.mkdir(exist_ok=False)
@@ -142,6 +146,7 @@ def negative_controls(paths, directory):
     rejected = []
 
     def reject(name, arguments):
+        """Requires an independently corrupted input to fail instead of accepting the guest's success marker alone."""
         try:
             verify(*arguments)
         except (AssertionError, ValueError, KeyError, IndexError, struct.error):

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "virtual486-dev-v1",
+  "name": "DOSE 486 AT - CT1740 PCM and YMF262 development",
+  "cpu": "i486dx-development",
+  "cpuHz": 33000000,
+  "ramMiB": 8,
+  "floppyDriveA": "none",
+  "floppyDriveB": "none",
+  "bootDevice": "ide",
+  "soundCard": "sb16-ct1740-dsp405-development",
+  "soundBlasterBasePort": 544,
+  "soundBlasterIrq": 5,
+  "soundBlasterDmaChannel": 1,
+  "soundBlasterDma16Channel": 5
+}

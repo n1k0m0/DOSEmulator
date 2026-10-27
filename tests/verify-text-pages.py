@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent CP850 text-page/cursor pixel oracle, no emulator imports/assets.
 Fonts are read privately from the real DOS installation; only own sheet text
 and documented VGA cell/palette/cursor rules determine the expected picture.
@@ -15,6 +17,7 @@ spec.loader.exec_module(fonts)
 
 
 def verify(args):
+    """Validates text pages evidence from actual guest state, immutable program bytes and independently expected results."""
     files, _, allocation = fonts.installation(args.base, args.overlay)
     font = fonts.cpi_fonts(files['DOS/EGA.CPI'], 850)[args.points]
     report = json.loads(Path(args.report).read_text(encoding='utf-8-sig'))
@@ -30,6 +33,7 @@ def verify(args):
     cells = [[(32, 0x17) for _ in range(80)] for _ in range(args.rows)]
 
     def text(row, col, content, attr):
+        """Writes expected character/attribute cells into the independent frame oracle."""
         for char in content.encode('ascii'):
             cells[row][col] = (char, attr)
             col += 1

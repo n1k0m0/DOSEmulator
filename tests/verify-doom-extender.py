@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Private original-DOS4GW/Doom oracle: real demo return, media and WAD-derived HUD.
 
 The local game is only read. No copyrighted pixels, executable or WAD bytes
@@ -18,6 +20,7 @@ fat=importlib.util.module_from_spec(spec);spec.loader.exec_module(fat)
 
 
 def wad_lumps(game):
+    """Parses the local WAD directory with checked offsets for the private frame oracle."""
     data=(Path(game)/"DOOM2.WAD").read_bytes()
     assert data[:4]==b"IWAD"
     count,offset=struct.unpack_from("<II",data,4)
@@ -26,11 +29,13 @@ def wad_lumps(game):
 
 
 def hud_reference(game):
+    """Builds expected fixed HUD pixels from the local WAD resources without exporting those resources."""
     lumps=wad_lumps(game);patch=lumps["STBAR"]
     width,height,left,top=struct.unpack_from("<4h",patch)
     assert (width,height,left,top)==(320,32,0,0)
     # Gamma level zero's integer transfer followed by the VGA six-bit DAC.
     def component(value):
+        """Reads the requested color component from the independently selected palette entry."""
         dac=(value+(value<128))>>2
         return (dac<<2)|(dac>>4)
     palette=[bytes(component(v) for v in lumps["PLAYPAL"][i:i+3]) for i in range(0,768,3)]
@@ -51,12 +56,14 @@ def hud_reference(game):
 
 
 def argb_hash(rgb):
+    """Hashes the exact rendered ARGB bytes for comparison with the saved guest frame."""
     bgra=bytearray(len(rgb)//3*4)
     bgra[0::4]=rgb[2::3];bgra[1::4]=rgb[1::3];bgra[2::4]=rgb[0::3];bgra[3::4]=b"\xff"*(len(rgb)//3)
     return hashlib.sha256(bgra).hexdigest().upper()
 
 
 def verify(report_path,base,baseline,overlay,game,mode):
+    """Validates doom extender evidence from actual guest state, immutable program bytes and independently expected results."""
     r=json.loads(Path(report_path).read_text(encoding="utf-8-sig"));cpu=r["cpu"];output=r["status"]["debugOutput"]
     assert r["status"]["fault"] is None and r["scenario"]["complete"]
     assert r["scenario"]["inputBytesSent"]==r["scenario"]["inputBytesTotal"] and r["hardwareResetCount"]==0
@@ -116,10 +123,12 @@ def verify(report_path,base,baseline,overlay,game,mode):
 
 
 def negative_controls(report_path,base,baseline,overlay,game,mode,directory):
+    """Corrupts selected independent evidence fields and requires each corrupted oracle input to fail."""
     verify(report_path,base,baseline,overlay,game,mode)
     report=json.loads(Path(report_path).read_text(encoding="utf-8-sig"));directory=Path(directory);directory.mkdir(exist_ok=False)
     rp=directory/"corrupted-report.json";controls=[]
     def reject(name,changed):
+        """Requires an independently corrupted input to fail instead of accepting the guest's success marker alone."""
         rp.write_text(json.dumps(changed),encoding="utf-8")
         try:verify(rp,base,baseline,overlay,game,mode)
         except AssertionError:controls.append(dict(name=name,rejected=True))

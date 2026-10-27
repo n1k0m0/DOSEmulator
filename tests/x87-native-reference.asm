@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Independent numerical test oracle only: actual host x87, never used by the emulator.
 ; Windows x64 ABI: RCX points to a private 160-byte input/output block.
 bits 64

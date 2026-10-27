@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
@@ -5,21 +7,27 @@ using DOSEmulator.Runtime;
 
 internal static class VgaFontTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition, string message = "VGA font assertion failed")
     { if (!condition) throw new Exception(message); }
+    /// <summary>Writes an actual indexed VGA register for the controlled fixture setup.</summary>
     private static void Reg(VgaAdapter v, ushort port, int index, int value) => v.Write(port, (uint)(index | value << 8), 2);
+    /// <summary>Reads an actual indexed device register for the surrounding independent assertions.</summary>
     private static byte Get(VgaAdapter v, ushort port, int index) { v.Write(port, (uint)index, 1); return (byte)v.Read((ushort)(port + 1), 1); }
+    /// <summary>Boots the supplied private/synthetic medium through the emulated CPU and firmware.</summary>
     private static PcMachine Boot()
     {
         var m = PcMachine.CreateDemo(); m.RunSteps(100000);
         Check(m.Fault is null && m.Cpu.Halted, m.Fault ?? "POST did not halt"); return m;
     }
+    /// <summary>Executes the real guest ROM service and checks its return to the test sentinel.</summary>
     private static void Bios(PcMachine m, ushort ax)
     {
         m.Cpu.SetSegment(Segment.Cs, 0); m.Cpu.Eip = 0x1000; m.Memory.WriteByte(0x1000, 0xf4);
         m.Cpu.SetRegister(Register.Ax, ax); m.Cpu.EnterRealModeInterrupt(0x10); m.RunSteps(200000);
         Check(m.Fault is null && m.Cpu.Halted, m.Fault ?? "INT10 did not return");
     }
+    /// <summary>Prepares the explicit test source required by the following guest instruction or BIOS operation.</summary>
     private static void Load(PcMachine m, int bank, int first, int height, byte[] bytes, ushort ax = 0x1100)
     {
         m.Cpu.SetRegister(Register.Bx, (uint)(height << 8 | bank));
@@ -27,6 +35,7 @@ internal static class VgaFontTests
         m.Cpu.SetSegment(Segment.Es, 0x2000); m.Cpu.SetRegister(Register.Bp, 0x3000);
         bytes.CopyTo(m.Memory.Ram, 0x23000); Bios(m, ax);
     }
+    /// <summary>Reads one actual VGA plane while preserving the fixture's original access registers.</summary>
     private static byte[] Plane(PcMachine m, int plane)
     {
         int si = (int)m.Video.Read(0x3c4, 1), gi = (int)m.Video.Read(0x3ce, 1);
@@ -36,6 +45,7 @@ internal static class VgaFontTests
         Reg(m.Video, 0x3c4, 4, s4); Reg(m.Video, 0x3ce, 4, g4); Reg(m.Video, 0x3ce, 5, g5); Reg(m.Video, 0x3ce, 6, g6);
         m.Video.Write(0x3c4, (uint)si, 1); m.Video.Write(0x3ce, (uint)gi, 1); return result;
     }
+    /// <summary>Registers the named vga font regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         int[] addresses = [0, 0x4000, 0x8000, 0xc000, 0x2000, 0x6000, 0xa000, 0xe000]; // IBM table, independent of implementation

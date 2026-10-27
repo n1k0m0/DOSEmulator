@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Read-only private FAT audit of the original drivers and own copied COM file."""
 import argparse
 import hashlib
@@ -12,6 +14,7 @@ spec.loader.exec_module(oracle)
 
 
 def verify(base, original, configured, program, no_driver=False):
+    """Validates emm386 media evidence from actual guest state, immutable program bytes and independently expected results."""
     before, _ = oracle.materialize(base, original)
     after, journal = oracle.materialize(base, configured)
     start = struct.unpack_from("<I", before, 454)[0] * 512

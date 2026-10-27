@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 namespace DOSEmulator.Cpu.X86;
 
 /// <summary>A 486 six-byte pseudo-descriptor: a byte limit and a linear base.</summary>
@@ -5,16 +7,26 @@ public readonly record struct DescriptorTableRegister(ushort Limit, uint Base);
 
 public sealed partial class X86Cpu
 {
+    /// <summary>Global descriptor-table limit and linear base.</summary>
     public DescriptorTableRegister Gdtr { get; private set; }
+    /// <summary>Interrupt descriptor-table limit and linear base.</summary>
     public DescriptorTableRegister Idtr { get; private set; }
+    /// <summary>Linear address recorded for the most recent page fault.</summary>
     public uint Cr2 { get; private set; }
+    /// <summary>Current page-directory base/control value under the implemented classic paging contract.</summary>
     public uint Cr3 { get; private set; }
+    /// <summary>Diagnostic count of protected mode entries.</summary>
     public long ProtectedModeEntries { get; private set; }
+    /// <summary>Diagnostic count of protected mode exits.</summary>
     public long ProtectedModeExits { get; private set; }
+    /// <summary>Diagnostic count of protected instructions.</summary>
     public long ProtectedInstructions { get; private set; }
+    /// <summary>Diagnostic count of privilege stack switches.</summary>
     public long PrivilegeStackSwitches { get; private set; }
+    /// <summary>Diagnostic count of outer privilege returns.</summary>
     public long OuterPrivilegeReturns { get; private set; }
 
+    /// <summary>Initializes stable development-model values for system registers with undefined reset contents.</summary>
     private void ResetSystemRegisters()
     {
         // GDTR/CR2/CR3 are undefined after 486 reset. These are stable model defaults.
@@ -31,6 +43,7 @@ public sealed partial class X86Cpu
         LockedMemoryInstructions = InvalidLockPrefixes = AlignmentFaults = 0;
     }
 
+    /// <summary>Executes descriptor-table/control system instructions with operand-form and privilege checks.</summary>
     private void ExecuteSystemGroup()
     {
         byte modrm = FetchByte();
@@ -79,6 +92,7 @@ public sealed partial class X86Cpu
         InvalidatePage(operand.Address); // No read of the addressed page.
     }
 
+    /// <summary>Validates CR0 mode combinations and invalidates translations when paging mode changes.</summary>
     private void WriteCr0(uint value)
     {
         if ((value & 0x80000001) == 0x80000000) throw Gp();
@@ -92,20 +106,22 @@ public sealed partial class X86Cpu
         Cr0 = value | 0x10; // ET is hardwired on the reference 486DX.
     }
 
+    /// <summary>Executes MOV CR for the implemented control registers with register-form and CPL checks.</summary>
     private void MoveControlRegister(byte opcode)
     {
         byte modrm = FetchByte();
         int control = (modrm >> 3) & 7, register = modrm & 7;
-        if (modrm < 0xc0 || control is not (0 or 2 or 3)) throw new CpuFaultException(6);
+        if (modrm < 0xc0 || control is not (0 or 2 or 3) && !(control == 4 && HasTimeStampCounter)) throw new CpuFaultException(6);
         RequirePrivilegeZero();
         // Operand/address-size prefixes do not change the 32-bit register transfer.
         if (opcode == 0x20)
-            WriteRegister(register, 4, control switch { 0 => Cr0, 2 => Cr2, _ => Cr3 });
+            WriteRegister(register, 4, control switch { 0 => Cr0, 2 => Cr2, 3 => Cr3, _ => Cr4 });
         else
         {
             uint value = ReadRegister(register, 4);
             if (control == 0) WriteCr0(value);
             else if (control == 2) Cr2 = value;
+            else if (control == 4) { if ((value & ~12u) != 0) throw Gp(); Cr4 = value; }
             else { Cr3 = value; FlushTranslations(); }
         }
     }

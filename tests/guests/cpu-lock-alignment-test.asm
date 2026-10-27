@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own 486 DOS client: legal/illegal LOCK, CMPXCHG/XADD, and real #AC retries.
 ; No resident manager: private PE tables/stacks, optionally private 4-KiB pages.
 bits 16
@@ -21,6 +23,7 @@ TSS equ 72
     mov di,%1
     call patch_base
 %endmacro
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -93,6 +96,7 @@ start:
     or eax,0x40009             ; PE, AM, TS; invalid LOCK FNINIT must give UD first
     mov cr0,eax
     jmp dword C0:0x10000+kernel_entry
+; Patches the explicit descriptor base bytes for this probe's allocated guest segment.
 patch_base:
     mov [di+2],ax
     shr eax,16
@@ -523,6 +527,7 @@ real_return:
     int 0x21
     mov ax,0x4c00
     int 0x21
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al

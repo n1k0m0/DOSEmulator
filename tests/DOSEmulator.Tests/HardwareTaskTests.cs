@@ -1,19 +1,25 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using static ProtectedModeTests;
 
 internal static class HardwareTaskTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition, string detail = "Hardware task invariant failed")
     { if (!condition) throw new Exception(detail); }
+    /// <summary>Places controlled bytes at a private guest address and executes through the normal decoder.</summary>
     private static void At(X86Cpu c, MemoryBus m, byte[] code, uint ip = 0x2200)
     { code.CopyTo(m.Ram, (int)ip); c.Eip = ip; c.Step(); }
+    /// <summary>Performs the requested bounded controller transfer while preserving count, address and terminal-count semantics.</summary>
     private static byte[] Transfer(ushort selector = 0x48, bool jump = false, bool operand32 = true)
     {
         var code = new List<byte> { (byte)(jump ? 0xea : 0x9a) };
         code.AddRange(operand32 ? new byte[] { 0xef, 0xbe, 0xad, 0xde } : new byte[] { 0xef, 0xbe });
         code.Add((byte)selector); code.Add((byte)(selector >> 8)); return code.ToArray();
     }
+    /// <summary>Writes the case's explicit TSS register/selector fields into private guest memory.</summary>
     private static void Task(MemoryBus m, ushort selector, uint basis, bool wide, uint ip = 0x5000, uint pointer = 0x1a000,
         ushort? cs = null, ushort? ss = null, uint flags = 2, byte? access = null)
     {
@@ -29,15 +35,20 @@ internal static class HardwareTaskTests
         m.WriteWord(basis + (wide ? 0x60u : 0x2au), 0);
         if (wide) { m.WriteDword(basis + 0x1c, 0x1c000u); m.WriteWord(basis + 0x64, 0); m.WriteWord(basis + 0x66, 0x68); }
     }
+    /// <summary>Builds a deterministic caller-owned pattern used to detect missing, aliased or reordered transfer data.</summary>
     private static uint Pattern(int i) => 0x12345670u + (uint)i;
+    /// <summary>Reads the fixture's actual result for comparison with independently specified expected data.</summary>
     private static uint Read(MemoryBus m, uint a, int w) => w == 4 ? m.ReadDword(a) : m.ReadWord(a);
+    /// <summary>Writes explicit private-fixture input data without modifying original user media.</summary>
     private static void Write(MemoryBus m, uint a, int w, uint value)
     { if (w == 4) m.WriteDword(a, value); else m.WriteWord(a, (ushort)value); }
+    /// <summary>Writes the explicit task-gate descriptor used by the controlled hardware-task transfer.</summary>
     private static void TaskGate(MemoryBus m, ushort selector, ushort task = 0x48, byte access = 0x85, uint? address = null)
     {
         uint a = address ?? (0x400u + ((uint)selector & 0xfff8));
         m.WriteDword(a, ((uint)task << 16) | 0xbeef); m.WriteDword(a + 4, 0xdead0000 | ((uint)access << 8) | 0x1f);
     }
+    /// <summary>Creates this regression's isolated CPU/device fixture with explicit parameters and private data.</summary>
     private static (X86Cpu Cpu, MemoryBus Memory) Create(bool old32 = true, bool new32 = true, bool paging = false)
     {
         var (c, m) = paging ? PagingTests.Create([0xf4]) : ProtectedModeTests.Rig([0xf4]);
@@ -48,12 +59,14 @@ internal static class HardwareTaskTests
         c.SetRegister(Register.Sp, 0x18000); c.Eip = 0x2000; c.Eflags = 0x40203;
         m.WriteByte(0x5000, 0xcf); return (c, m);
     }
+    /// <summary>Requires a pre-adoption fault and checks that the old task remains the architectural owner.</summary>
     private static void OldFault(X86Cpu c, MemoryBus m, byte vector, uint error, uint ip = 0x2000)
     {
         Fault(c, m, vector, error, ip);
         Check(c.Tr == 0x40 && c.HardwareTaskSwitches == 0 && (c.Cr0 & 8) == 0 && m.ReadByte(0x445) == 0x8b);
     }
 
+    /// <summary>Registers the named hardware task regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         foreach(bool wide in new[]{false,true})

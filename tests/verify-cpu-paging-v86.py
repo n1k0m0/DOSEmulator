@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent assembled-instruction, page-table and private RAM oracle."""
 import argparse
 import hashlib
@@ -8,6 +10,7 @@ import struct
 
 
 def verify(report_path, memory_path, program_path, os_name):
+    """Validates cpu paging v86 evidence from actual guest state, immutable program bytes and independently expected results."""
     report = json.loads(Path(report_path).read_text(encoding="utf-8-sig"))
     memory, program = Path(memory_path).read_bytes(), Path(program_path).read_bytes()
     output, cpu = report["status"]["debugOutput"], report["cpu"]
@@ -76,6 +79,7 @@ def verify(report_path, memory_path, program_path, os_name):
 
 
 def negative_controls(report_path, memory_path, program_path, os_name, directory):
+    """Corrupts selected independent evidence fields and requires each corrupted oracle input to fail."""
     report = json.loads(Path(report_path).read_text(encoding="utf-8-sig"))
     memory, program = Path(memory_path).read_bytes(), Path(program_path).read_bytes()
     address = int(re.search("CPU-PAGING-PROOF=([0-9A-F]{8})", report["status"]["debugOutput"])[1], 16)
@@ -85,6 +89,7 @@ def negative_controls(report_path, memory_path, program_path, os_name, directory
     controls = []
 
     def reject(name, rp=report_path, mp=memory_path, pp=program_path):
+        """Requires an independently corrupted input to fail instead of accepting the guest's success marker alone."""
         try:
             verify(rp, mp, pp, os_name)
         except AssertionError:

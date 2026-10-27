@@ -1,9 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 namespace DOSEmulator.Cpu.X86;
 
 public sealed partial class X86Cpu
 {
+    /// <summary>Whether architectural fault delivery has reached CPU shutdown and requires the platform reset policy.</summary>
     public bool TripleFaulted { get; private set; }
 
+    /// <summary>Resolves a far CALL/JMP through code descriptors, call gates or task descriptors as appropriate.</summary>
     private void FarTransfer(ushort selector, uint target, bool call, int width)
     {
         Descriptor descriptor = default;
@@ -26,6 +30,7 @@ public sealed partial class X86Cpu
         Eip = target;
     }
 
+    /// <summary>Validates a stacked near target before committing the return and optional argument adjustment.</summary>
     private void ReturnNear(int width, uint adjustment = 0)
     {
         uint target = NearTarget(PeekStack(width));
@@ -33,6 +38,7 @@ public sealed partial class X86Cpu
         Eip = target;
     }
 
+    /// <summary>Validates and commits RETF/IRET frames, including outer privileges, V86 and NT task returns.</summary>
     private void ReturnFar(int width, uint adjustment = 0, bool interrupt = false)
     {
         bool vm = Virtual8086;
@@ -84,6 +90,7 @@ public sealed partial class X86Cpu
         Eip = target;
     }
 
+    /// <summary>Applies the instruction- and privilege-dependent EFLAGS write mask.</summary>
     private void RestoreFlags(uint value, int width, bool interrupt = false)
     {
         uint mask = width == 2 ? 0x7fd7u : ImplementedFlags;
@@ -101,6 +108,7 @@ public sealed partial class X86Cpu
 
     // Kept for existing real-mode callers. New runtime code uses the mode-neutral name.
     public void EnterRealModeInterrupt(byte vector) => EnterHardwareInterrupt(vector);
+    /// <summary>Dispatches a physical interrupt and routes delivery faults through protected fault escalation.</summary>
     public void EnterHardwareInterrupt(byte vector)
     {
         _waitingForNumericError = false;
@@ -109,6 +117,7 @@ public sealed partial class X86Cpu
         catch (CpuFaultException fault) { RestoreControl(checkpoint); DeliverFault(fault); }
     }
 
+    /// <summary>Validates an interrupt/trap/task gate and constructs the appropriate real/protected/V86 frame.</summary>
     private void DispatchInterrupt(byte vector, bool software, uint? errorCode = null, bool fault = false, bool trap = false)
     {
         _debugDataActive = false; // Architectural exception frames are not data operands.
@@ -201,6 +210,7 @@ public sealed partial class X86Cpu
         ClearDebugDeferral();
     }
 
+    /// <summary>Evaluates the reference contributory/page-fault matrix for escalation during exception delivery.</summary>
     private static bool DoubleFault(byte first, byte second)
     {
         bool contributoryFirst = first is 0 or 10 or 11 or 12 or 13;
@@ -208,6 +218,7 @@ public sealed partial class X86Cpu
         return (contributoryFirst && contributorySecond) || (first == 14 && (contributorySecond || second == 14));
     }
 
+    /// <summary>Attempts architectural fault delivery, escalating to double fault and CPU shutdown when necessary.</summary>
     private void DeliverFault(CpuFaultException initial)
     {
         CpuFaultException current = initial;

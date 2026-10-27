@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Contracts;
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
@@ -10,10 +12,14 @@ internal static class IoTimingTests
         public uint Value;
         public ulong ObservedAt;
         public Action? OnAccess;
+        /// <summary>Reads the fixture's actual result for comparison with independently specified expected data.</summary>
         public uint Read(ushort port, int width) { ObservedAt = clock.Now; OnAccess?.Invoke(); return Value; }
+        /// <summary>Writes explicit private-fixture input data without modifying original user media.</summary>
         public void Write(ushort port, uint value, int width) { ObservedAt = clock.Now; Value = value; OnAccess?.Invoke(); }
     }
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition, string message = "I/O timing assertion failed.") { if (!condition) throw new Exception(message); }
+    /// <summary>Registers the named io timing regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("timed I/O completes intervening events before device read and trace", () =>

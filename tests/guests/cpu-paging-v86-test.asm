@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original DOS guest: 4-KiB MMU/TLB, restartable faults and a real V86 monitor.
 ; Descriptors, page tables, data and stacks belong to this COM allocation.
 bits 16
@@ -12,6 +14,7 @@ TSS equ 48
 ALIAS equ 0x300000
 VMDATA equ 0x60000
 
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -70,6 +73,7 @@ start:
     or al,1
     mov cr0,eax
     jmp dword C0:kernel_entry
+; Patches the explicit descriptor base bytes for this probe's allocated guest segment.
 patch_base:
     mov [di+2],ax
     push eax
@@ -387,6 +391,7 @@ real_return:
     int 0x21
     mov ax,0x4c00
     int 0x21
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent program-byte/RAM oracle for our private ring/TSS DOS probe.
 Memory dumps can contain guest OS data and must never be published.
 """
@@ -10,6 +12,7 @@ import struct
 
 
 def verify(report_path, memory_path, program_path, os_name):
+    """Validates cpu privilege evidence from actual guest state, immutable program bytes and independently expected results."""
     report = json.loads(Path(report_path).read_text(encoding="utf-8-sig"))
     memory = Path(memory_path).read_bytes()
     program = Path(program_path).read_bytes()
@@ -30,6 +33,7 @@ def verify(report_path, memory_path, program_path, os_name):
     assert len(proof) == 320 and proof[:8] == b"CPPR0001"
 
     def word(offset):
+        """Reads one explicitly little-endian word from the selected guest proof bytes."""
         return struct.unpack_from("<I", proof, offset)[0]
 
     symbols = program.index(b"CPPRADDR") + 8
@@ -109,6 +113,7 @@ def negative_controls(report_path, memory_path, program_path, os_name, directory
     controls = []
 
     def reject(name, report_input=report_path, memory_input=memory_path, program_input=program_path):
+        """Requires an independently corrupted input to fail instead of accepting the guest's success marker alone."""
         try:
             verify(report_input, memory_input, program_input, os_name)
         except AssertionError:

@@ -1,9 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Runtime;
 
 internal static class RealtimePacerTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition) { if (!condition) throw new Exception("Host pacing assertion failed."); }
+    /// <summary>Registers the named realtime pacer regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("host pacing follows elapsed time for a running machine", () =>
@@ -42,8 +46,9 @@ internal static class RealtimePacerTests
         });
         test("a machine behind host time yields briefly instead of accumulating a full sleep per slice", () =>
         {
-            var p = new RealtimePacer(); Check(p.DelayMilliseconds(0, 20000000) == 16);
-            Check(p.DelayMilliseconds(0, 20000001) == 1 && p.DelayMilliseconds(20000001, 20000000) == 16);
+            var p = new RealtimePacer(); Check(p.DelayMilliseconds(0, 20000000) == 0);
+            Check(p.DelayMilliseconds(0, 20000001) == 0 && p.DelayMilliseconds(20000001, 20000000) == 1);
+            Check(p.DelayMilliseconds(2000000,0)==2 && p.DelayMilliseconds(2000001,0)==3 && p.DelayMilliseconds(50000000,0)==16);
         });
         test("host lag recovery leaves device deadlines intact and delivers their events once", () =>
         {

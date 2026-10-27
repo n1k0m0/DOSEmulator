@@ -1,8 +1,11 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original real-mode DOS OPL2 development probe, Apache-2.0.
 ; /H holds an FM tone. /S uses the SB2 FM alias and adds actual DMA1 PCM to the mix.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cld
     push cs
@@ -216,18 +219,21 @@ failed:
     call print
     mov ax,0x4c01
     int 0x21
+; Programs the explicit FM tone used by the independent captured-pitch test.
 tone440:
     mov ax,0x44a0
     call opl_write
     mov ax,0x32b0
     call opl_write
     ret
+; Releases the controlled FM key before the next independent audio case.
 stop_tone:
     mov ax,0x12b0
     call opl_write
     mov cx,4
     call wait_ticks
     ret
+; Releases this probe's acquired resources and restores its explicitly saved handler/control state.
 cleanup:
     mov ax,0x12b0
     call opl_write
@@ -240,6 +246,7 @@ cleanup:
     mov al,[saved_pic]
     out 0x21,al
     ret
+; Writes an actual FM register with the required address/data port sequence.
 opl_write:
     push ax
     push cx
@@ -256,6 +263,7 @@ opl_write:
     pop cx
     pop ax
     ret
+; Starts the controlled real DSP PCM stream while FM remains independently active.
 start_pcm:
     in al,0x21
     or al,0x20
@@ -321,6 +329,7 @@ start_pcm:
     mov al,0x1c
     call dsp_write
     ret
+; Stops the real DSP PCM stream without inventing an FM reset.
 stop_pcm:
     mov al,0xd0
     call dsp_write
@@ -328,6 +337,7 @@ stop_pcm:
     out 0x0a,al
     call dsp_reset
     ret
+; Performs the real DSP reset handshake and checks its AA reply.
 dsp_reset:
     mov dx,0x226
     mov al,1
@@ -354,6 +364,7 @@ dsp_reset:
     mov byte [io_error],1
 .done:
     ret
+; Polls DSP readiness before writing one real command/parameter byte.
 dsp_write:
     push ax
     push cx
@@ -376,6 +387,7 @@ dsp_write:
     pop cx
     pop ax
     ret
+; Waits for actual BIOS timer ticks rather than advancing virtual time from the host.
 wait_ticks:
     pusha
     mov bx,cx
@@ -389,6 +401,7 @@ wait_ticks:
     jb .wait
     popa
     ret
+; Prints the probe's diagnostic text through its actual guest DOS/BIOS output service.
 print:
     mov ah,9
     int 0x21

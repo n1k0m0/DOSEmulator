@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Check real MS-DOS FORMAT.COM's FDC protocol and resulting private FAT12 disk."""
 import json
 import importlib.util
@@ -7,6 +9,7 @@ import sys
 
 
 def source(name):
+    """Reads and validates the original local source media used by the private DOS-format oracle."""
     spec = importlib.util.spec_from_file_location(name, pathlib.Path(__file__).with_name(name + ".py"))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -14,6 +17,7 @@ def source(name):
 
 
 def verify(base, cow, trace, memory=None):
+    """Validates msdos format evidence from actual guest state, immutable program bytes and independently expected results."""
     fat = source("verify-msdos-install")
     floppy = source("verify-floppy-format")
     disk, journal = fat.materialize(base, cow)

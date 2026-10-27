@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Check a level change really waits for the CSM edge, using real DOS OUTs/audio."""
 import argparse, array, hashlib, json, math, re, sys, wave
 from pathlib import Path
@@ -29,6 +31,7 @@ if sys.byteorder!='little':pcm.byteswap()
 assert pcm[::2]==pcm[1::2]
 mono=pcm[::2]
 def rms(begin,end):
+    """Measures RMS over the explicit captured sample window, independently from the synthesizer."""
     chunk=mono[(begin+40000000)*48000//1000000000:(end-10000000)*48000//1000000000]
     assert len(chunk)>2000
     return math.sqrt(sum(x*x for x in chunk)/len(chunk))

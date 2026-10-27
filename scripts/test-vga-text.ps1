@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
 param([switch]$SkipBuild, [switch]$Gui, [string]$OutputRoot='artifacts\m1-build',
@@ -20,11 +22,13 @@ if($LASTEXITCODE -ne 0){throw 'Text-page guest assembly failed'}
 python (Join-Path $workspaceRoot 'tests\prepare-font-media.py') $probe $floppy 'TEXTPAGE.COM' > (Join-Path $testRoot 'probe-media.json')
 if($LASTEXITCODE -ne 0){throw 'Own private probe media failed'}
 $floppyHash=(Get-DosFileHash -LiteralPath $floppy -Algorithm SHA256).Hash
+# Writes an explicit private guest-input plan with bounded waits and required output markers.
 function Scenario($Name,$Steps){
     $path=Join-Path $testRoot ($Name+'.scenario.json')
     ConvertTo-Json -InputObject $Steps -Depth 8 | Set-Content -LiteralPath $path -Encoding utf8
     return $path
 }
+# Runs the actual headless guest with explicit private media, captures evidence and rejects execution failures.
 function Guest($Name,$Base,$Cow,$Plan,[bool]$Capture){
     $prefix=Join-Path $testRoot $Name
     $arguments=@($runner,'--disk',$Base,'--floppy-a',$floppy,'--scenario',$Plan,'--steps','100000000','--report',($prefix+'.json'))

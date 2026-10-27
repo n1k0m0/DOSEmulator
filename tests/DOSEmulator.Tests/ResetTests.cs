@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Text.Json;
 using DOSEmulator.Contracts;
 using DOSEmulator.Core;
@@ -7,12 +9,15 @@ using DOSEmulator.Runtime;
 
 internal static class ResetTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value, string message = "Reset invariant failed") { if (!value) throw new Exception(message); }
+    /// <summary>Submits the requested operation through the component's normal command interface.</summary>
     private static IpcResponse Command(MachineSession session, string name, object? payload = null)
     {
         var response = session.Enqueue(new(1, name, name, JsonSerializer.SerializeToElement(payload ?? new { }, IpcProtocol.JsonOptions)));
         session.PumpCommands(); return response.Result;
     }
+    /// <summary>Places the test CPU in a controlled interrupt-disabled HLT state before reset assertions.</summary>
     private static void Idle(PcMachine m)
     {
         m.Cpu.Reset();
@@ -20,6 +25,7 @@ internal static class ResetTests
         new byte[] { 0xfb, 0xf4, 0xeb, 0xfd }.CopyTo(m.Memory.Ram, 0x1100);
         m.Cpu.Eflags = 2;
     }
+    /// <summary>Registers the named reset regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("port92 reset is edge triggered and consumes each request once", () =>

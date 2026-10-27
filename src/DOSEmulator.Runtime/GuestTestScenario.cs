@@ -1,4 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Text.Json;
+using DOSEmulator.Contracts;
 using DOSEmulator.Hardware;
 
 namespace DOSEmulator.Runtime;
@@ -11,27 +14,44 @@ public sealed class GuestTestScenario
     public sealed record MouseMotion(int X, int Y, int Buttons);
     public sealed record Step(string WaitForScreen = "", string? Text = null, int[]? ScanCodes = null,
         FloppyInsertion? InsertFloppy = null, ulong SettleNanoseconds = 100_000_000, MouseMotion? Mouse = null, string? WaitForDebug = null,
-        long MinimumResetCount = 0, long MinimumPost10Count = 0);
+        long MinimumResetCount = 0, long MinimumPost10Count = 0, GameportInput? Gameport = null, SerialInput? Serial = null,
+        ParallelInput? Parallel = null, MidiInput? Midi = null);
     private readonly Step[] _steps;
     private readonly byte[][] _keys;
     private int _keyIndex;
     private bool _started;
     private string? _candidateScreen;
     private ulong _candidateAt;
+    /// <summary>Diagnostic count of completed steps.</summary>
     public int CompletedSteps { get; private set; }
+    /// <summary>Diagnostic count of total steps.</summary>
     public int TotalSteps => _steps.Length;
+    /// <summary>Diagnostic count of input bytes sent.</summary>
     public int InputBytesSent { get; private set; }
+    /// <summary>Diagnostic count of input bytes total.</summary>
     public int InputBytesTotal => _keys.Sum(bytes => bytes.Length);
+    /// <summary>Diagnostic count of media changes.</summary>
     public int MediaChanges { get; private set; }
+    /// <summary>Diagnostic count of mouse inputs sent.</summary>
     public int MouseInputsSent { get; private set; }
+    /// <summary>External analog resistance/button replacements, not guest port triggers or register injection.</summary>
+    public int GameportInputsSent { get; private set; }
+    /// <summary>Explicit framed-character and modem-pin input requests delivered to the virtual COM adapter.</summary>
+    public int SerialInputsSent { get; private set; }
+    /// <summary>Explicit replacements of outer printer status pins, not adapter registers or guest data.</summary>
+    public int ParallelInputsSent { get; private set; }
+    /// <summary>Whole outer MIDI packets queued through the virtual serial transport.</summary>
+    public int MidiInputsSent { get; private set; }
+    /// <summary>Whether every scenario step has completed its actual guest input/media conditions.</summary>
     public bool Complete => CompletedSteps == TotalSteps;
+    /// <summary>Initializes GuestTestScenario and connects the supplied dependencies before the component is used.</summary>
     public GuestTestScenario(Step[] steps)
     {
         ArgumentNullException.ThrowIfNull(steps);
         if (steps.Any(step => step is null)) throw new ArgumentException("Scenario steps cannot be null.");
         if (steps.Length is < 1 or > 64) throw new ArgumentException("Scenario requires 1..64 steps.");
         // Own the arrays: callers cannot change a validated scenario while it runs.
-        _steps = steps.Select(step => step with { ScanCodes = step.ScanCodes?.ToArray() }).ToArray();
+        _steps = steps.Select(step => step with { ScanCodes = step.ScanCodes?.ToArray(), Serial = step.Serial?.ValidatedCopy(), Midi = step.Midi?.ValidatedCopy() }).ToArray();
         _keys = _steps.Select(step =>
         {
             if ((string.IsNullOrWhiteSpace(step.WaitForScreen) == string.IsNullOrWhiteSpace(step.WaitForDebug)) ||
@@ -47,11 +67,13 @@ public sealed class GuestTestScenario
             if (step.ScanCodes?.Any(value => value is < 0 or > 255) == true) throw new ArgumentException("Invalid set-1 byte.");
             if (step.Mouse is { } mouse && (mouse.X is < -32767 or > 32767 || mouse.Y is < -32767 or > 32767 || (uint)mouse.Buttons > 3))
                 throw new ArgumentException("Invalid relative two-button mouse input.");
+            step.Gameport?.Validate();
             byte[] keys = step.ScanCodes?.Select(value => (byte)value).ToArray() ?? GuestKeyboard.Encode(step.Text ?? "");
             if (keys.Length > 8192) throw new ArgumentException("Scenario input is too long.");
             return keys;
         }).ToArray();
     }
+    /// <summary>Loads and validates an explicit guest-input/media scenario before execution.</summary>
     public static GuestTestScenario Load(string path) => new(JsonSerializer.Deserialize<Step[]>(File.ReadAllText(path),
         new JsonSerializerOptions(JsonSerializerDefaults.Web)) ?? throw new ArgumentException("Empty scenario."));
     /// <summary>Call only on the emulation owner, between RunSteps batches.</summary>
@@ -80,6 +102,21 @@ public sealed class GuestTestScenario
             {
                 if (machine.Mouse is null) throw new InvalidOperationException("Scenario requires a configured PS/2 mouse.");
                 machine.Mouse.Inject(mouse.X, mouse.Y, mouse.Buttons); MouseInputsSent++;
+            }
+            if (step.Gameport is { } input)
+            {
+                if (machine.Gameport is null) throw new InvalidOperationException("Scenario requires a configured analog gameport.");
+                machine.Gameport.SetInput(input); GameportInputsSent++;
+            }
+            if (step.Serial is { } serial) { machine.SendSerialInput(serial); SerialInputsSent++; }
+            if (step.Midi is { } midi)
+            {
+                (machine.Midi ?? throw new InvalidOperationException("No MPU-UART configured.")).QueueReceive(midi); MidiInputsSent++;
+            }
+            if (step.Parallel is { } parallel)
+            {
+                (machine.Parallel ?? throw new InvalidOperationException("No LPT1 adapter configured.")).SetInput(parallel);
+                ParallelInputsSent++;
             }
             _started = true;
         }

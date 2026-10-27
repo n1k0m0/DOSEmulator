@@ -1,9 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 
 namespace DOSEmulator.Hardware;
 
 /// <summary>Development KBC byte FIFO with tagged keyboard/Aux sources and translated set-1 injection.</summary>
-public sealed class Keyboard8042 : IIoPortDevice
+public sealed partial class Keyboard8042 : IIoPortDevice
 {
     private readonly MemoryBus memory;
     private readonly Action<bool> irq;
@@ -13,40 +15,58 @@ public sealed class Keyboard8042 : IIoPortDevice
     private byte _commandByte = 0x45, _outputPort = 3;
     private byte _expectedController, _expectedKeyboard;
     private bool _enabled = true, _scanning = true;
+    /// <summary>Initializes Keyboard8042 and connects the supplied dependencies before the component is used.</summary>
     public Keyboard8042(MemoryBus memory, Action<bool> irq, Ps2Mouse? mouse = null, Action<bool>? auxiliaryIrq = null)
     {
         this.memory = memory; this.irq = irq; _mouse = mouse; _auxIrq = auxiliaryIrq;
         if (mouse is not null) { _commandByte |= 0x20; mouse.ConnectOutput(EnqueueAux); }
     }
     private bool _resetPulse;
+    /// <summary>Current sustained keyboard-controller CPU reset output level.</summary>
     public bool ResetLineAsserted => (_outputPort & 1) == 0;
+    /// <summary>Whether an emulated reset request is pending consumption by the platform owner.</summary>
     public bool ResetRequested => _resetPulse || ResetLineAsserted;
+    /// <summary>Returns and clears a pending emulated reset pulse, leaving the sustained reset line separate.</summary>
     public bool ConsumeResetPulse()
     {
         bool pulse = _resetPulse; _resetPulse = false; return pulse;
     }
+    /// <summary>Most recent diagnostic record for an unimplemented controller command.</summary>
     public bool UnsupportedCommand { get; private set; }
+    /// <summary>Number of bytes pending in the controller's bounded output path.</summary>
     public int OutputByteCount => _output.Count;
+    /// <summary>Queues guest-visible translated set-1 keyboard bytes through the controller's normal output path.</summary>
     public void InjectTranslatedSet1(byte scanCode)
     {
         TryInjectTranslatedSet1(scanCode);
     }
+    /// <summary>Accepts a guest scan byte only when the controller's bounded input/output conditions permit it.</summary>
     public bool TryInjectTranslatedSet1(byte scanCode)
     {
         if (!_enabled || !_scanning || (_commandByte & 0x40) == 0 || _output.Count >= 64) return false;
         Enqueue(scanCode); return true;
     }
+    /// <summary>Atomically accepts a complete translated scan packet, preserving prefixes/chords on rejection.</summary>
+    public bool TryInjectTranslatedSet1(ReadOnlySpan<byte> scanCodes)
+    {
+        if (scanCodes.IsEmpty || !_enabled || !_scanning || (_commandByte & 0x40) == 0 || scanCodes.Length > 64 - _output.Count) return false;
+        foreach (byte scanCode in scanCodes) _output.Enqueue((scanCode, false));
+        UpdateIrq(); return true;
+    }
+    /// <summary>Adds a bounded controller response and updates its eligible interrupt line.</summary>
     private void Enqueue(byte value)
     {
         if (_output.Count < 64) _output.Enqueue((value, false));
         UpdateIrq();
     }
+    /// <summary>Queues auxiliary-device output and its source tag for the shared 8042 output buffer.</summary>
     private bool EnqueueAux(byte[] values)
     {
         if (_output.Count + values.Length > 64) return false;
         foreach (byte value in values) _output.Enqueue((value, true));
         UpdateIrq(); return true;
     }
+    /// <summary>Recomputes the component's externally observable interrupt level after state changes.</summary>
     private void UpdateIrq()
     {
         bool full = _output.TryPeek(out var head);
@@ -54,6 +74,7 @@ public sealed class Keyboard8042 : IIoPortDevice
         _auxIrq?.Invoke(full && head.Aux && (_commandByte & 2) != 0);
         _mouse?.SetClockEnabled((_commandByte & 0x20) == 0);
     }
+    /// <summary>Consumes controller output or reads status, preserving keyboard/auxiliary source and IRQ distinctions.</summary>
     public uint Read(ushort port, int width)
     {
         if (width != 1) return 0xff;
@@ -61,6 +82,7 @@ public sealed class Keyboard8042 : IIoPortDevice
         if (port != 0x60 || !_output.TryDequeue(out var value)) return 0xff;
         irq(false); _auxIrq?.Invoke(false); UpdateIrq(); return value.Value;
     }
+    /// <summary>Processes host-to-controller/device commands, output-port state and bounded keyboard responses.</summary>
     public void Write(ushort port, uint value, int width)
     {
         if (width != 1) return;

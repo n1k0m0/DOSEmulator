@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own 486 DOS probe: real -> PE16 -> PE32 above 64KiB -> PE16 -> real.
 ; Both biased CS32 and SS32 address only this program's allocated COM buffer.
 ; A temporary extended-RAM dword and PIC masks are saved and restored.
@@ -15,6 +17,7 @@ CACHE equ 56
 ABSENT_DATA equ 64
 ABSENT_STACK equ 72
 
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -105,6 +108,7 @@ start:
     lmsw ax
     jmp CODE16:protected16
 
+; Patches the explicit descriptor base bytes for this probe's allocated guest segment.
 patch_base:
     mov [di+2],ax
     shr eax,16
@@ -239,6 +243,7 @@ invalid_return:
 failed32:
     mov dword [proof+12],0
     jmp word CODE16:protected16_return
+; Captures the actual architectural return EIP in the probe's own exception frame.
 record_eip:
     mov eax,[ss:esp]
     mov [proof+212],eax
@@ -252,6 +257,7 @@ trap_handler:
     inc dword [proof+72]
     pop eax
     iretd
+; Validates the probe's actual protected interrupt/privilege frame before returning.
 interrupt_handler:
     push eax
     pushfd
@@ -426,6 +432,7 @@ real_return:
     int 0x21
     mov ax,0x4c01
     int 0x21
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al

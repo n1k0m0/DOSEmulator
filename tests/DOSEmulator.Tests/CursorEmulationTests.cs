@@ -1,33 +1,42 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Cpu.X86;
 using DOSEmulator.Runtime;
 
 internal static class CursorEmulationTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition, string message = "Cursor emulation assertion failed")
     { if (!condition) throw new Exception(message); }
+    /// <summary>Boots the supplied private/synthetic medium through the emulated CPU and firmware.</summary>
     private static PcMachine Boot()
     {
         var m = PcMachine.CreateDemo(); m.RunSteps(100000);
         Check(m.Fault is null && m.Cpu.Halted, m.Fault ?? "POST did not complete"); return m;
     }
+    /// <summary>Executes the real guest ROM service and checks its return to the test sentinel.</summary>
     private static void Bios(PcMachine m, ushort ax)
     {
         m.Cpu.SetSegment(Segment.Cs, 0); m.Cpu.Eip = 0x1000; m.Memory.WriteByte(0x1000, 0xf4);
         m.Cpu.SetRegister(Register.Ax, ax); m.Cpu.EnterRealModeInterrupt(0x10); m.RunSteps(200000);
         Check(m.Fault is null && m.Cpu.Halted, m.Fault ?? "INT10 did not return");
     }
+    /// <summary>Reads an actual indexed CRTC register while preserving the caller's index selection.</summary>
     private static byte Crtc(PcMachine m, int index)
     {
         int old = (int)m.Video.Read(0x3d4, 1); m.Video.Write(0x3d4, (uint)index, 1);
         byte value = (byte)m.Video.Read(0x3d5, 1); m.Video.Write(0x3d4, (uint)old, 1); return value;
     }
+    /// <summary>Sets BIOS cursor-emulation policy through the real guest INT10 service.</summary>
     private static void Emulation(PcMachine m, bool enabled)
     {
         m.Cpu.SetRegister(Register.Bx, 0x34); Bios(m, (ushort)(enabled ? 0x1200 : 0x1201));
         Check((m.Cpu.GetRegister(Register.Ax) & 255) == 0x12);
     }
+    /// <summary>Requests a cursor shape through the real guest BIOS rather than patching VGA state directly.</summary>
     private static void Shape(PcMachine m, ushort request)
     { m.Cpu.SetRegister(Register.Cx, request); Bios(m, 0x0100); }
+    /// <summary>Selects the test's guest character height through the appropriate actual BIOS service.</summary>
     private static void Height(PcMachine m, int height)
     {
         m.Cpu.SetRegister(Register.Bx, 0);
@@ -39,11 +48,13 @@ internal static class CursorEmulationTests
         }
         Check(m.Memory.ReadWord(0x485) == height);
     }
+    /// <summary>Captures the fixture's actual BIOS/device state for the following independent assertions.</summary>
     private static uint State(PcMachine m)
     {
         m.Cpu.SetSegment(Segment.Es, 0x2000); m.Cpu.SetRegister(Register.Di, 0x3000); m.Cpu.SetRegister(Register.Bx, 0);
         Bios(m, 0x1b00); return 0x23000;
     }
+    /// <summary>Registers the named cursor emulation regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("POST default underline occupies bottom two rows of a 16-high cell without AH01", () =>

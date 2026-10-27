@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original DOS probe: LLDT/LTR, ring 0 -> 3 -> TSS interrupt/fault -> 3.
 ; All descriptors, stacks and records remain inside our own COM allocation.
 ; TR cannot be unloaded with LTR: after the return to real mode its cached
@@ -18,6 +20,7 @@ LDT equ 72
 TSS equ 80
 CONFORMING equ 88
 
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -107,6 +110,7 @@ start:
     mov cr0,eax
     jmp dword C0:0x10000+kernel_entry
 
+; Patches the explicit descriptor base bytes for this probe's allocated guest segment.
 patch_base:
     mov [di+2],ax
     shr eax,16
@@ -176,6 +180,7 @@ kernel_entry:
     push dword 0x10000+user_entry
     iretd
 
+; Patches the full descriptor base used by the controlled 32-bit privilege transition.
 patch_base32:
     mov [edi+2],ax
     shr eax,16
@@ -239,6 +244,7 @@ after_forbidden_int:
     int 0x62
     db 0x0f,0x0b                ; Unreachable undefined 486 encoding.
 
+; Validates the probe's actual protected interrupt/privilege frame before returning.
 interrupt_handler:
     mov [proof+152],esp
     mov eax,[ss:esp]
@@ -414,6 +420,7 @@ real_return:
     int 0x21
     mov ax,0x4c01
     int 0x21
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al

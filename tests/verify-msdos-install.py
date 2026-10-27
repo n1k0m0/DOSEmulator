@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Read-only, independent FAT/journal checks of a privately installed MS-DOS disk.
 
 Only the Python standard library is used. Never exports OS files or changes media.
@@ -11,10 +13,12 @@ import sys
 
 
 def sha(data):
+    """Computes an uppercase SHA-256 identity for immutable input/evidence comparisons."""
     return hashlib.sha256(data).hexdigest().upper()
 
 
 def materialize(base_path, cow_path):
+    """Validates the base identity and checksummed COW records, then applies them to an in-memory private disk view."""
     base = pathlib.Path(base_path).read_bytes()
     cow = pathlib.Path(cow_path).read_bytes()
     assert cow[:8] == b"DOSCOW01" and len(cow) >= 48
@@ -34,7 +38,9 @@ def materialize(base_path, cow_path):
 
 
 class Fat:
+    """Read-only FAT12/16 view with checked geometry, duplicate tables and loop-safe cluster traversal."""
     def __init__(self, disk, start=0, length=None):
+        """Validates the FAT boot geometry and duplicate FAT copies before exposing read-only filesystem traversal."""
         self.disk, self.start = disk, start
         self.boot = disk[start:start + 512]
         assert self.boot[510:512] == b"\x55\xaa"
@@ -57,12 +63,14 @@ class Fat:
         self.root = disk[root_start:root_start + self.root_sectors * 512]
 
     def entry(self, cluster):
+        """Reads one FAT12/16 cluster entry from the validated table."""
         if self.bits == 16:
             return struct.unpack_from("<H", self.fat, cluster * 2)[0]
         value = struct.unpack_from("<H", self.fat, cluster * 3 // 2)[0]
         return value >> 4 if cluster & 1 else value & 0xfff
 
     def chain(self, first):
+        """Follows a FAT12/16 cluster chain while rejecting out-of-range entries and loops."""
         result, seen = [], set()
         current = first
         while current < (0xff8 if self.bits == 12 else 0xfff8):
@@ -73,6 +81,7 @@ class Fat:
         return result
 
     def bytes(self, chain):
+        """Collects the bytes of an already validated FAT cluster chain without modifying its image."""
         chunks = []
         for cluster in chain:
             start = self.start + (self.data_sector + (cluster - 2) * self.spc) * 512
@@ -80,6 +89,7 @@ class Fat:
         return b"".join(chunks)
 
     def directory(self, raw):
+        """Traverses valid FAT directory entries, skipping deleted entries, dot entries and volume labels."""
         for offset in range(0, len(raw), 32):
             entry = raw[offset:offset + 32]
             if entry[0] == 0:
@@ -91,6 +101,7 @@ class Fat:
             yield name, entry[11], struct.unpack_from("<H", entry, 26)[0], struct.unpack_from("<I", entry, 28)[0]
 
     def root_file(self, name):
+        """Finds a named root-directory file and validates its complete cluster-chain contents."""
         for found, attr, cluster, size in self.directory(self.root):
             if found == name:
                 assert not attr & 16
@@ -98,9 +109,11 @@ class Fat:
         raise AssertionError("Missing source file " + name)
 
     def files(self):
+        """Reads and validates the named FAT files from the supplied private media snapshot."""
         files, owned = {}, {}
 
         def walk(raw, prefix=""):
+            """Traverses FAT subdirectories while retaining path and cluster validation."""
             assert len(files) < 4096, "Too many directory entries"
             for name, attr, first, size in self.directory(raw):
                 path = prefix + name
@@ -124,6 +137,7 @@ class Fat:
 
 
 def verify(base_path, cow_path, source_floppy):
+    """Validates msdos install evidence from actual guest state, immutable program bytes and independently expected results."""
     disk, journal = materialize(base_path, cow_path)
     assert disk[510:512] == b"\x55\xaa"
     partitions = [disk[446 + i * 16:462 + i * 16] for i in range(4)]

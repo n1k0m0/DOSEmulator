@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$Disk,[Parameter(Mandatory)][string]$Overlay,

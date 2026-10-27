@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
 param([switch]$SkipBuild, [string]$Runner)
@@ -17,6 +19,7 @@ New-Item -ItemType Directory -Path $directory | Out-Null
 $overlayA = Join-Path $directory 'a.cow'
 $overlayB = Join-Path $directory 'b.cow'
 $results = @()
+# Runs one actual FreeDOS guest scenario and requires every specified output marker.
 function Run-Guest([string]$Name,[string[]]$Commands,[string[]]$Required,[string[]]$MediaArguments) {
     $inputPath = Join-Path $directory ($Name + '.txt')
     $report = Join-Path $directory ($Name + '.json')

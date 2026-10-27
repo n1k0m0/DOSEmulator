@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent guest/MMU/VDS/FDC/journal oracle; no emulator implementation imports."""
 import argparse
 import copy
@@ -9,12 +11,14 @@ import struct
 
 
 def module(name):
+    """Imports the adjacent read-only oracle helper explicitly by file path."""
     spec=importlib.util.spec_from_file_location(name,Path(__file__).with_name(name+'.py'))
     result=importlib.util.module_from_spec(spec);spec.loader.exec_module(result)
     return result
 
 
 def verify(report_path,memory_path,program_path,base_path,cow_path,trace_path,mode):
+    """Validates fdc vds evidence from actual guest state, immutable program bytes and independently expected results."""
     report=json.loads(Path(report_path).read_text(encoding='utf-8-sig'))
     memory=Path(memory_path).read_bytes();program=Path(program_path).read_bytes()
     output=report['status']['debugOutput'];cpu=report['cpu']
@@ -29,6 +33,7 @@ def verify(report_path,memory_path,program_path,base_path,cow_path,trace_path,mo
     raw=lambda a:struct.unpack_from('<I',memory,a)[0]
 
     def physical(linear):
+        """Walks the reported classic 4-KiB page tables to translate a guest linear proof address."""
         if not cpu['pagingEnabled']:return linear
         pde=raw((cpu['cr3']&~4095)+(linear>>22)*4);assert pde&1
         pte=raw((pde&~4095)+((linear>>12)&1023)*4);assert pte&1
@@ -125,6 +130,7 @@ def verify(report_path,memory_path,program_path,base_path,cow_path,trace_path,mo
 
 
 def negative_controls(paths,root):
+    """Corrupts selected independent evidence fields and requires each corrupted oracle input to fail."""
     root=Path(root);root.mkdir(exist_ok=False)
     report,memory,program,base,cow,trace=map(Path,paths[:6]);mode=paths[6]
     original=json.loads(report.read_text(encoding='utf-8-sig'));ram=memory.read_bytes()
@@ -135,6 +141,7 @@ def negative_controls(paths,root):
     if mode=='RAM':mutations.extend([('ems-mapping',address+56,0),('ems-free',address+54,0)])
     rejected=[]
     def reject(label,args):
+        """Requires an independently corrupted input to fail instead of accepting the guest's success marker alone."""
         try:verify(*args)
         except (AssertionError,ValueError,KeyError,IndexError,struct.error):rejected.append(label)
         else:raise AssertionError('Corrupt acceptance was accepted: '+label)

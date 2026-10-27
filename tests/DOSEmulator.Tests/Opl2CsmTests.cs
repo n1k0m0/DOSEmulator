@@ -1,15 +1,21 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Hardware;
 
 internal static partial class Opl2Tests
 {
+    /// <summary>Programs the actual OPL2 registers required by the test's timer/CSM scenario.</summary>
     private static void ConfigureCsm(Rig r, byte preset = 128, byte control = 0x41)
     {
         r.Write(0x23, 0x21); r.Write(0x63, 0xf0); r.Write(0x83, 0x0f);
         r.Write(0xa0, 0x44); r.Write(0xb0, 0x12); r.Write(0xc0, 1);
         r.Write(8, 0x80); r.Write(2, preset); r.Write(4, control);
     }
+    /// <summary>Computes the independent rational FM sample deadline in virtual nanoseconds.</summary>
     private static ulong NativeSampleTime(long sample) => (ulong)(((UInt128)(ulong)sample * 72 * 1000000000 + 3579544) / 3579545);
+    /// <summary>Advances to the fixture's first actual timer-driven CSM key edge.</summary>
     private static void FirstCsmEdge(Rig r) => r.Advance(r.Clock.NextEventTime!.Value - r.Clock.Now);
+    /// <summary>Registers the independent CSM key/timing/level regression cases.</summary>
     public static void AddCsmTo(Action<string, Action> test)
     {
         test("CSM waits for timer one then keys all 18 slots at its edge", () =>

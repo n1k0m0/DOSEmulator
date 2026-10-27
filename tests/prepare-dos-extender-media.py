@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Create a NEW private installed-DOS copy with local game files, never exports media.
 
 Only test preparation edits the new FAT16 copy. Original DOS and game files
@@ -16,6 +18,7 @@ spec.loader.exec_module(fat_oracle)
 
 
 def prepare(base, overlay, game, destination, demo_tics=32):
+    """Creates a fresh private dos extender media image from validated inputs, leaving every source medium unchanged."""
     disk, journal = fat_oracle.materialize(base, overlay)
     start = struct.unpack_from("<I", disk, 454)[0] * 512
     volume = fat_oracle.Fat(disk, start)

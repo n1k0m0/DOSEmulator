@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own 486 DOS client: actual debug faults, committed traps, SS deferral and REP restart.
 ; No resident manager: private PE tables/stacks, optionally private 4-KiB pages.
 bits 16
@@ -21,6 +23,7 @@ TSS equ 72
     mov di,%1
     call patch_base
 %endmacro
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -108,6 +111,7 @@ start:
     or eax,1
     mov cr0,eax
     jmp dword C0:0x10000+kernel_entry
+; Patches the explicit descriptor base bytes for this probe's allocated guest segment.
 patch_base:
     mov [di+2],ax
     shr eax,16
@@ -172,6 +176,7 @@ kernel_entry:
     mov cr0,eax
 %endif
 
+    call ss_contracts
     mov eax,cr0
     mov [proof+192],eax
     mov eax,0x2000
@@ -279,6 +284,99 @@ after_page:
 %endif
     iretd
 %endmacro
+; Synchronous GD faults retain the just-loaded SS; the real handler returns to retry MOV DR.
+; Consecutive SS loads use the bounded DOSE policy; software must not rely on a portable second shadow.
+ss_contracts:
+    mov [ss_proof+12],esp
+    mov dword [ss_proof+24],S0
+    mov dword [ss_proof+28],0xc0de5584
+    mov word [idt+8],(0x10100+ss_handler-$$)&0xffff
+    mov word [idt+14],(0x10100+ss_handler-$$)>>16
+    mov eax,0x2000
+    mov dr7,eax
+    mov edx,S0
+    mov ss,dx
+ss_gd_read:
+    mov eax,dr0
+    mov [ss_proof+16],eax
+    mov eax,0x2000
+    mov dr7,eax
+    mov eax,0x12345678
+    push dword S0
+    pop ss
+ss_gd_write:
+    mov dr0,eax
+    mov eax,dr0
+    mov [ss_proof+20],eax
+    xor eax,eax
+    mov dr0,eax
+    mov dr6,eax
+    mov dr7,eax
+%macro ss_pair 3
+    mov edx,S0
+%if %2
+    push dword S0
+%endif
+%if %1
+    push dword S0
+%endif
+    pushfd
+    or dword [ss:esp],0x100
+    popfd
+%if %1
+    pop ss
+%else
+    mov ss,dx
+%endif
+%if %2
+    pop ss
+%else
+    mov ss,dx
+%endif
+    mov esp,[ss_proof+12]
+%3:
+%endmacro
+    ss_pair 0,0,ss_after_mm
+    ss_pair 0,1,ss_after_mp
+    ss_pair 1,0,ss_after_pm
+    ss_pair 1,1,ss_after_pp
+    mov word [idt+8],(0x10100+db_handler-$$)&0xffff
+    mov word [idt+14],(0x10100+db_handler-$$)>>16
+    xor eax,eax
+    mov dr6,eax
+    mov dr7,eax
+    ret
+; Capture the actual frame and unexecuted EAX, then clear only TF/DR6 before the real IRETD.
+ss_handler:
+    enter_handler
+    mov edi,[ss_proof+8]
+    cmp edi,6
+    jae unexpected
+    shl edi,5
+    add edi,ss_proof+32
+    mov eax,dr6
+    mov [edi],eax
+    mov eax,dr7
+    mov [edi+4],eax
+    mov eax,[ss:ebp+36]
+    mov [edi+8],eax
+    mov eax,[ss:ebp+40]
+    mov [edi+12],eax
+    mov eax,[ss:ebp+44]
+    mov [edi+16],eax
+    mov eax,[ss:ebp+32]
+    mov [edi+20],eax
+    lea eax,[ebp+48]
+    mov [edi+24],eax
+    xor eax,eax
+    mov ax,ss
+    mov [edi+28],eax
+    inc dword [ss_proof+8]
+    xor eax,eax
+    mov dr6,eax
+    and dword [ss:ebp+44],~0x100
+    leave_handler 0
+
 db_handler:
     enter_handler
     mov esi,[proof+100]
@@ -532,6 +630,7 @@ real_return:
     int 0x21
     mov ax,0x4c00
     int 0x21
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al
@@ -566,12 +665,16 @@ symbol_data:
     dd tf_inc,after_tf,ss_load,ss_next,ss_after,gp_read,after_gp,rep_copy,after_rep
     dd page_read,after_page,watched,rep_source,rep_destination,paging_storage,program_end
 symbol_end:
+    db 'SSGDADDR'
+    dd ss_proof,ss_gd_read,ss_gd_write,ss_after_mm,ss_after_mp,ss_after_pm,ss_after_pp,initial_end
 align 4,db 0
 proof:
     db 'CPDB0001'
     dd 1
     times 253 dd 0
 align 4,db 0
+ss_proof: db 'SSGD0001'
+    times 216 db 0
 watched dd 0x89abcdef
     dd 0xc0de0101
 rep_source dd 0x11112222,0x33334444

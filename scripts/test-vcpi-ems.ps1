@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
 param([switch]$SkipBuild,[string]$OutputRoot='artifacts\m1-build',
@@ -51,6 +53,7 @@ foreach($mode in @('NOEMS','RAM')){
     python $mediaOracle --base $Disk --original $Overlay --configured $configured[$mode] --vcpi (Join-Path $root 'VCPIPM.COM') --ems (Join-Path $root 'EMSBANK.COM') --mode $mode > ($prefix+'.verified.json')
     $originals+=Get-DosFileHash -LiteralPath $configured[$mode]
 }
+# Runs one actual private VCPI/EMS guest and independently verifies its reported memory operations.
 function Run-MemoryGuest([string]$Kind,[string]$Mode,[int]$RamMiB,[string]$Source,[int]$Number,[switch]$Unavailable){
     $name=$programs[$Kind]
     $prefix=Join-Path $root ("$Mode-$RamMiB-$Kind-$Source-$Number")

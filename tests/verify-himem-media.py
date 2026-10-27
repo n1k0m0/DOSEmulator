@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Read-only FAT/journal audit: only private CONFIG.SYS plus its exact backup."""
 import hashlib
 import importlib.util
@@ -12,10 +14,12 @@ spec.loader.exec_module(oracle)
 
 
 def verify(base, original, configured):
+    """Validates himem media evidence from actual guest state, immutable program bytes and independently expected results."""
     before, _ = oracle.materialize(base, original)
     after, journal = oracle.materialize(base, configured)
 
     def files(data):
+        """Reads and validates the named FAT files from the supplied private media snapshot."""
         start = struct.unpack_from("<I", data, 454)[0] * 512
         return oracle.Fat(data, start).files()
 

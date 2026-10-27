@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent oracle for our own DOS high-speed probe: actual I/O and known guest DMA bytes.
 
 Checks the declared DSP-2.01 subset, including its modeled 1-us command latch and
@@ -34,15 +36,18 @@ text = "".join(chr(io["value"]) for io in chars)
 
 def marker(name):
     # Match the complete printed line rather than its longer success-marker prefix.
+    """Finds the unique guest proof marker and rejects missing or ambiguous observations."""
     return chars[text.index(name + "\r\n") + len(name) - 1]["time"]
 
 
 def phase(start, end):
+    """Selects accepted DSP observations belonging to the requested guest test phase."""
     a, b = marker(start), marker(end)
     return [io for io in trace if a < io["time"] < b]
 
 
 def dsp_writes(ios, values):
+    """Selects actual writes to the DSP command port from the timestamped I/O trace."""
     writes = [io for io in ios if io["port"] == 0x22c and io["write"]]
     assert [io["value"] for io in writes] == values, [io["value"] for io in writes]
     return writes
@@ -52,6 +57,7 @@ dma_base = None
 
 
 def check_dma(ios, mode, partial_abort=False):
+    """Validates DMA address/count/mode progress against the actual accepted transfer components."""
     global dma_base
     writes = [io for io in ios if io["write"] and io["port"] in (2, 3, 0x83, 0x0a, 0x0b, 0x0c)]
     assert [io["port"] for io in writes] == [0x0a, 0x0c, 0x0b, 2, 2, 0x83, 3, 3, 0x0a] + ([0x0a] if partial_abort else [])
@@ -69,17 +75,20 @@ events, streams, completions = [], [], []
 
 
 def accepted(writes, index):
+    """Selects only completed guest transfers from the observed device protocol."""
     return writes[index]["time"] + 1000
 
 
 def stream(start, period, count, high_speed):
     # The guest fills its actual DMA buffer with 64/192, each repeated 16 times.
+    """Selects the accepted timestamped DMA components for one actual DSP transfer."""
     for index in range(count):
         events.append((start + (index + 1) * period, "dac", 64 if index % 32 < 16 else 192))
     streams.append({"start": start, "period": period, "bytes": count, "highSpeed": high_speed})
 
 
 def check_ack(deadline):
+    """Checks that real DSP status reads acknowledge only the intended interrupt source."""
     candidates = [io for io in trace if io["port"] == 0x22e and not io["write"] and deadline <= io["time"] < deadline + 20000]
     assert candidates, f"No actual guest IRQ acknowledgement near {deadline}"
     ack = candidates[0]

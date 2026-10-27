@@ -1,8 +1,11 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original client of the resident EMM386 VCPI and INT15/AH87 interfaces.
 ; Two private VCPI pages are allocated, used, freed and accounted for.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -170,18 +173,21 @@ report:
     int 0x21
     mov ax,0x4c00
     int 0x21
+; Calls the resident block-copy service with the probe's explicitly constructed descriptors.
 copy_block:
     mov si,copy_table
     mov cx,2048
     mov ah,0x87
     int 0x15
     ret
+; Patches the explicit descriptor base bytes for this probe's allocated guest memory.
 descriptor_base:
     mov [di+2],ax
     shr eax,16
     mov [di+4],al
     mov [di+7],ah
     ret
+; Returns the probe's owned VCPI pages to the real resident manager.
 release_pages:
     cmp byte [allocated],0
     je .done
@@ -197,6 +203,7 @@ release_pages:
     jmp release_pages
 .done:
     ret
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al

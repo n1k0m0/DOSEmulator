@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent binary/RAM checks for the own PE16/PE32 DOS guest.
 Private memory dumps may contain guest OS bytes and must never be published.
 """
@@ -10,6 +12,7 @@ from pathlib import Path
 
 
 def verify(report_path, memory_path, program_path, os_name):
+    """Validates cpu protected evidence from actual guest state, immutable program bytes and independently expected results."""
     report = json.loads(Path(report_path).read_text(encoding="utf-8-sig"))
     memory = Path(memory_path).read_bytes()
     program = Path(program_path).read_bytes()
@@ -31,6 +34,7 @@ def verify(report_path, memory_path, program_path, os_name):
     words = struct.unpack("<54I", proof[8:])
 
     def word(offset):
+        """Reads one explicitly little-endian word from the selected guest proof bytes."""
         return words[(offset - 8) // 4]
 
     assert word(8) == word(12) == 1 and word(16) == 0x3F

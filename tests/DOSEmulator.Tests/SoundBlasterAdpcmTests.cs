@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Hardware;
 
 internal static partial class SoundBlasterTests
 {
+    /// <summary>Registers Creative ADPCM decoding/DMA regressions against independently specified sample sequences.</summary>
     public static void AddAdpcmTo(Action<string, Action> test)
     {
         byte[] encoded = [0x77,0x77,0xff,0xf0,0x00,0xe3,0x55,0xaa,0xff,0x00,0x99,0x66];

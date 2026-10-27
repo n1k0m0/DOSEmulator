@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Audit DOS-written private HIMEM/EMM386 configurations, retaining every original file."""
 import argparse
 import importlib.util
@@ -9,6 +11,7 @@ s=importlib.util.spec_from_file_location("fat_oracle",Path(__file__).with_name("
 fat=importlib.util.module_from_spec(s);s.loader.exec_module(fat)
 
 def verify(base,overlay,mode):
+    """Validates dos extender config evidence from actual guest state, immutable program bytes and independently expected results."""
     before=Path(base).read_bytes();after,journal=fat.materialize(base,overlay);start=struct.unpack_from("<I",before,454)[0]*512
     old,_=fat.Fat(before,start).files();new,allocation=fat.Fat(after,start).files()
     assert "CONFIG.PRE" not in old and set(new)==set(old)|{"CONFIG.PRE"}

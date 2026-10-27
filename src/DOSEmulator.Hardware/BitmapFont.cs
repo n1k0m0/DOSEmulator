@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 namespace DOSEmulator.Hardware;
 
 /// <summary>Original development 5x7 font, not an IBM ROM or a complete CP437 font.</summary>
@@ -37,6 +39,7 @@ public static class BitmapFont
         ['"'] = [10,10,10,0,0,0,0], ['\''] = [4,4,8,0,0,0,0],
         ['|'] = [4,4,4,4,4,4,4], ['@'] = [14,17,23,21,23,16,14]
     };
+    /// <summary>Returns the requested bitmap glyph row in the font's documented pixel-bit order.</summary>
     public static byte Row(char character, int row)
     {
         if ((uint)row >= 7) return 0;

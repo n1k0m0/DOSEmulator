@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Own deterministic raw numerical inputs. No operating-system/game data or host float."""
 import argparse
 import json
@@ -8,13 +10,15 @@ J=1<<63
 ZERO=(0,0);ONE=(J,0x3fff);TWO=(J,0x4000);THREE=(3<<62,0x4000)
 QNAN=(0xc000000000000042,0x7fff);SNAN=(0x8000000000000123,0x7fff)
 INF=(J,0x7fff);MIN=(J,1);DEN=(1,0);MAX=((1<<64)-1,0x7ffe)
-def neg(v):return (v[0],v[1]^0x8000)
-def raw(v):return dict(significand=f'{v[0]:016X}',exponent=f'{v[1]:04X}')
+def neg(v):"""Returns or applies the raw sign-bit transformation used by the independent vector construction."""; return (v[0],v[1]^0x8000)
+def raw(v):"""Serializes raw significand/exponent fields without numeric conversion."""; return dict(significand=f'{v[0]:016X}',exponent=f'{v[1]:04X}')
 
 
 def generate():
+    """Builds deterministic x87 numeric vectors vectors and original guest data tables; no original media are modified."""
     cases=[]
     def add(name,kind,control=0x37f,operation=0,a=ONE,b=ONE,bits=0):
+        """Adds one explicitly parameterized x87 numeric vectors case to the deterministic test matrix."""
         cases.append(dict(id=name,kind=kind,control=control,operation=operation,a=raw(a),b=raw(b),bits=f'{bits:016X}'))
     pairs=[(ONE,TWO),(ONE,THREE),(ONE,(J,0x3fbf)),((J+1,0x3fff),(J,0x3fbf)),
            (ONE,(J,0x3fca)),(ONE,(J,0x3fe7)),(ONE,neg(ONE)),(neg(ONE),THREE),
@@ -29,6 +33,7 @@ def generate():
     rng=random.Random(0x486387)
     for i in range(160):
         def finite():
+            """Builds a controlled finite raw extended operand from explicit sign, exponent and significand fields."""
             e=rng.choice([0,1,2,0x7ffe,rng.randrange(0x3f00,0x4100)])
             sig=rng.getrandbits(64)|(J if e else 0)
             return sig,e|(0x8000 if rng.randrange(2) else 0)
@@ -68,8 +73,10 @@ def generate():
 
 
 def guest_cases(cases):
+    """Selects a bounded DOS matrix retaining the required operand, rounding and exception families."""
     by_id={v['id']:v for v in cases};ids=[]
     def take(key):
+        """Adds the requested case once to the bounded guest subset."""
         if key not in ids:ids.append(key)
     for pc in (0,2,3):
         for rc in range(4):
@@ -112,5 +119,5 @@ if __name__=='__main__':
         data=b''.join(blocks);assert len(data)==40*len(selected)
         source=f'%define VECTOR_COUNT {len(selected)}\n%macro numeric_vectors 0\n'
         source+='\n'.join('db '+','.join(str(x) for x in data[i:i+40]) for i in range(0,len(data),40))+'\n%endmacro\n'
-        (root/'x87-numeric-data.inc').write_text(source,encoding='ascii')
+        (root/'x87-numeric-data.inc').write_text('; SPDX-License-Identifier: Apache-2.0\n; Copyright 2026 Nils Kopal\n' + (source),encoding='ascii')
     print(json.dumps(dict(passed=True,vectors=len(cases),guestVectors=len(selected),noHostFloat=True)))

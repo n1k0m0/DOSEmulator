@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Buffers.Binary;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
@@ -31,6 +33,12 @@ try
             BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(at + 8), Convert.ToUInt16(raw.GetProperty("exponent").GetString(), 16));
         }
         BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(32), Convert.ToUInt64(v.GetProperty("bits").GetString(), 16));
+        if (v.TryGetProperty("packed", out var packed))
+        {
+            byte[] decimalBytes = Convert.FromHexString(packed.GetString()!);
+            if (decimalBytes.Length != 10) throw new ArgumentException("A packed BCD operand has ten bytes.");
+            decimalBytes.CopyTo(bytes, 148);
+        }
         IntPtr block = Marshal.AllocHGlobal(bytes.Length);
         try { Marshal.Copy(bytes, 0, block, bytes.Length); run(block); Marshal.Copy(block, bytes, 0, bytes.Length); }
         finally { Marshal.FreeHGlobal(block); }
@@ -41,7 +49,8 @@ try
         }).ToArray();
         results.Add(new { id = v.GetProperty("id").GetString(), control = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(40)),
             status = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(44)), tags = BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(48)),
-            registers, memory = Convert.ToHexString(bytes.AsSpan(148, 8)) });
+            registers, memory = Convert.ToHexString(bytes.AsSpan(148, 8)),
+            memory80 = Convert.ToHexString(bytes.AsSpan(148, 10)), memoryGuard = Convert.ToHexString(bytes.AsSpan(158, 2)) });
     }
     File.WriteAllText(args[2], JsonSerializer.Serialize(new { architecture = "host-x87-x64", referenceOnly = true,
         processor = Environment.GetEnvironmentVariable("PROCESSOR_IDENTIFIER"), runtime = RuntimeInformation.FrameworkDescription,
@@ -53,9 +62,14 @@ finally { Native.VirtualFree(executable, 0, 0x8000); }
 static class Native
 {
     [UnmanagedFunctionPointer(CallingConvention.Winapi)] internal delegate void Run(IntPtr block);
+    /// <summary>Allocates memory only for the separately invoked native x87 reference helper, never the emulator core.</summary>
     [DllImport("kernel32", SetLastError = true)] internal static extern IntPtr VirtualAlloc(IntPtr address, nuint size, uint allocation, uint protection);
+    /// <summary>Changes reference-helper code protection after its controlled native test bytes are installed.</summary>
     [DllImport("kernel32", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool VirtualProtect(IntPtr address, nuint size, uint protection, out uint old);
+    /// <summary>Releases memory owned by the separate native numeric-reference test helper.</summary>
     [DllImport("kernel32", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool VirtualFree(IntPtr address, nuint size, uint kind);
+    /// <summary>Obtains the current-process pseudo-handle for the isolated native reference helper.</summary>
     [DllImport("kernel32")] internal static extern IntPtr GetCurrentProcess();
+    /// <summary>Publishes the isolated native reference helper's installed code bytes before invoking them.</summary>
     [DllImport("kernel32", SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] internal static extern bool FlushInstructionCache(IntPtr process, IntPtr address, nuint length);
 }

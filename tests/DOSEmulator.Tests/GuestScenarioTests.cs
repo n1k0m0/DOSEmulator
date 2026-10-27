@@ -1,14 +1,20 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
 
 internal static class GuestScenarioTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition) { if (!condition) throw new Exception("Scenario assertion failed"); }
+    /// <summary>Requires the supplied operation to throw the selected exception type.</summary>
     private static void Reject(Action action) { try { action(); } catch (ArgumentException) { return; } throw new Exception("Expected invalid scenario"); }
+    /// <summary>Installs only the scenario fixture's controlled text screen before exercising its input policy.</summary>
     private static void Screen(PcMachine machine, string text)
     {
         for (int i = 0; i < 80; i++) machine.Memory.WriteByte((uint)(0xb8000 + i * 2), i < text.Length ? (byte)text[i] : (byte)' ');
     }
+    /// <summary>Registers the named guest scenario regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("guest scenario gates actual KBC bytes on VGA text and controller backpressure", () =>

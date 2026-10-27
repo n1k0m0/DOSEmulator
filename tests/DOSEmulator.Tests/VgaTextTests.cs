@@ -1,35 +1,48 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
 
 internal static class VgaTextTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value, string message = "VGA text assertion failed") { if (!value) throw new Exception(message); }
+    /// <summary>Writes an actual indexed VGA register for the controlled fixture setup.</summary>
     private static void Reg(VgaAdapter v, int index, int value) => v.Write(0x3d4, (uint)(index | value << 8), 2);
+    /// <summary>Reads an actual indexed device register for the surrounding independent assertions.</summary>
     private static int Get(VgaAdapter v, int index) { v.Write(0x3d4, (uint)index, 1); return (int)v.Read(0x3d5, 1); }
+    /// <summary>Reads the actual high/low CRTC cursor address registers.</summary>
     private static int HardwareCursor(PcMachine m) => Get(m.Video, 14) << 8 | Get(m.Video, 15);
+    /// <summary>Boots the supplied private/synthetic medium through the emulated CPU and firmware.</summary>
     private static PcMachine Boot()
     {
         var m = PcMachine.CreateDemo(); m.RunSteps(150000);
         Check(m.Fault is null && m.Cpu.Halted, m.Fault ?? "POST did not halt"); Bios(m, 3); return m;
     }
+    /// <summary>Executes the real guest ROM service and checks its return to the test sentinel.</summary>
     private static void Bios(PcMachine m, ushort ax)
     {
         m.Cpu.SetSegment(Segment.Cs, 0); m.Cpu.Eip = 0x1000; m.Memory.WriteByte(0x1000, 0xf4);
         m.Cpu.SetRegister(Register.Ax, ax); m.Cpu.EnterRealModeInterrupt(0x10); m.RunSteps(3000000);
         Check(m.Fault is null && m.Cpu.Halted, m.Fault ?? "INT10 did not return");
     }
+    /// <summary>Positions the cursor through the real guest BIOS service.</summary>
     private static void Cursor(PcMachine m, int page, int row, int column)
     {
         m.Cpu.SetRegister(Register.Bx, (uint)(page << 8)); m.Cpu.SetRegister(Register.Dx, (uint)(row << 8 | column)); Bios(m, 0x0200);
     }
+    /// <summary>Reads an actual character/attribute cell from the selected private VGA text page.</summary>
     private static ushort Cell(PcMachine m, int page, int row, int column) => m.Memory.ReadWord((uint)(0xb8000 + page * m.Memory.ReadWord(0x44c) + (row * 80 + column) * 2));
+    /// <summary>Draws bounded bitmap UI text using the original project font.</summary>
     private static byte[] Text(PcMachine m) => Enumerable.Range(0, 32768).Select(i => m.Memory.ReadByte((uint)(0xb8000 + i))).ToArray();
+    /// <summary>Queries the real BIOS video-state information used by the text-page assertions.</summary>
     private static int Pages(PcMachine m)
     {
         m.Cpu.SetSegment(Segment.Es, 0x2000); m.Cpu.SetRegister(Register.Di, 0x3000); m.Cpu.SetRegister(Register.Bx, 0); Bios(m, 0x1b00);
         return m.Memory.ReadByte(0x23029);
     }
+    /// <summary>Registers the named vga text regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         foreach (int page in Enumerable.Range(0, 8))
@@ -95,6 +108,35 @@ internal static class VgaTextTests
                 int cursor = HardwareCursor(m); Bios(m, (ushort)((down ? 0x0700 : 0x0600) | count));
                 Check(Text(m).SequenceEqual(expected) && HardwareCursor(m) == cursor);
             });
+        foreach (int font in new[] { 0x1114, 0x1111, 0x1112 })
+        foreach (bool down in new[] { false, true })
+        foreach (int count in new[] { 0, 1 })
+        foreach (int edge in new[] { 0, 1, 2 })
+            test($"BIOS text scroll clips lower/right edge {edge}, font {font:X}, down={down}, count={count} without crossing pages", () =>
+            {
+                using var m = Boot(); m.Cpu.SetRegister(Register.Bx, 0); Bios(m, (ushort)font);
+                int rows = m.Memory.ReadByte(0x484) + 1, stride = m.Memory.ReadWord(0x44c), page = 2;
+                for (int row = 0; row < rows; row++) for (int column = 0; column < 80; column++)
+                    m.Memory.WriteWord((uint)(0xb8000 + page * stride + (row * 80 + column) * 2), (ushort)((row + 1) << 8 | column));
+                Bios(m, (ushort)(0x0500 | page)); byte[] original = Text(m), expected = original.ToArray();
+                int bottom = edge == 1 ? rows - 2 : rows - 1, right = edge == 0 ? 74 : 79;
+                for (int row = 3; row <= bottom; row++) for (int column = 5; column <= right; column++)
+                {
+                    int source = row + (down ? -count : count), dest = page * stride + (row * 80 + column) * 2;
+                    if (count == 0 || source < 3 || source > bottom) { expected[dest] = 32; expected[dest + 1] = 0x2e; }
+                    else Array.Copy(original, page * stride + (source * 80 + column) * 2, expected, dest, 2);
+                }
+                // A one-past row is the actual Microsoft ANSI.SYS CLS request;
+                // FFh also checks that clipping happens before address arithmetic.
+                int requestedBottom = edge == 1 ? bottom : edge == 0 ? rows : 255;
+                m.Cpu.SetRegister(Register.Cx, 0x0305); m.Cpu.SetRegister(Register.Dx, (uint)(requestedBottom << 8 | (edge == 0 ? right : 255)));
+                m.Cpu.SetRegister(Register.Bx, 0x2e00); m.Cpu.Eflags = 2 | X86Cpu.Direction | X86Cpu.Carry;
+                uint dx = m.Cpu.GetRegister(Register.Dx); int cursor = HardwareCursor(m);
+                Bios(m, (ushort)((down ? 0x0700 : 0x0600) | count));
+                Check(Text(m).SequenceEqual(expected) && HardwareCursor(m) == cursor, "Clipped scroll changed outside bytes or failed to clear/copy");
+                Check(m.Cpu.GetRegister(Register.Dx) == dx && m.Cpu.GetRegister(Register.Cx) == 0x0305 && m.Cpu.GetRegister(Register.Bx) == 0x2e00);
+                Check(m.Cpu.Eflags == (2 | X86Cpu.Direction | X86Cpu.Carry));
+            });
         test("Teletype uses the active text page, keeps existing attributes and handles wrap, CR, LF and BS", () =>
         {
             using var m = Boot(); Cursor(m, 3, 24, 79); Bios(m, 0x0503);
@@ -143,7 +185,7 @@ internal static class VgaTextTests
         test("Invalid pages, positions, rectangles and string forms are atomic no-ops", () =>
         {
             using var m = Boot(); byte[] original = Text(m), bda = m.Memory.Ram.AsSpan(0x449, 30).ToArray();
-            foreach (var (ax,bx,cx,dx) in new[] { (0x0508,0,0,0), (0x0200,0x0800,0,0), (0x0200,0,0,0x1900), (0x0200,0,0,0x0050), (0x0941,0x080e,1,0), (0x0601,0x0700,0x0800,0x0400), (0x0701,0x0700,0x0009,0x0008), (0x0600,0x0700,0,0x1850), (0x1304,0,1,0), (0x1301,0,0,0x0101), (0x1301,0x0800,1,0) })
+            foreach (var (ax,bx,cx,dx) in new[] { (0x0508,0,0,0), (0x0200,0x0800,0,0), (0x0200,0,0,0x1900), (0x0200,0,0,0x0050), (0x0941,0x080e,1,0), (0x0601,0x0700,0x0800,0x0400), (0x0701,0x0700,0x0009,0x0008), (0x0600,0x0700,0x1900,0xffff), (0x0700,0x0700,0x0050,0xffff), (0x1304,0,1,0), (0x1301,0,0,0x0101), (0x1301,0x0800,1,0) })
             {
                 m.Cpu.SetRegister(Register.Bx, (uint)bx); m.Cpu.SetRegister(Register.Cx, (uint)cx); m.Cpu.SetRegister(Register.Dx, (uint)dx); Bios(m, (ushort)ax);
                 Check(Text(m).SequenceEqual(original) && m.Memory.Ram.AsSpan(0x449, 30).SequenceEqual(bda), $"Invalid {ax:X}/{bx:X} modified text state");

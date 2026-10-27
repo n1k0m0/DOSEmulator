@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent own-opcode/control-word/UD-frame checks; no x87 arithmetic claim."""
 import argparse
 import copy
@@ -9,6 +11,7 @@ import struct
 
 
 def verify(report_path,memory_path,program_path,system):
+    """Validates x87 control evidence from actual guest state, immutable program bytes and independently expected results."""
     r=json.loads(Path(report_path).read_text(encoding="utf-8-sig"));m=Path(memory_path).read_bytes();p=Path(program_path).read_bytes()
     cpu=r["cpu"];output=r["status"]["debugOutput"]
     assert r["status"]["fault"] is None and r["scenario"]["complete"]
@@ -20,6 +23,7 @@ def verify(report_path,memory_path,program_path,system):
     markers=re.findall(r"CPU-X87-PROOF=([0-9A-F]{8})\r\n",output);assert len(markers)==1
     address=int(markers[0],16);raw=lambda a:struct.unpack_from("<I",m,a)[0]
     def physical(a):
+        """Walks the reported classic 4-KiB page tables to translate a guest linear proof address."""
         if not cpu["pagingEnabled"]:return a
         pde=raw((cpu["cr3"]&~4095)+(a>>22)*4);assert pde&1
         pte=raw((pde&~4095)+((a>>12)&1023)*4);assert pte&1
@@ -45,10 +49,12 @@ def verify(report_path,memory_path,program_path,system):
 
 
 def negative_controls(report,memory,program,system,directory):
+    """Corrupts selected independent evidence fields and requires each corrupted oracle input to fail."""
     verify(report,memory,program,system);r=json.loads(Path(report).read_text(encoding="utf-8-sig"));m=Path(memory).read_bytes();p=Path(program).read_bytes()
     a=int(re.search(r"CPU-X87-PROOF=([0-9A-F]{8})",r["status"]["debugOutput"])[1],16)
     directory=Path(directory);directory.mkdir(exist_ok=False);mp=directory/"corrupted.private-ram.bin";rp=directory/"corrupted.json";pp=directory/"corrupted.com";controls=[]
     def reject(name,rr=report,mm=memory,pr=program):
+        """Requires an independently corrupted input to fail instead of accepting the guest's success marker alone."""
         try:verify(rr,mm,pr,system)
         except AssertionError:controls.append(dict(name=name,rejected=True))
         else:raise AssertionError("Accepted corrupted x87 proof: "+name)

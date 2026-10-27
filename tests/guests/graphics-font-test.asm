@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own real-DOS VGA graphics font acceptance, Apache-2.0.
 ; -DTEST_MODE=0x12 or 0x13. No ROM/OS/font bytes are included.
 ; Snapshot the font that the guest's DISPLAY.SYS actually loaded in plane 2,
@@ -5,6 +7,7 @@
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cld
     push cs
@@ -371,11 +374,13 @@ failed:
     call debug
     mov byte [exit_code],1
     jmp finish
+; Positions the cursor through the real guest video BIOS.
 cursor:
     xor bh,bh
     mov ah,2
     int 0x10
     ret
+; Invokes the real video BIOS to clear the selected graphics test surface.
 clear:
     mov ax,0x0600
     xor bx,bx
@@ -386,6 +391,7 @@ clear:
     dec dl
     int 0x10
     ret
+; Reads an actual graphics BIOS pixel for the independent glyph oracle.
 sample_pixel:
     mov cx,[sample_x]
     mov dx,[sample_y]
@@ -393,6 +399,7 @@ sample_pixel:
     mov ax,0x0d00
     int 0x10
     ret
+; Reads the selected reference glyph pixel through the real graphics BIOS path.
 first_q_pixel:
     mov ax,'Q'
     imul ax,[points]
@@ -452,6 +459,7 @@ read_match:
     loop .row
     popad
     ret
+; Prints a zero-terminated string through the actual guest output service.
 puts:
     pushad
     push es
@@ -473,6 +481,7 @@ puts:
     pop es
     popad
     ret
+; Writes one actual guest debug-port byte for the independent evidence trace.
 debug:
     lodsb
     test al,al
@@ -481,6 +490,7 @@ debug:
     jmp debug
 .done:
     ret
+; Copies actual VGA font-plane bytes into the probe's own saved-state buffer.
 snapshot_font:
     pushad
     push ds

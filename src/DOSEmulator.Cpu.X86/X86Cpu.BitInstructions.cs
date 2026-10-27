@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 namespace DOSEmulator.Cpu.X86;
 
 public sealed partial class X86Cpu
 {
+    /// <summary>Implements BT/BTS/BTR/BTC and validates writable locked forms before data effects.</summary>
     private void BitTest(byte opcode)
     {
         byte modrm = FetchByte(); int operation = opcode == 0xba ? (modrm >> 3) & 7 : 4 + ((opcode >> 3) & 3);
@@ -21,6 +24,7 @@ public sealed partial class X86Cpu
         SetFlag(Carry, (value & bit) != 0);
         if (operation != 4) Write(operand, width, operation switch { 5 => value | bit, 6 => value & ~bit, _ => value ^ bit });
     }
+    /// <summary>Executes SHLD/SHRD using masked counts and the reference flag contract.</summary>
     private void DoubleShift(byte opcode)
     {
         byte modrm = FetchByte(); Operand operand = DecodeOperand(modrm); int width = Width, bits = width * 8;
@@ -36,6 +40,7 @@ public sealed partial class X86Cpu
         // 16-bit counts above 16 and OF/AF for the other counts are undefined;
         // this interpreter provides deterministic results without a stepping claim.
     }
+    /// <summary>Finds the first or last set bit and preserves the documented zero-source behavior.</summary>
     private void BitScan(bool reverse)
     {
         byte modrm = FetchByte(); Operand operand = DecodeOperand(modrm); uint value = Read(operand, Width);

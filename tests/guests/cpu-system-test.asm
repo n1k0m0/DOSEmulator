@@ -1,9 +1,12 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own real-mode 486 system-register probe. No OS bytes or host-side BIOS hooks.
 ; Save/restore all changed system state; run only on a private acceptance machine.
 bits 16
 cpu 486
 org 0x100
 
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -151,6 +154,7 @@ wait_test:
     jmp restore
 failed:
     mov dword [proof+12],0
+; Restores only this probe's explicitly saved interrupt/controller state.
 restore:
     mov eax,[proof+64]
     mov cr0,eax
@@ -214,6 +218,7 @@ restore:
     mov ax,0x4c01
     int 0x21
 
+; Records and returns from the probe's actual software interrupt frame.
 interrupt60:
     inc dword [cs:proof+32]
     iret
@@ -271,6 +276,7 @@ device_unavailable:
     pop bp
     pop eax
     iret
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al

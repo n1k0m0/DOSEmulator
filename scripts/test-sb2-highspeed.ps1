@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
 param([switch]$SkipBuild, [switch]$Gui, [string]$OutputRoot = 'artifacts\m1-build')
@@ -74,6 +76,7 @@ if ($Gui) {
     $measurements = @{}
     foreach ($measurement in $hostAudio.measurements) { $measurements[$measurement.phase] = $measurement }
     if ($measurements['muted-end'].nonSilent -ne $measurements['muted-start'].nonSilent) { throw 'Mute did not silence high-speed PCM.' }
+    # Reads the independently measured audio-phase RMS from this run's captured evidence.
     function Rms([string]$Phase) {
         $first = $measurements[$Phase+'-start']; $last = $measurements[$Phase+'-end']
         if ($last.frames -le $first.frames) { throw 'No native audio callbacks during measurement.' }

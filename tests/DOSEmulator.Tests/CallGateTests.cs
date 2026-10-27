@@ -1,28 +1,36 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using static ProtectedModeTests;
 
 internal static class CallGateTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition, string message="Call gate invariant failed")
     { if(!condition)throw new Exception(message); }
+    /// <summary>Places controlled bytes at a private guest address and executes through the normal decoder.</summary>
     private static void At(X86Cpu c,MemoryBus m,byte[] bytes,uint address=0x2200)
     { bytes.CopyTo(m.Ram,(int)address);c.Eip=address;c.Step(); }
+    /// <summary>Writes an explicit gate descriptor into private guest table memory for the selected case.</summary>
     private static void SetGate(MemoryBus m,int width=4,byte count=2,ushort targetSelector=0x50,uint target=0x5000,byte? access=null,uint address=0x438)
     {
         m.WriteDword(address,(target&65535)|((uint)targetSelector<<16));
         m.WriteDword(address+4,(target&0xffff0000)|((uint)(access??(width==4?0xec:0xe4))<<8)|count);
     }
+    /// <summary>Performs the requested bounded controller transfer while preserving count, address and terminal-count semantics.</summary>
     private static byte[] Transfer(bool operand32,bool jump=false,ushort selector=0x3b)
     {
         var bytes=new List<byte>{(byte)(jump?0xea:0x9a)};
         bytes.AddRange(operand32?new byte[]{0xef,0xbe,0xad,0xde}:new byte[]{0xef,0xbe});
         bytes.Add((byte)selector);bytes.Add((byte)(selector>>8));return bytes.ToArray();
     }
-    private static (X86Cpu Cpu,MemoryBus Memory,uint OldPointer,uint NewPointer) Create(int width=4,byte count=2,
-        bool old32=true,bool new32=true,bool tss32=true,bool paging=false,bool wp=true,bool? caller32=null,Action<MemoryBus>? beforeUser=null)
+    /// <summary>Creates this regression's isolated CPU/device fixture with explicit parameters and private data.</summary>
+    internal static (X86Cpu Cpu,MemoryBus Memory,uint OldPointer,uint NewPointer) Create(int width=4,byte count=2,
+        bool old32=true,bool new32=true,bool tss32=true,bool paging=false,bool wp=true,bool? caller32=null,Action<MemoryBus>? beforeUser=null,
+        X86CpuModel model=X86CpuModel.Intel486Dx)
     {
-        var(c,m)=paging?PagingTests.Create([0xf4],wp:wp):ProtectedModeTests.Rig([0xf4]);
+        var(c,m)=paging?PagingTests.Create([0xf4],wp:wp,model:model):ProtectedModeTests.Rig([0xf4],model:model);
         bool code32=caller32??width==2;
         Descriptor(m,0x28,0,code32?0xfffffu:0xffff,0xfa,(byte)(code32?12:0));
         Descriptor(m,0x30,0x30000,old32?0xfffffu:0xffff,0xf2,(byte)(old32?12:0));
@@ -48,11 +56,16 @@ internal static class CallGateTests
         m.Ram.AsSpan(0x67000,0x14000).Fill(0xa5);
         return(c,m,old,pointer);
     }
+    /// <summary>Builds a deterministic caller-owned pattern used to detect missing, aliased or reordered transfer data.</summary>
     private static uint Pattern(int i)=>0x87654321u+(uint)i*0x0103070b;
+    /// <summary>Reads the fixture's actual result for comparison with independently specified expected data.</summary>
     private static uint Read(MemoryBus m,uint a,int width)=>width==4?m.ReadDword(a):m.ReadWord(a);
+    /// <summary>Writes explicit private-fixture input data without modifying original user media.</summary>
     private static void Write(MemoryBus m,uint a,int width,uint value)
     { if(width==4)m.WriteDword(a,value);else m.WriteWord(a,(ushort)value); }
+    /// <summary>Returns the bit mask for the supported byte, word or doubleword access width.</summary>
     private static uint Mask(int width)=>width==4?uint.MaxValue:65535;
+    /// <summary>Requires the expected architectural fault before inspecting or repairing the private guest context.</summary>
     private static uint Fault(X86Cpu c,MemoryBus m,byte vector,uint error,uint cr2=0)
     {
         Gate(m,vector,0x2b);uint old=c.GetRegister(Register.Sp);var ss=c.GetSegmentCache(Segment.Ss);byte? seen=null;
@@ -66,6 +79,7 @@ internal static class CallGateTests
         return frame;
     }
 
+    /// <summary>Registers the named call gate regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
         foreach(int width in new[]{2,4})foreach(bool old32 in new[]{false,true})foreach(bool new32 in new[]{false,true})

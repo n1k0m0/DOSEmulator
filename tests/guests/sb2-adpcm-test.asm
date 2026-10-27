@@ -1,7 +1,10 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own Creative ADPCM integration probe. Loaded by real DOS, DMA1 / IRQ5.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cld
     push cs
@@ -172,6 +175,7 @@ failed:
     call print
     mov ax,0x4c01
     int 0x21
+; Starts the explicitly sized single-cycle DSP/ADPCM block.
 single_64:
     call dsp_write
     mov al,63
@@ -179,11 +183,13 @@ single_64:
     xor al,al
     call dsp_write
     ret
+; Reads the actual DMA terminal-count status for the completed block.
 check_tc:
     in al,8
     test al,2
     jz failed
     ret
+; Programs the actual byte/word DMA controller with the probe's owned physical buffer.
 program_dma:
     pushad
     mov ah,al
@@ -207,6 +213,7 @@ program_dma:
     mov al,1
     out 0x0a,al
     ret
+; Acknowledges the actual byte-DMA sound interrupt and sends the required PIC EOI.
 irq5:
     pushad
     push ds
@@ -240,6 +247,7 @@ irq5:
     pop ds
     popad
     iret
+; Resets the actual DSP and requires its ready reply within the bounded guest poll.
 reset_dsp:
     mov dx,0x226
     mov al,1
@@ -255,6 +263,7 @@ reset_dsp:
     mov byte [io_error],1
 .ok:
     ret
+; Releases this probe's acquired resources and restores its explicitly saved handler/control state.
 cleanup:
     mov al,5
     out 0x0a,al
@@ -273,6 +282,7 @@ cleanup:
     mov byte [installed],0
 .done:
     ret
+; Polls DSP readiness before writing one real command/parameter byte.
 dsp_write:
     push ax
     push cx
@@ -295,6 +305,7 @@ dsp_write:
     pop cx
     pop ax
     ret
+; Polls DSP readiness with a bounded timeout before reading the actual reply byte.
 dsp_read:
     push cx
     push dx
@@ -315,6 +326,7 @@ dsp_read:
     pop dx
     pop cx
     ret
+; Waits for the expected actual IRQ-handler count with a bounded guest timeout.
 wait_irqs:
     xor ah,ah
     int 0x1a
@@ -330,6 +342,7 @@ wait_irqs:
     jmp .wait
 .done:
     ret
+; Waits for actual BIOS timer ticks rather than advancing virtual time from the host.
 wait_ticks:
     pushad
     mov bx,cx
@@ -344,6 +357,7 @@ wait_ticks:
     jb .wait
     popad
     ret
+; Prints the probe's diagnostic text through its actual guest DOS/BIOS output service.
 print:
     mov ah,9
     int 0x21

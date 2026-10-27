@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own VGA 12h/13h character services, Apache-2.0.
 ; IBM PS/2 BIOS Interface May 1988, pp. 2-18..2-20, 2-29/30, 2-37.
 ; All glyphs are read from the actual INT43 guest pointer. No shadow text map.
@@ -84,7 +86,7 @@
 %endmacro
 
 ; DS=0. CF=0: AX=rows, BX=columns, CX=points, DX=pixel height.
-; Reference BIOS services support fitting eight-wide cells in canonical modes.
+; DOSEBios services support fitting eight-wide cells in canonical modes.
 video_graphics_geometry:
     mov bx,80
     mov dx,480

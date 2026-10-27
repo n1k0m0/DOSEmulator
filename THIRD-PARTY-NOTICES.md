@@ -1,5 +1,7 @@
 # Third-party notices
 
+Additional source-formula provenance, including the retained YMFM BSD notice, is recorded in [docs/THIRD-PARTY-NOTICES.md](docs/THIRD-PARTY-NOTICES.md). Mixed-source OPL noise/percussion files carry `Apache-2.0 AND BSD-3-Clause`; complete license texts are retained under `LICENSES/`.
+
 ## SharpPixels
 
 The local `src/SharpPixels` snapshot was copied from the adjacent C64Emulator project on 2026-10-24. Original copyright and Apache-2.0 notices are retained in its source and shader files. The C64Emulator working tree was not changed.
@@ -14,9 +16,11 @@ OpenTK 4.9.4 is referenced by SharpPixels and retains its own license. Transitiv
 
 The Windows GUI uses NAudio 2.3.0 by Mark Heath and contributors, under the MIT license according to the package metadata. It is the same package version used by the adjacent C64Emulator; the DOS host adapter is separate project code. Transitive NAudio packages retain their own notices. NAudio is not referenced by the headless/core/hardware projects. See [NAudio](https://github.com/naudio/NAudio).
 
+The current default output adapter uses NAudio's shared WASAPI render endpoint. It opens no capture endpoint and changes no global endpoint volume. The legacy WaveOut adapter is retained only as an explicit diagnostic option; the previously observed native WaveOut close failure is not claimed fixed inside NAudio. Source documentation checks use Roslyn assemblies already supplied by the installed .NET SDK; they are development tools, not a runtime dependency or redistributed compiler.
+
 ## Firmware, probes and font
 
-The development BIOS, demo boot-sector generator, VGA reference palettes, DOS COM probe sources and small development bitmap font are original project sources. No commercial BIOS ROM, IBM font ROM, DOS, Windows, driver or game media is included. The development font is deliberately incomplete and is not presented as a full VGA/CP437 font.
+The development BIOS, demo boot-sector generator, VGA reference palettes, DOS COM probe sources and bitmap fonts are original project sources. No commercial BIOS ROM, IBM font ROM, DOS, Windows, driver or game media is included. The original small diagnostic font is limited; the later complete CP437 artwork at 8/14/16 rows is also original project work, not an IBM font ROM. Source headers identify Apache-2.0; `REUSE.toml` annotates the original profile/font data formats that cannot carry comments. Existing full SharpPixels notices are retained.
 
 The reference firmware assembler source is also original Apache-2.0 code. NASM 3.02 is an optional build tool downloaded into ignored local artifacts; it is not bundled into the emulator.
 

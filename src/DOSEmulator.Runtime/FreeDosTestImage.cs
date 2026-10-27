@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
@@ -7,6 +9,7 @@ namespace DOSEmulator.Runtime;
 /// <summary>Creates a private minimal-startup copy of official media. Kernel, shell and boot code are unchanged.</summary>
 public static class FreeDosTestImage
 {
+    /// <summary>Creates a fresh private minimal FreeDOS IDE copy while preserving original boot/system files.</summary>
     public static object Create(string source, string destination)
     {
         if (Path.GetFullPath(source).Equals(Path.GetFullPath(destination), StringComparison.OrdinalIgnoreCase))
@@ -27,6 +30,7 @@ public static class FreeDosTestImage
         int fat = partition + reserved * bps;
         int root = partition + (reserved + image[partition + 16] * sectorsPerFat) * bps;
         int data = root + ((entries * 32 + bps - 1) / bps) * bps;
+        // Finds the explicitly named FAT entry in the private test image or rejects a missing file.
         int Find(string name)
         {
             for (int i = 0; i < entries; i++)
@@ -36,6 +40,7 @@ public static class FreeDosTestImage
             }
             throw new InvalidDataException($"Missing file {name}.");
         }
+        // Reads a checked file from the private FAT image through its actual cluster chain.
         byte[] ReadFile(string name)
         {
             int entry = Find(name), length = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(image.AsSpan(entry + 28)));
@@ -50,6 +55,7 @@ public static class FreeDosTestImage
             }
             return bytes;
         }
+        // Replaces only the selected test startup file in the fresh private image, retaining the original medium.
         void Replace(string name, string text)
         {
             int entry = Find(name), oldLength = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(image.AsSpan(entry + 28)));

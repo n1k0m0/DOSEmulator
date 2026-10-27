@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent private RAM, page-table, executable-byte and DOS-return oracle."""
 import argparse
 import copy
@@ -9,6 +11,7 @@ import struct
 
 
 def verify(report_path, memory_path, program_path, kind, unavailable=False, source=None, ram_mib=8):
+    """Validates vcpi ems evidence from actual guest state, immutable program bytes and independently expected results."""
     report = json.loads(Path(report_path).read_text(encoding="utf-8-sig"))
     memory, program = Path(memory_path).read_bytes(), Path(program_path).read_bytes()
     output, cpu = report["status"]["debugOutput"], report["cpu"]
@@ -28,6 +31,7 @@ def verify(report_path, memory_path, program_path, kind, unavailable=False, sour
     raw = lambda a: struct.unpack_from("<I", memory, a)[0]
 
     def physical(a, directory=None):
+        """Walks the reported classic 4-KiB page tables to translate a guest linear proof address."""
         if directory is None and not cpu["pagingEnabled"]:
             return a
         cr3 = cpu["cr3"] if directory is None else directory
@@ -133,6 +137,7 @@ def verify(report_path, memory_path, program_path, kind, unavailable=False, sour
 
 
 def negative_controls(report_path, memory_path, program_path, kind, directory):
+    """Corrupts selected independent evidence fields and requires each corrupted oracle input to fail."""
     verify(report_path, memory_path, program_path, kind)
     report = json.loads(Path(report_path).read_text(encoding="utf-8-sig"))
     memory, program = Path(memory_path).read_bytes(), Path(program_path).read_bytes()
@@ -146,6 +151,7 @@ def negative_controls(report_path, memory_path, program_path, kind, directory):
     controls = []
 
     def reject(name, r=report_path, m=memory_path, p=program_path):
+        """Requires an independently corrupted input to fail instead of accepting the guest's success marker alone."""
         try:
             verify(r, m, p, kind)
         except AssertionError:

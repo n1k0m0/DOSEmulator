@@ -1,15 +1,22 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 namespace DOSEmulator.Cpu.X86;
 
 public sealed partial class X86Cpu
 {
     private sealed class CpuFaultException(byte vector, uint? errorCode = null, bool trap = false) : Exception
     {
+        /// <summary>Architectural exception/interrupt vector carried by this delivery request.</summary>
         public byte Vector { get; } = vector;
+        /// <summary>Optional architectural error code to be placed in the exception frame.</summary>
         public uint? ErrorCode { get; } = errorCode;
+        /// <summary>Whether delivery uses post-instruction trap semantics rather than an instruction-restart fault.</summary>
         public bool Trap { get; } = trap;
     }
+    /// <summary>Sign-extends a width-selected integer operand into the host's wider signed representation.</summary>
     private static long Signed(uint value, int width) => width switch { 1 => (sbyte)value, 2 => (short)value, _ => (int)value };
 
+    /// <summary>Handles additional primary opcode groups and reports whether the opcode was recognized.</summary>
     private bool ExecuteExtended(byte opcode)
     {
         int w = Width;
@@ -65,7 +72,11 @@ public sealed partial class X86Cpu
                     for (int i = 1; i < nesting; i++) { bp = unchecked(bp - (uint)w) & Mask(w); CheckSegment(Segment.Ss, bp, w); Push(ReadMemory(unchecked(GetSegmentBase(Segment.Ss) + bp), w), w); }
                     Push(frame, w);
                 }
-                WriteRegister(5, w, frame); SetStackPointer(unchecked(StackPointer - allocation)); return true;
+                uint finalPointer = unchecked(StackPointer - allocation) & Mask(StackAddressWidth);
+                // ENTER also checks its allocation endpoint, without reading or
+                // writing unaccessed locals or undoing earlier sequential stores.
+                CheckSegment(Segment.Ss, finalPointer, 1, true);
+                WriteRegister(5, w, frame); SetStackPointer(finalPointer); return true;
             }
             case 0xc9: SetStackPointer(ReadRegister(5, StackAddressWidth)); WriteRegister(5, w, Pop(w)); return true;
             case 0xce: if ((Eflags & Overflow) != 0) DispatchInterrupt(4, true); return true;
@@ -89,6 +100,7 @@ public sealed partial class X86Cpu
         }
     }
 
+    /// <summary>Checks and loads a memory far pointer before committing its register and segment destinations.</summary>
     private void LoadFarPointer(Segment segment, int width)
     {
         byte m = FetchByte(); Operand rm = DecodeOperand(m);
@@ -96,9 +108,11 @@ public sealed partial class X86Cpu
         CheckOperand(rm, width + 2); CheckAlignment(rm.Address, width); ProbeMemory(rm.Address, width + 2);
         uint offset = Read(rm, width); ushort selector = (ushort)ReadMemory(unchecked(rm.Address + (uint)width), 2);
         SetSegment(segment, selector); WriteRegister((m >> 3) & 7, width, offset);
-        if (segment == Segment.Ss) _interruptShadow = 1;
+        // LSS commits both destinations in this instruction. Unlike MOV/POP SS,
+        // it does not inhibit interrupts after completion (Intel486 PRM 3.10).
     }
 
+    /// <summary>Evaluates width/count-specific shifts and rotates with the reference model's defined and stable undefined flags.</summary>
     private void Shift(Operand rm, int operation, int width, int rawCount)
     {
         int count = rawCount & 31;
@@ -157,6 +171,7 @@ public sealed partial class X86Cpu
         }
     }
 
+    /// <summary>Executes grouped multiply/divide operations, including divide-error checks and operand-width result placement.</summary>
     private void MultiplyDivide(int width)
     {
         byte m = FetchByte(); int operation = (m >> 3) & 7; ValidateLockOperand(m, operation is 2 or 3);
@@ -206,9 +221,11 @@ public sealed partial class X86Cpu
         throw Unsupported("Reserved group-3 operation.");
     }
 
+    /// <summary>Decodes and dispatches the 0F opcode map with model-specific validity checks.</summary>
     private void ExecuteTwoByte()
     {
         byte opcode = FetchByte(); int w = Width;
+        if (_checkpointProtected && NeedsTwoByteControlCheckpoint(opcode)) EnsureControlCheckpoint();
         ValidateLockOpcode(opcode, true);
         if (opcode is >= 0x80 and <= 0x8f)
         {
@@ -251,7 +268,11 @@ public sealed partial class X86Cpu
             case 0x06: RequirePrivilegeZero(); Cr0 &= ~0x08u; return;
             case 0x20: case 0x22: MoveControlRegister(opcode); return;
             case 0x21: case 0x23: MoveDebugRegister(opcode); return;
-            case 0xa2: throw new CpuFaultException(6); // Not present on this early 486DX.
+            case 0xa2: IdentifyCpu(); return;
+            case 0x30: TransferTimestampMsr(true); return;
+            case 0x31: ReadTimeStampCounter(); return;
+            case 0x32: TransferTimestampMsr(false); return;
+            case 0xc7: CompareExchangeEightBytes(); return;
             default: throw Unsupported($"Two-byte opcode 0F {opcode:X2} is not implemented.");
         }
     }

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Verify original local MS-DOS DEBUG.EXE, its actual T output and test bytes."""
 import argparse
 import copy
@@ -10,6 +12,7 @@ import struct
 
 
 def verify(report_path,memory_path,base_path,overlay_path,mode):
+    """Validates msdos debug evidence from actual guest state, immutable program bytes and independently expected results."""
     spec=importlib.util.spec_from_file_location('dos_fat',Path(__file__).with_name('verify-msdos-install.py'))
     fat_module=importlib.util.module_from_spec(spec);spec.loader.exec_module(fat_module)
     disk,_=fat_module.materialize(base_path,overlay_path)

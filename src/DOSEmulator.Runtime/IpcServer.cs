@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Buffers.Binary;
 using System.IO.Pipes;
 using System.Text.Json;
@@ -11,9 +13,12 @@ public sealed class IpcServer : IAsyncDisposable
     private readonly MachineSession _session;
     private readonly Task _server;
     private readonly string? _instanceFile;
+    /// <summary>Unique current-user local-pipe name published for this emulator instance.</summary>
     public string PipeName { get; }
+    /// <summary>Most recent component fault description, or null while no fault is recorded.</summary>
     public string? Fault { get; private set; }
 
+    /// <summary>Initializes IpcServer and connects the supplied dependencies before the component is used.</summary>
     public IpcServer(MachineSession session, string? pipeName = null, string? instanceDirectory = null)
     {
         _session = session;
@@ -23,9 +28,12 @@ public sealed class IpcServer : IAsyncDisposable
             Directory.CreateDirectory(instanceDirectory);
             _instanceFile = Path.Combine(instanceDirectory, $"{Environment.ProcessId}-{Guid.NewGuid():N}.json");
         }
-        _server = RunAsync();
+        // The GUI may stop its message loop before synchronously disposing this
+        // service. Pipe continuations must never depend on that UI context.
+        _server = Task.Run(RunAsync);
     }
 
+    /// <summary>Serves bounded framed local-pipe requests until cancellation, independent from any GUI message loop.</summary>
     private async Task RunAsync()
     {
         while (!_stop.IsCancellationRequested)
@@ -67,10 +75,11 @@ public sealed class IpcServer : IAsyncDisposable
         }
     }
 
+    /// <summary>Stops asynchronous service work and releases its owned resources without requiring a GUI synchronization context.</summary>
     public async ValueTask DisposeAsync()
     {
-        await _stop.CancelAsync();
-        await _server;
+        await _stop.CancelAsync().ConfigureAwait(false);
+        await _server.ConfigureAwait(false);
         if (_instanceFile is not null && File.Exists(_instanceFile)) File.Delete(_instanceFile);
         _stop.Dispose();
     }

@@ -1,12 +1,17 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 
 internal static class MemoryBusFastPathTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool ok,string detail="Memory byte-bus compatibility") {if(!ok)throw new Exception(detail);}
     private sealed class Device : IMemoryDevice
     {
         public readonly List<string> Events=[];private readonly Dictionary<uint,byte> _written=[];private int _reads;
+        /// <summary>Returns a controlled mapped-device byte and records the test observation/fault hook.</summary>
         public byte ReadByte(uint offset) {Events.Add("R"+offset);return _written.TryGetValue(offset,out byte v)?v:(byte)(offset*31+(uint)++_reads);}
+        /// <summary>Applies the controlled mapped-device write and records its test observation/fault hook.</summary>
         public void WriteByte(uint offset,byte value) {Events.Add($"W{offset}:{value}");_written[offset]=value;}
     }
     // Literal byte bus: no page cache, range shortcut, span or wide load/store.
@@ -14,12 +19,14 @@ internal static class MemoryBusFastPathTests
     {
         public readonly byte[] Ram=new byte[bytes];public bool A20;
         public readonly List<(uint Start,uint Length,Device Device)> Maps=[];
+        /// <summary>Reads the fixture's actual result for comparison with independently specified expected data.</summary>
         public byte Read(uint at)
         {
             if(!A20)at&=~0x100000u;
             foreach(var e in Maps)if(at>=e.Start&&(ulong)at<(ulong)e.Start+e.Length)return e.Device.ReadByte(at-e.Start);
             return at<Ram.Length?Ram[at]:(byte)255;
         }
+        /// <summary>Writes explicit private-fixture input data without modifying original user media.</summary>
         public void Write(uint at,byte value)
         {
             if(!A20)at&=~0x100000u;
@@ -27,8 +34,30 @@ internal static class MemoryBusFastPathTests
             if(at<Ram.Length)Ram[at]=value;
         }
     }
+    /// <summary>Registers the named memory bus fast path regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
+        foreach (bool a20 in new[] { false, true })
+        foreach (bool partial in new[] { false, true })
+            test($"RAM-only byte read refuses mapped pages without device effects, A20={a20}, partial={partial}", () =>
+            {
+                var m = new MemoryBus(2 * 1048576) { A20Enabled = a20 };
+                var device = new Device();
+                m.Ram[0x2000] = 0x56; m.Ram[0x102000] = 0x98;
+                Check(m.TryReadRamByte(0x102000, out byte value) && value == (a20 ? 0x98 : 0x56));
+                uint start = a20 ? 0x102000u : 0x2000u;
+                m.Map(start + (partial ? 1u : 0u), partial ? 1u : 4096u, device, "RAM classification probe");
+                Check(!m.TryReadRamByte(0x102000, out value) && value == 0 && device.Events.Count == 0);
+                Check(m.ReadByte(0x102000) == (partial ? (a20 ? 0x98 : 0x56) : 1));
+                Check(device.Events.Count == (partial ? 0 : 1));
+            });
+        test("RAM-only byte read refuses ROM and open bus without touching either", () =>
+        {
+            var m = new MemoryBus(1048576);
+            m.Map(0xf0000, 65536, new RomDevice(new byte[65536]), "ROM");
+            foreach (uint address in new uint[] { 0xf0000, 0xfffff, 0x100000, uint.MaxValue })
+                Check(!m.TryReadRamByte(address, out byte value) && value == 0);
+        });
         foreach(int width in new[]{2,4})foreach(bool a20 in new[]{false,true})foreach(int bytes in new[]{1048579,4*1048576})
             test($"RAM wide path matches ordered byte bus width={width}, A20={a20}, bytes={bytes}",()=>
             {
@@ -72,5 +101,9 @@ internal static class MemoryBusFastPathTests
         });
     }
     private sealed class CallbackDevice(Func<byte> read):IMemoryDevice
-    {public byte ReadByte(uint offset)=>read();public void WriteByte(uint offset,byte value){}}
+    {
+        /// <summary>Returns a controlled mapped-device byte and records the test observation/fault hook.</summary>
+        public byte ReadByte(uint offset)=>read();
+        /// <summary>Applies the controlled mapped-device write and records its test observation/fault hook.</summary>
+        public void WriteByte(uint offset,byte value){}}
 }

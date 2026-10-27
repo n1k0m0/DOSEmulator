@@ -1,21 +1,30 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 namespace DOSEmulator.Cpu.X86;
 
 public sealed partial class X86Cpu
 {
+    /// <summary>Whether the active protected execution context has EFLAGS.VM set.</summary>
     public bool Virtual8086 => ProtectedMode && (Eflags & 0x20000) != 0;
+    /// <summary>Diagnostic count of virtual8086 entries.</summary>
     public long Virtual8086Entries { get; private set; }
+    /// <summary>Diagnostic count of virtual8086 exits.</summary>
     public long Virtual8086Exits { get; private set; }
+    /// <summary>Diagnostic count of virtual8086 instructions.</summary>
     public long Virtual8086Instructions { get; private set; }
 
+    /// <summary>Installs the V86 selector/base/limit cache contract for a visible segment.</summary>
     private void LoadVirtualSegment(Segment segment, ushort selector)
     {
         _segments[(int)segment] = selector;
         _segmentCaches[(int)segment] = new((uint)selector << 4, 0xffff, segment == Segment.Cs ? (byte)0xfb : (byte)0xf3, 0, true);
     }
+    /// <summary>Rejects V86 flag/interrupt-sensitive operations when IOPL does not permit them.</summary>
     private void CheckVmSensitive()
     {
         if (Virtual8086 && ((Eflags >> 12) & 3) != 3) throw Gp();
     }
+    /// <summary>Validates the complete stacked V86 return frame before adopting its segments, stack and flags.</summary>
     private void EnterVirtual8086(uint target, ushort cs, uint flags)
     {
         CheckSegment(Segment.Ss, StackPointer, 36);
@@ -32,6 +41,7 @@ public sealed partial class X86Cpu
         Virtual8086Entries++;
     }
 
+    /// <summary>Checks CPL/IOPL and the real TSS I/O bitmap for every byte of a port access.</summary>
     private void CheckPortAccess(ushort port, int width)
     {
         if (!ProtectedMode || (!Virtual8086 && CurrentPrivilegeLevel <= ((Eflags >> 12) & 3))) return;

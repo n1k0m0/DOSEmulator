@@ -1,9 +1,11 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 
 namespace DOSEmulator.Hardware;
 
 /// <summary>8254 counter 2: binary modes 0/2/3, gate, clock-boundary loads and count/status latches.</summary>
-public sealed class PitSpeakerCounter(DeviceScheduler clock)
+public sealed partial class PitSpeakerCounter(DeviceScheduler clock)
 {
     public const uint Frequency = 1_193_182;
     private const ulong TickUnits = 1_000_000_000;
@@ -16,18 +18,29 @@ public sealed class PitSpeakerCounter(DeviceScheduler clock)
     private byte? _latchedStatus;
     private long _loadEvent;
     public event Action? BeforeChange;
+    /// <summary>Diagnostic indication that the guest selected programming outside the implemented reference contract.</summary>
     public bool UnsupportedProgramming { get; private set; }
+    /// <summary>Programmed reference counter/transfer mode.</summary>
     public int Mode => (_control >> 1) & 7;
+    /// <summary>Programmed low/high-byte access sequence for the PIT register.</summary>
     private int Access => (_control >> 4) & 3;
+    /// <summary>Current counter time expressed in its native integer clock ticks.</summary>
     private ulong NowTick => (ulong)((UInt128)clock.Now * Frequency / TickUnits);
+    /// <summary>Current external gate input to the reference PIT counter.</summary>
     public bool Gate => _gate;
+    /// <summary>Whether the newly programmed PIT count has not yet become an active loaded count.</summary>
     public bool NullCount => !_loaded || _loadEvent != 0;
+    /// <summary>Current programmed reload count under the counter's zero-means-maximum rule.</summary>
     public uint Reload => _programmed;
+    /// <summary>Current reference output signal of PitSpeakerCounter, in that component's native representation.</summary>
     public bool Output => !_running || NowTick < _originTick ? _fixedOutput : Mode == 0
         ? NowTick - _originTick >= _reload : Phase(NowTick - _originTick) < HighTicks;
+    /// <summary>Accumulated high-output duration in the counter's native tick unit.</summary>
     private uint HighTicks => Mode == 2 ? _reload - 1 : (_reload + 1) / 2;
+    /// <summary>Determines the current reference counter phase from elapsed integer PIT ticks.</summary>
     private ulong Phase(ulong elapsed) => (elapsed + (_startsHigh ? 0 : HighTicks)) % _reload;
 
+    /// <summary>Programs the speaker counter's mode and low/high-byte access state.</summary>
     public void Control(byte control)
     {
         if (((control >> 4) & 3) == 0) { Latch(true, false); return; }
@@ -39,6 +52,7 @@ public sealed class PitSpeakerCounter(DeviceScheduler clock)
         _latchedCount = null; _latchedStatus = null; _pausedElapsed = 0;
         _fixedOutput = mode != 0;
     }
+    /// <summary>Accepts a programmed count byte and applies the reference delayed-load contract.</summary>
     public void Write(byte value)
     {
         if (Access == 3 && !_writeHigh)
@@ -66,6 +80,7 @@ public sealed class PitSpeakerCounter(DeviceScheduler clock)
         }
         ScheduleLoad(at, startsHigh, false);
     }
+    /// <summary>Changes the counter gate after integrating/fixing the old state at the actual virtual tick.</summary>
     public void SetGate(bool gate)
     {
         if (_gate == gate) return;
@@ -81,6 +96,7 @@ public sealed class PitSpeakerCounter(DeviceScheduler clock)
             ScheduleLoad(NowTick + 1, true, Mode == 0);
         }
     }
+    /// <summary>Captures the current counter state at a gate/control boundary before future timing changes.</summary>
     private void Freeze()
     {
         if (_running)
@@ -90,7 +106,9 @@ public sealed class PitSpeakerCounter(DeviceScheduler clock)
         }
         _running = false;
     }
+    /// <summary>Cancels a pending programmed-count load without inventing a counter transition.</summary>
     private void CancelLoad() { if (_loadEvent != 0) clock.Cancel(_loadEvent); _loadEvent = 0; }
+    /// <summary>Schedules the new PIT count at its reference clock boundary.</summary>
     private void ScheduleLoad(ulong tick, bool startsHigh, bool resume)
     {
         CancelLoad();
@@ -102,8 +120,9 @@ public sealed class PitSpeakerCounter(DeviceScheduler clock)
             _startsHigh = startsHigh; _loaded = true; _running = _gate;
             _frozenCount = (ushort)_reload;
             if (!resume) { _pausedElapsed = 0; _fixedOutput = Mode != 0; }
-        });
+        }, this, "event0", () => StateValues.Pack(tick, startsHigh, resume));
     }
+    /// <summary>Returns the current reference speaker-counter value under its active mode.</summary>
     private ushort Current()
     {
         if (!_loaded || !_running || NowTick < _originTick) return _frozenCount;
@@ -114,11 +133,13 @@ public sealed class PitSpeakerCounter(DeviceScheduler clock)
         ulong withinHalf = phase < HighTicks ? phase : phase - HighTicks;
         return (ushort)((_reload & ~1u) - 2 * withinHalf);
     }
+    /// <summary>Captures the current counter value for a subsequent guest low/high-byte read sequence.</summary>
     public void Latch(bool count, bool status)
     {
         if (count && _latchedCount is null) { _latchedCount = Current(); _latchHigh = false; }
         if (status) _latchedStatus ??= (byte)((Output ? 128 : 0) | (NullCount ? 64 : 0) | _control);
     }
+    /// <summary>Returns a latched or current count byte under the programmed access sequence.</summary>
     public byte Read()
     {
         if (_latchedStatus is { } status) { _latchedStatus = null; return status; }
@@ -144,6 +165,7 @@ public sealed class PitSpeakerCounter(DeviceScheduler clock)
             from = before;
         }
         if (to <= from) return result;
+        // Computes the signed high/low tick area for the requested reference counter interval.
         UInt128 Integral(UInt128 units)
         {
             if (Mode == 0) return units > (UInt128)_reload * TickUnits ? units - (UInt128)_reload * TickUnits : 0;

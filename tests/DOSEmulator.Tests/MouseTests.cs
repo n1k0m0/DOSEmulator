@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
@@ -7,23 +9,29 @@ using DOSEmulator.Contracts;
 
 internal static class MouseTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition, string message = "Mouse assertion failed") { if (!condition) throw new Exception(message); }
+    /// <summary>Executes only the continuations explicitly queued by this controlled test context.</summary>
     private static byte[] Drain(Keyboard8042 k)
     {
         var bytes = new List<byte>(); while (k.OutputByteCount > 0) bytes.Add((byte)k.Read(0x60, 1)); return bytes.ToArray();
     }
+    /// <summary>Submits the requested operation through the component's normal command interface.</summary>
     private static void Command(Keyboard8042 k, params byte[] values)
     { foreach (byte b in values) { k.Write(0x64, 0xd4, 1); k.Write(0x60, b, 1); } }
+    /// <summary>Builds an isolated CPU/bus fixture with caller-supplied guest instruction bytes.</summary>
     private static (DeviceScheduler Time, Ps2Mouse Mouse, Keyboard8042 Kbc) Rig()
     {
         var time = new DeviceScheduler(); var mouse = new Ps2Mouse(time);
         var kbc = new Keyboard8042(new(1048576), _ => { }, mouse); kbc.Write(0x64, 0xa8, 1); return (time, mouse, kbc);
     }
+    /// <summary>Builds an isolated machine fixture with the specified guest code and optional identity paging.</summary>
     private static PcMachine Machine(bool mouse = true)
     {
         var m = PcMachine.CreateDemo(new() { Mouse = mouse ? "ps2-two-button" : "none" });
         m.RunSteps(100000); Check(m.Fault is null); return m;
     }
+    /// <summary>Executes the controlled guest service/instruction path used by the surrounding regression.</summary>
     private static byte Call(PcMachine m, byte al, ushort bx = 0)
     {
         m.Cpu.SetSegment(Segment.Cs, 0); m.Cpu.Eip = 0x1000; m.Memory.WriteWord(0x1000, 0xf4fa);
@@ -33,6 +41,7 @@ internal static class MouseTests
         byte status = (byte)(m.Cpu.GetRegister(Register.Ax) >> 8);
         Check(((m.Cpu.Eflags & X86Cpu.Carry) != 0) == (status != 0), "BIOS carry/status mismatch"); return status;
     }
+    /// <summary>Registers the named mouse regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("PS2 reset defaults and ID-00 acknowledgements use Aux output", () =>
@@ -173,6 +182,7 @@ internal static class MouseTests
         test("mouse IPC validates counts buttons and absent hardware before injection", () =>
         {
             using var session = new MachineSession(Machine());
+            // Sends the controlled test data through the real device-facing transfer interface.
             bool Send(object input)
             {
                 var result = session.Enqueue(new(1, "mouse", "SendMouseInput", JsonSerializer.SerializeToElement(input)));

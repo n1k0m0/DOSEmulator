@@ -1,10 +1,14 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using static ProtectedModeTests;
 
 internal static class Virtual8086Tests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value,string message="V86 invariant failed") { if(!value)throw new Exception(message); }
+    /// <summary>Creates this regression's isolated CPU/device fixture with explicit parameters and private data.</summary>
     private static (X86Cpu Cpu,MemoryBus Memory,Ports Io) Create(byte[] code,uint flags=0x20202,bool paging=true,uint tssLimit=0x2068,uint pointer=0xabcd8000)
     {
         var io=new IoPortBus();var ports=new Ports();io.Map(0x20,8,ports);
@@ -21,9 +25,12 @@ internal static class Virtual8086Tests
     private sealed class Ports:IIoPortDevice
     {
         public int Reads,Writes,LastWidth;public uint LastValue;
+        /// <summary>Reads the fixture's actual result for comparison with independently specified expected data.</summary>
         public uint Read(ushort port,int width){Reads++;LastWidth=width;return 0x78563412;}
+        /// <summary>Writes explicit private-fixture input data without modifying original user media.</summary>
         public void Write(ushort port,uint value,int width){Writes++;LastWidth=width;LastValue=value;}
     }
+    /// <summary>Executes the controlled V86-sensitive instruction and validates its actual monitor/fault frame.</summary>
     private static uint Monitor(X86Cpu c,MemoryBus m,byte vector,uint? error=0,uint ip=0x100)
     {
         byte? seen=null;c.InterruptEntered+=v=>seen=v;c.Step();uint sp=error.HasValue?0x19fd8u:0x19fdc;
@@ -36,6 +43,7 @@ internal static class Virtual8086Tests
         foreach(Segment s in new[]{Segment.Es,Segment.Ds,Segment.Fs,Segment.Gs})Check(c.GetSegment(s)==0 && !c.GetSegmentCache(s).Usable);
         return error.HasValue?sp-4:sp;
     }
+    /// <summary>Registers the named virtual8086 regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
         test("V86 CS override writes ordinary virtual memory without protected code-segment rights",()=>

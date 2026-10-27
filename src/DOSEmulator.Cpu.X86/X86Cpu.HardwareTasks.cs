@@ -1,14 +1,21 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 namespace DOSEmulator.Cpu.X86;
 
 public sealed partial class X86Cpu
 {
     private enum TaskTransfer { Jump, Call, Interrupt, Return }
     private long _taskSwitchEpoch;
+    /// <summary>Diagnostic count of hardware task switches.</summary>
     public long HardwareTaskSwitches { get; private set; }
+    /// <summary>Diagnostic count of hardware task returns.</summary>
     public long HardwareTaskReturns { get; private set; }
+    /// <summary>Diagnostic count of task gate transfers.</summary>
     public long TaskGateTransfers { get; private set; }
+    /// <summary>Diagnostic count of task debug traps.</summary>
     public long TaskDebugTraps { get; private set; }
 
+    /// <summary>Reads a TSS descriptor while attaching the correct selector and external-event fault information.</summary>
     private Descriptor ReadTaskDescriptor(ushort selector, byte vector, uint external)
     {
         try { return ReadDescriptor(selector, vector); }
@@ -16,6 +23,7 @@ public sealed partial class X86Cpu
         { throw new CpuFaultException(error.Vector, error.ErrorCode.Value | external); }
     }
 
+    /// <summary>Resolves direct or gated task transfers before invoking the hardware task-switch engine.</summary>
     private void TransferTask(ushort selector, Descriptor descriptor, bool call)
     {
         var cache = descriptor.Cache;
@@ -29,6 +37,7 @@ public sealed partial class X86Cpu
         else SwitchTask(selector, call ? TaskTransfer.Call : TaskTransfer.Jump, loaded: descriptor);
     }
 
+    /// <summary>Follows the current TSS backlink for an NT task-IRET and checks its busy target.</summary>
     private void ReturnTask()
     {
         CheckCurrentTask();
@@ -36,6 +45,7 @@ public sealed partial class X86Cpu
         SwitchTask(backlink, TaskTransfer.Return);
     }
 
+    /// <summary>Requires a usable current TSS before accessing outgoing task state or its backlink.</summary>
     private void CheckCurrentTask(uint external = 0)
     {
         if (!_trCache.Usable || (Tr & 4) != 0 || (_trCache.Access & 15) is not (3 or 11) ||
@@ -43,6 +53,7 @@ public sealed partial class X86Cpu
             throw new CpuFaultException(10, SelectorError(Tr) | external);
     }
 
+    /// <summary>Saves and loads hardware tasks with an explicit commit boundary; later faults belong to the new task.</summary>
     private void SwitchTask(ushort selector, TaskTransfer transfer, uint external = 0,
         Descriptor? loaded = null, bool gate = false, uint? errorCode = null, uint? savedFlags = null)
     {
@@ -155,6 +166,7 @@ public sealed partial class X86Cpu
         }
     }
 
+    /// <summary>Validates and loads the incoming task's LDT descriptor after task adoption.</summary>
     private void LoadTaskLdt(ushort selector, uint external)
     {
         if ((selector & 0xfffc) == 0) return;
@@ -165,6 +177,7 @@ public sealed partial class X86Cpu
         _ldtCache = descriptor.Cache;
     }
 
+    /// <summary>Validates the incoming task's CS and instruction pointer in its newly selected address space.</summary>
     private void LoadTaskCode(ushort selector, uint external)
     {
         uint error = SelectorError(selector) | external;
@@ -177,6 +190,7 @@ public sealed partial class X86Cpu
         CommitSegment(Segment.Cs, selector, descriptor);
     }
 
+    /// <summary>Loads an incoming task data/stack selector using task-switch-specific fault semantics.</summary>
     private void LoadTaskData(Segment segment, ushort selector, uint external)
     {
         if ((selector & 0xfffc) == 0) return;

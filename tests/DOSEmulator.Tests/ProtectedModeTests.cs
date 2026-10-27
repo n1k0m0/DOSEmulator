@@ -1,25 +1,31 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using DOSEmulator.Runtime;
 
 internal static class ProtectedModeTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition, string detail = "Protected-mode invariant failed") { if (!condition) throw new Exception(detail); }
+    /// <summary>Writes the test's explicit descriptor bytes into its private guest-memory fixture.</summary>
     internal static void Descriptor(MemoryBus memory, ushort selector, uint basis, uint rawLimit, byte access, byte flags = 0)
     {
         uint address = 0x400u + ((uint)selector & 0xfff8);
         memory.WriteDword(address, (rawLimit & 0xffff) | (basis << 16));
         memory.WriteDword(address + 4, ((basis >> 16) & 0xff) | ((uint)access << 8) | (rawLimit & 0xf0000) | ((uint)flags << 20) | (basis & 0xff000000));
     }
+    /// <summary>Writes an explicit interrupt/trap gate into the fixture's private IDT.</summary>
     internal static void Gate(MemoryBus memory, byte vector, ushort selector = 8, uint target = 0x6000, byte access = 0x8e)
     {
         uint address = 0x8000u + (uint)vector * 8;
         memory.WriteDword(address, (target & 0xffff) | ((uint)selector << 16));
         memory.WriteDword(address + 4, (target & 0xffff0000) | ((uint)access << 8));
     }
-    internal static (X86Cpu Cpu, MemoryBus Memory) Rig(byte[] code, bool code32 = true, bool stack32 = true, uint target = 0x2000, IoPortBus? io = null)
+    /// <summary>Builds an isolated CPU/bus fixture with caller-supplied guest instruction bytes.</summary>
+    internal static (X86Cpu Cpu, MemoryBus Memory) Rig(byte[] code, bool code32 = true, bool stack32 = true, uint target = 0x2000, IoPortBus? io = null, X86CpuModel model = X86CpuModel.Intel486Dx, DeviceScheduler? timestampSource = null, uint timestampFrequency = 0)
     {
-        var memory = new MemoryBus(2 * 1024 * 1024); var cpu = new X86Cpu(memory, io ?? new());
+        var memory = new MemoryBus(2 * 1024 * 1024); var cpu = new X86Cpu(memory, io ?? new(), model, timestampSource, timestampFrequency);
         cpu.SetSegment(Segment.Cs, 0); cpu.Eip = 0x1000; cpu.SetRegister(Register.Sp, 0x9000);
         Descriptor(memory, 8, 0, 0xfffff, 0x9a, 12);
         Descriptor(memory, 16, 0, 0xfffff, 0x92, 12);
@@ -40,11 +46,13 @@ internal static class ProtectedModeTests
         cpu.SetRegister(Register.Sp, stack32 ? 0x18000u : 0xabcd8000u);
         return (cpu, memory);
     }
+    /// <summary>Executes the component's explicit runner with the supplied bounds and reports its resulting evidence.</summary>
     private static void Run(X86Cpu cpu, int limit = 100)
     {
         for (int i = 0; i < limit && !cpu.Halted; i++) cpu.Step();
         Check(cpu.Halted && !cpu.TripleFaulted, "Guest did not reach its intended HLT");
     }
+    /// <summary>Requires the expected architectural fault before inspecting or repairing the private guest context.</summary>
     internal static uint Fault(X86Cpu c, MemoryBus m, byte vector, uint? error = 0, uint expectedIp = 0x2000)
     {
         byte? entered = null; c.InterruptEntered += v => entered = v;
@@ -60,6 +68,7 @@ internal static class ProtectedModeTests
         return frame;
     }
 
+    /// <summary>Registers the named protected mode regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("PE entry far jump loads 32-bit code base limit attributes and accessed bit", () =>

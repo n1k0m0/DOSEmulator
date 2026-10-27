@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original real-DOS SB2 ADC/DMA1/IRQ5 and capture/playback probe, Apache-2.0.
 ; A220 I5 D1. Default expects diagnostic virtual-time ramp; /S expects an
 ; unconnected midpoint input. No OS, driver, ROM, font or sound data.
@@ -15,6 +17,7 @@ org 0x100
 %else
 %define SB_VECTOR (8 + SB_IRQ)
 %endif
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cld
     push cs
@@ -199,6 +202,7 @@ failed:
     mov ax,0x4c01
     int 0x21
 
+; Initializes the controlled input buffer and sentinel bytes before DMA.
 prepare_buffer:
     push ax
     push cs
@@ -214,6 +218,7 @@ prepare_buffer:
     pop ax
     call program_dma
     ret
+; Programs the actual byte/word DMA controller with the probe's owned physical buffer.
 program_dma:
     mov [dma_mode],al
     mov al,5
@@ -236,6 +241,7 @@ program_dma:
     mov al,1
     out 0x0a,al
     ret
+; Checks the actual completed input components and saves the independent guest proof.
 check_and_save:
     push di
     mov si,[buffer_offset]
@@ -281,6 +287,7 @@ check_and_save:
     mov cx,128
     rep movsb
     ret
+; Sends the explicitly chosen legacy DSP sample-rate time constant.
 time_constant:
     push ax
     mov al,0x40
@@ -288,6 +295,7 @@ time_constant:
     pop ax
     call dsp_write
     ret
+; Programs the explicitly bounded 64-component DSP block used by the input probe.
 block_64:
     mov al,0x48
     call dsp_write
@@ -296,6 +304,7 @@ block_64:
     xor al,al
     call dsp_write
     ret
+; Resets the actual DSP and requires its ready reply within the bounded guest poll.
 reset_dsp:
     mov dx,SB_BASE + 6
     mov al,1
@@ -312,6 +321,7 @@ reset_dsp:
 .bad:
     mov byte [io_error],1
     ret
+; Releases this probe's acquired resources and restores its explicitly saved handler/control state.
 cleanup:
     mov al,5
     out 0x0a,al
@@ -334,6 +344,7 @@ cleanup:
     mov byte [installed],0
 .done:
     ret
+; Acknowledges the actual byte-DMA sound interrupt and sends the required PIC EOI.
 irq5:
     pushad
     push ds
@@ -364,6 +375,7 @@ irq5:
     pop ds
     popad
     iret
+; Polls DSP readiness before writing one real command/parameter byte.
 dsp_write:
     push ax
     push cx
@@ -386,6 +398,7 @@ dsp_write:
     pop cx
     pop ax
     ret
+; Polls DSP readiness with a bounded timeout before reading the actual reply byte.
 dsp_read:
     push cx
     push dx
@@ -406,6 +419,7 @@ dsp_read:
     pop dx
     pop cx
     ret
+; Waits for the expected actual IRQ-handler count with a bounded guest timeout.
 wait_irqs:
     xor ah,ah
     int 0x1a
@@ -421,6 +435,7 @@ wait_irqs:
     jmp .wait
 .done:
     ret
+; Prints the probe's diagnostic text through its actual guest DOS/BIOS output service.
 print:
     mov ah,9
     int 0x21
@@ -472,6 +487,7 @@ test_fm_alias:
     mov dx,fm_alias_ok
     call print
     ret
+; Writes an actual FM address/data pair with the probe's ISA delay sequence.
 fm_write:
     mov dx,SB_BASE + 8
     mov al,bl

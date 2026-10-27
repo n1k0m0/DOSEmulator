@@ -1,7 +1,21 @@
+// SPDX-License-Identifier: Apache-2.0 AND BSD-3-Clause
+// Copyright 2026 Nils Kopal
+// Noise/percussion formulas derived from YMFM, Copyright (c) 2021 Aaron Giles.
+// The applicable BSD notice is in LICENSES/BSD-3-Clause.txt and docs/THIRD-PARTY-NOTICES.md.
 namespace DOSEmulator.Hardware;
 
 public sealed partial class Opl2
 {
+    /// <summary>Answers the existing synthesis guard without counting every active operator for diagnostics.</summary>
+    private bool HasActiveOperators
+    {
+        get
+        {
+            foreach (Operator op in _operators) if (op.Stage != OplEnvelopeStage.Off) return true;
+            return false;
+        }
+    }
+
     private const uint PhaseMask = (1u << 21) - 1;
     private static readonly int[] OperatorOffsets = [0, 3, 1, 4, 2, 5, 8, 11, 9, 12, 10, 13, 16, 19, 17, 20, 18, 21];
     private static readonly int[] TwiceMultiples = [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 20, 24, 24, 30, 30];
@@ -28,10 +42,11 @@ public sealed partial class Opl2
         double sine = Math.Sin(2 * Math.PI * i / 1024);
         return wave switch { 1 => i < 512 ? sine : 0, 2 => Math.Abs(sine), 3 => (i & 256) == 0 ? Math.Abs(sine) : 0, _ => sine };
     }).ToArray()).ToArray();
-    private sealed class Operator
+    private sealed partial class Operator
     {
         public uint Phase, Increment;
         public int KeySources;
+        /// <summary>Whether any implemented key source currently holds the reference FM operator active.</summary>
         public bool Keyed => KeySources != 0;
         public bool Sustain, Am, Vibrato;
         public int Multiple = 1, AttackRate, DecayRate, ReleaseRate, Wave;
@@ -39,7 +54,8 @@ public sealed partial class Opl2
         public OplEnvelopeStage Stage;
         public double Previous, Older;
     }
-    private sealed class Channel { public int Fnum, Block, Feedback; public bool Additive; }
+    private sealed partial class Channel { public int Fnum, Block, Feedback; public bool Additive; }
+    /// <summary>Decodes the selected operator registers into the reference synthesis parameters.</summary>
     private void UpdateOperator(int slot)
     {
         Operator op = _operators[slot]; int offset = OperatorOffsets[slot];
@@ -51,6 +67,7 @@ public sealed partial class Opl2
         op.AttackRate = _registers[0x60 + offset] >> 4; op.DecayRate = _registers[0x60 + offset] & 15;
         op.ReleaseRate = _registers[0x80 + offset] & 15; op.Wave = _registers[0xe0 + offset] & 3;
     }
+    /// <summary>Updates channel frequency, block, routing and key state after the relevant register write.</summary>
     private void UpdateChannel(int channel)
     {
         Channel ch = _channels[channel]; byte high = _registers[0xb0 + channel];
@@ -60,6 +77,7 @@ public sealed partial class Opl2
         {
             Operator op = _operators[slot]; int offset = OperatorOffsets[slot];
             int keyScale = (_registers[0x20 + offset] & 0x10) != 0 ? note : note >> 2;
+            // Converts the selected reference envelope-rate bits into the effective synthesis step.
             int Rate(int rate) => rate == 0 ? 0 : Math.Min(63, rate * 4 + keyScale);
             op.Increment = (uint)((ch.Fnum << ch.Block) * op.Multiple);
             op.AttackFactor = AttackDecay[Rate(op.AttackRate)]; op.DecayAmount = DecayStep[Rate(op.DecayRate)]; op.ReleaseAmount = DecayStep[Rate(op.ReleaseRate)];
@@ -68,11 +86,13 @@ public sealed partial class Opl2
             op.KeyScaleLevel = ksl switch { 1 => kslBase, 2 => kslBase / 2, 3 => kslBase * 2, _ => 0 };
         }
     }
+    /// <summary>Updates the operator's effective key state and performs an actual envelope key transition when required.</summary>
     private void SetKey(int channel, bool keyed)
     {
         for (int slot = channel * 2; slot <= channel * 2 + 1; slot++)
             SetKeySource(_operators[slot], 1, keyed);
     }
+    /// <summary>Changes one independent operator key source without losing the remaining sources.</summary>
     private void SetKeySource(Operator op, int source, bool keyed)
     {
         bool wasKeyed = op.Keyed;
@@ -81,6 +101,7 @@ public sealed partial class Opl2
         if (op.Keyed) { op.Stage = OplEnvelopeStage.Attack; op.Phase = 0; op.Previous = op.Older = 0; KeyOnCount++; }
         else if (op.Stage != OplEnvelopeStage.Off) op.Stage = OplEnvelopeStage.Release;
     }
+    /// <summary>Advances one native reference FM frame and publishes its current output buses.</summary>
     private void GenerateSample()
     {
         // Free-running 23-bit percussion noise, even when the mixer is muted or
@@ -88,7 +109,7 @@ public sealed partial class Opl2
         // reference; envelope, waveform and mixing remain our mathematical model.
         uint shifted = _noise << 1;
         _noise = (shifted | (((shifted >> 23) ^ (shifted >> 9) ^ (shifted >> 8) ^ (shifted >> 1)) & 1)) & 0x7fffff;
-        if (ActiveOperators == 0) { _output = 0; return; }
+        if (!HasActiveOperators) { _output = 0; return; }
         // Manual LFO rates, referenced to the chip clock. The precise die LFO sequence is pending.
         static double Triangle(ulong phase, ulong period) => 1 - 4 * Math.Abs(phase / (double)period - 0.5);
         ulong sample = (ulong)GeneratedSamples;
@@ -112,6 +133,7 @@ public sealed partial class Opl2
         _output = (short)Math.Round(Math.Clamp(sum / 4, -1, 1) * 32767);
         if (_csmReleaseSample is { } release && GeneratedSamples + 1 >= release) ReleaseCsmKey();
     }
+    /// <summary>Advances a reference operator's phase/envelope and evaluates its selected waveform/modulation input.</summary>
     private double OperatorSample(Operator op, double phaseOffset, double am, double vibrato, int? rhythmPhase = null)
     {
         switch (op.Stage)

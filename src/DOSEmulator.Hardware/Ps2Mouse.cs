@@ -1,10 +1,12 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 
 namespace DOSEmulator.Hardware;
 
 /// <summary>Standard ID-00, two-button PS/2 mouse. Byte protocol and virtual sample clock;
 /// no IntelliMouse extensions or electrical serial-line emulation.</summary>
-public sealed class Ps2Mouse(DeviceScheduler scheduler)
+public sealed partial class Ps2Mouse(DeviceScheduler scheduler)
 {
     private Func<byte[], bool>? _output;
     private long _sampleEvent;
@@ -13,14 +15,25 @@ public sealed class Ps2Mouse(DeviceScheduler scheduler)
     private int _x, _y;
     private bool _wrap, _clockEnabled;
     private byte[] _lastReply = [0];
+    /// <summary>Whether this component's active configuration permits its normal data/sample path.</summary>
     public bool Enabled { get; private set; }
+    /// <summary>Whether the PS/2 mouse is in guest-polled remote mode rather than stream reporting.</summary>
     public bool Remote { get; private set; }
+    /// <summary>Whether the guest selected the reference PS/2 two-to-one scaling rule.</summary>
     public bool Scaling2To1 { get; private set; }
+    /// <summary>Guest-selected PS/2 mouse resolution code.</summary>
     public byte Resolution { get; private set; } = 2;
+    /// <summary>Sample or report rate in hertz, using the surrounding audio/mouse component's native unit.</summary>
     public byte SampleRate { get; private set; } = 100;
+    /// <summary>Diagnostic count of packet count.</summary>
     public long PacketCount { get; private set; }
+    /// <summary>Diagnostic count of command count.</summary>
     public long CommandCount { get; private set; }
+    /// <summary>Checks that the persisted mouse still feeds the factory-owned keyboard controller.</summary>
+    public bool HasStateOutputOwner(object owner) => ReferenceEquals(_output?.Target, owner);
+    /// <summary>Connects the auxiliary device's response path and publishes any currently pending output.</summary>
     public void ConnectOutput(Func<byte[], bool> output) => _output = output;
+    /// <summary>Applies the controller's auxiliary clock gate before scheduling further stream packets.</summary>
     public void SetClockEnabled(bool enabled) => _clockEnabled = enabled;
 
     /// <summary>Relative counts, positive X right, positive Y up; buttons bit 0 left/1 right.
@@ -33,6 +46,7 @@ public sealed class Ps2Mouse(DeviceScheduler scheduler)
         _x = (int)Math.Clamp((long)_x + x, -1_000_000, 1_000_000);
         _y = (int)Math.Clamp((long)_y + y, -1_000_000, 1_000_000);
     }
+    /// <summary>Processes a PS/2 mouse command or its expected parameter through the device state machine.</summary>
     public void Write(byte value)
     {
         CommandCount++;
@@ -71,30 +85,37 @@ public sealed class Ps2Mouse(DeviceScheduler scheduler)
             default: Reply([0xfe]); break;
         }
     }
+    /// <summary>Queues a device response through the ordinary controller-visible output path.</summary>
     private bool Reply(byte[] bytes)
     {
         if (_output?.Invoke(bytes) != true) return false;
         if (bytes[0] != 0xfe) _lastReply = bytes;
         return true;
     }
+    /// <summary>Restores the PS/2 mouse's reference defaults without synthesizing unsolicited host input.</summary>
     private void Defaults()
     {
         Enabled = Remote = Scaling2To1 = false; Resolution = 2; SampleRate = 100; _parameter = 0;
         StopSampling(); ClearMotion();
     }
+    /// <summary>Clears accumulated relative motion while preserving separately configured mouse behavior.</summary>
     private void ClearMotion() { _x = _y = 0; _reportedButtons = _buttons; }
+    /// <summary>Cancels a scheduled PS/2 stream-sample deadline.</summary>
     private void StopSampling() { if (_sampleEvent != 0) scheduler.Cancel(_sampleEvent); _sampleEvent = 0; }
+    /// <summary>Restarts PS/2 stream sampling from the current virtual instant when the mode permits it.</summary>
     private void RestartSampling()
     {
         StopSampling(); _sampleRemainder = 0; ScheduleSample();
     }
+    /// <summary>Queues the next reference mouse sampling deadline at the selected report rate.</summary>
     private void ScheduleSample()
     {
         if (!Enabled || Remote || _wrap) return;
         _sampleRemainder += 1_000_000_000UL;
         ulong delay = _sampleRemainder / SampleRate; _sampleRemainder %= SampleRate;
-        _sampleEvent = scheduler.ScheduleAfter(delay, Sample);
+        _sampleEvent = scheduler.ScheduleAfter(delay, Sample, this, "event0");
     }
+    /// <summary>Consumes accumulated motion/buttons at an actual virtual sampling deadline.</summary>
     private void Sample()
     {
         _sampleEvent = 0;
@@ -102,11 +123,13 @@ public sealed class Ps2Mouse(DeviceScheduler scheduler)
         { ClearMotion(); PacketCount++; }
         ScheduleSample();
     }
+    /// <summary>Returns the power of two multiplying the raw extended integer significand.</summary>
     private static int Scale(int value)
     {
         int magnitude = Math.Abs(value);
         return Math.Sign(value) * (magnitude switch { 0 => 0, 1 => 1, 2 => 1, 3 => 3, 4 => 6, 5 => 9, _ => magnitude * 2 });
     }
+    /// <summary>Encodes a bounded PS/2 packet with sign/overflow/button bits from the accumulated device state.</summary>
     private byte[] Packet()
     {
         int x = Math.Clamp(_x, -255, 255), y = Math.Clamp(_y, -255, 255);

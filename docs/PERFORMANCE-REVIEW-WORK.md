@@ -1,0 +1,9 @@
+# Abgeschlossen: offene Performance-Reviewpunkte
+
+Stand 25.10.2026. Die vom Benutzer priorisierten offenen Reviewpunkte sind im dokumentierten Referenzumfang umgesetzt und gemeinsam abgenommen. **2546/2546 Regressionen, 0 Warnungen/Fehler**, 190 Gastregressionsstarts, acht AB/BA-Doom-Starts, zwei zusätzliche Kandidaten-Samplingstarts; 58350 definierte native x87-Fälle plus 36 Diagnosen. Sechs finale GUI-Aufnahmen sind visuell geprüft, ohne native Maus-/Fokus-/Eingabetests.
+
+Maßgeblich sind [der Messbericht](PERFORMANCE.md), [der Implementierungsstatus](IMPLEMENTATION-STATUS.md) und der private Gesamtnachweis über `artifacts/tests/review-performance-release-path.txt`. Alle dort genannten Tests verwenden die endgültigen Produkt-DLLs nach beiden A20-/RAM-MMIO-Grenzabsicherungen. Frühere Zwischenläufe sind keine zusätzliche Freigabe des endgültigen Builds.
+
+Der zweite gepaarte Doom-Vergleich benötigt ohne Manager 25,37 %, mit EMM386 RAM 20,24 % weniger Hostzeit. Ganze 8 MiB RAM, CPU außer interner TLB-Aufrufstatistik, Bildfolge und virtuelle Zeit sind identisch. Zehn geschützte Eingaben und 53 private Baselines sind unverändert. C64/Benutzer-Spiel-COW unangetastet, keine Commits/Pushes. Mikrobenchmarkspezialfälle sind keine allgemeine Spielleistungszusage.
+
+**FSINCOS und die gerätegetaktete DMA5–7-Grundlage sind inzwischen separat abgenommen; nächste Gerätevertikale ist ein konkretes Non-PnP-SB16-Modell**, danach weitere x87-Operationen und die übrigen M3-Abhängigkeiten nach Konzept. M3 insgesamt, universelle Silizium-/Buspräzision und allgemeine interaktive Doom-Kompatibilität sind offen. Die verschobene native Mauswiederholung bleibt unverändert bis zu einem neuen ausdrücklichen Auftrag offen. Keine konkurrierende Bearbeitung gleichzeitig geänderter Dateien. Abgeschlossene Performancepakete nur bei begründetem Regressionsbedarf wiederholen.

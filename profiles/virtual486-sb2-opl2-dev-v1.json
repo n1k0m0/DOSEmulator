@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "virtual486-dev-v1",
-  "name": "Virtual 486 AT - SB2 DSP and OPL2 melodic development",
+  "name": "DOSE 486 AT - SB2 DSP and OPL2 melodic development",
   "cpu": "i486dx-development",
   "cpuHz": 33000000,
   "ramMiB": 8,

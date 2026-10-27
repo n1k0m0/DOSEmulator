@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Numerics;
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
@@ -5,6 +7,7 @@ using static ProtectedModeTests;
 
 internal static class ShiftOptimizationTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool ok,string message="Shift compatibility") {if(!ok)throw new Exception(message);}
     // Deliberately independent, bit-at-a-time compatibility oracle. Undefined
     // bits retain the previous interpreter's contract, not a silicon promise.
@@ -30,6 +33,7 @@ internal static class ShiftOptimizationTests
         }
         return(v,flags);
     }
+    /// <summary>Registers the named shift optimization regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
         foreach(int width in new[]{1,2,4})foreach(int op in Enumerable.Range(0,8))

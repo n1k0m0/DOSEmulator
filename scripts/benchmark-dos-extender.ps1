@@ -1,8 +1,11 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
 param([Parameter(Mandatory)][string]$BaselineAssemblies,[Parameter(Mandatory)][string]$CandidateAssemblies,
     [Parameter(Mandatory)][string]$Disk,[Parameter(Mandatory)][string]$RamOverlay,
-    [Parameter(Mandatory)][string]$Scenario,[Parameter(Mandatory)][string]$Game,[ValidateRange(2,9)][int]$Repeats=2)
+    [Parameter(Mandatory)][string]$Scenario,[Parameter(Mandatory)][string]$Game,[ValidateRange(2,9)][int]$Repeats=2,
+    [switch]$AllowTranslationCounterDifferences,[switch]$CompareGuestRam)
 . (Join-Path $PSScriptRoot 'common.ps1')
 $BaselineAssemblies=Resolve-DosPath $BaselineAssemblies;$CandidateAssemblies=Resolve-DosPath $CandidateAssemblies
 $Disk=Resolve-DosPath $Disk;$RamOverlay=Resolve-DosPath $RamOverlay;$Scenario=Resolve-DosPath $Scenario;$Game=Resolve-DosPath $Game
@@ -21,7 +24,8 @@ foreach($mode in @('none','RAM')){
             if($mode -eq 'RAM'){Copy-Item -LiteralPath $RamOverlay -Destination $cow;$before=(Get-DosFileHash -LiteralPath $cow).Hash}
             $dll=Join-Path $(if($variant -eq 'baseline'){$BaselineAssemblies}else{$CandidateAssemblies}) 'DOSEmulator.Headless.dll'
             $watch=[Diagnostics.Stopwatch]::StartNew()
-            dotnet $dll --disk $Disk --overlay $cow --scenario $Scenario --steps 1000000000 --stop-text "`r`nDOOM-GUEST-END`r`n`r`nC:\>" --report ($prefix+'.json') --graphics-capture ($prefix+'-graphics') > ($prefix+'.stdout.json')
+            $ramArguments=if($CompareGuestRam){@('--memory-dump',($prefix+'.private-ram.bin'))}else{@()}
+            dotnet $dll --disk $Disk --overlay $cow --scenario $Scenario --steps 1000000000 --stop-text "`r`nDOOM-GUEST-END`r`n`r`nC:\>" --report ($prefix+'.json') --graphics-capture ($prefix+'-graphics') @ramArguments > ($prefix+'.stdout.json')
             $watch.Stop()
             $arguments=@((Join-Path $script:DosWorkspaceRoot 'tests\verify-doom-extender.py'),'--report',($prefix+'.json'),'--base',$Disk,'--overlay',$cow,'--game',$Game,'--mode',$mode)
             if($mode -eq 'RAM'){$arguments+=@('--baseline',$RamOverlay)}
@@ -30,13 +34,15 @@ foreach($mode in @('none','RAM')){
             $proof=Get-Content -LiteralPath ($prefix+'.verified.json') -Raw | ConvertFrom-Json
             if(-not $proof.passed){throw 'Doom benchmark oracle failed'}
             if($mode -eq 'RAM' -and (Get-DosFileHash -LiteralPath $cow).Hash -ne $before){throw 'Benchmark changed its private configuration'}
-            $cpu=$r.cpu | ConvertTo-Json -Depth 15 -Compress
+            $architecturalCpu=if($AllowTranslationCounterDifferences){$r.cpu | Select-Object -Property * -ExcludeProperty tlbHits}else{$r.cpu}
+            $cpu=$architecturalCpu | ConvertTo-Json -Depth 15 -Compress
+            $ramHash=if($CompareGuestRam){(Get-DosFileHash -LiteralPath ($prefix+'.private-ram.bin')).Hash}else{$null}
             $row=[pscustomobject]@{mode=$mode;repeat=$repeat;variant=$variant;milliseconds=$watch.Elapsed.TotalMilliseconds;
                 report=$prefix+'.json';verification=$prefix+'.verified.json';frameHash=$r.frameHash;
                 sceneSequenceSha256=$proof.sceneSequenceSha256;virtualNanoseconds=$r.status.virtualNanoseconds;
-                instructions=$r.cpu.instructions;cpuState=$cpu}
+                instructions=$r.cpu.instructions;cpuState=$cpu;translationHits=$r.cpu.tlbHits;guestRamSha256=$ramHash}
             if($reference){
-                if($reference.cpuState -cne $cpu -or $reference.frameHash -ne $row.frameHash -or $reference.sceneSequenceSha256 -ne $row.sceneSequenceSha256 -or $reference.virtualNanoseconds -ne $row.virtualNanoseconds){throw 'Optimization changed guest CPU state, images or virtual time'}
+                if($reference.cpuState -cne $cpu -or $reference.frameHash -ne $row.frameHash -or $reference.sceneSequenceSha256 -ne $row.sceneSequenceSha256 -or $reference.virtualNanoseconds -ne $row.virtualNanoseconds -or $reference.guestRamSha256 -ne $ramHash){throw 'Optimization changed guest CPU state, images, RAM or virtual time'}
             }else{$reference=$row}
             $rows.Add($row)
             $rows | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $root 'progress.json') -Encoding utf8
@@ -48,5 +54,7 @@ $summary=[pscustomobject]@{passed=$true;directory=$root;coldBoots=$rows.Count;ro
     originalMediaAndBaselinesUnchanged=$true;testedAssembliesUnchanged=$true;testedAssemblies=$assemblies;
     protectedInputs=$protected;cpuStateImagesAndVirtualTimeIdentical=$true;guestTimingModelChanged=$false;
     timingIncludesProcessStartAndGraphicsCapture=$true;nativeInputUsed=$false;fullGameCompatibilityAccepted=$false}
+$summary | Add-Member -NotePropertyName translationCallStatisticsExcluded -NotePropertyValue ([bool]$AllowTranslationCounterDifferences)
+$summary | Add-Member -NotePropertyName completeGuestRamCompared -NotePropertyValue ([bool]$CompareGuestRam)
 $summary | ConvertTo-Json -Depth 15 | Set-Content -LiteralPath (Join-Path $root 'acceptance-summary.json') -Encoding utf8
 $summary | ConvertTo-Json -Depth 15

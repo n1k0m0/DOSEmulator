@@ -1,4 +1,7 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Copyright 2026 Nils Kopal -->
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup><ProjectReference Include="../DOSEmulator.Core/DOSEmulator.Core.csproj" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../DOSEmulator.Contracts/DOSEmulator.Contracts.csproj" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="../../firmware/fonts/cp437-8x8.txt" LogicalName="DOSEmulator.Cp437Artwork" /></ItemGroup>
 </Project>

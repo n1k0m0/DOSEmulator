@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original DOS client: real 16/32-bit call gates, TSS stacks and RETF parameters.
 ; The private TR cache intentionally remains loaded until the next cold reset.
 bits 16
@@ -32,6 +34,7 @@ LDT equ 184
 FROM16 equ 192
 EXIT equ 200
 
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -116,6 +119,7 @@ start:
     or eax,1
     mov cr0,eax
     jmp dword C0:0x10000+kernel_entry
+; Patches the explicit descriptor base bytes for this probe's allocated guest segment.
 patch_base:
     mov [di+2],ax
     shr eax,16
@@ -502,6 +506,7 @@ real_return:
     int 0x21
     mov ax,0x4c00
     int 0x21
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al

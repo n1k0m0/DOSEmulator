@@ -1,13 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent raw comparison inputs; no host floating point or guest media."""
 import argparse,json,random,struct
 from pathlib import Path
 J=1<<63
 VALUES=[(0,0),(0,0x8000),(J,0x3fff),(J,0xbfff),(J+1,0x3fff),(J,1),((1<<64)-1,0x7ffe),
         (1,0),(J,0),(J,0x7fff),(J,0xffff),(0xc000000000000042,0x7fff),(J+0x123,0x7fff),(1,0x1234)]
-def raw(v):return dict(significand=f'{v[0]:016X}',exponent=f'{v[1]:04X}')
+def raw(v):"""Serializes raw significand/exponent fields without numeric conversion."""; return dict(significand=f'{v[0]:016X}',exponent=f'{v[1]:04X}')
 def generate():
+ """Builds deterministic x87 compare vectors vectors and original guest data tables; no original media are modified."""
  cases=[]
- def add(op,c,a,b,kind=0,bits=0):cases.append(dict(id=f'cmp-{len(cases)}',operation=op,control=c,a=raw(a),b=raw(b),kind=kind,bits=f'{bits:016X}'))
+ def add(op,c,a,b,kind=0,bits=0):"""Adds one explicitly parameterized x87 compare vectors case to the deterministic test matrix."""; cases.append(dict(id=f'cmp-{len(cases)}',operation=op,control=c,a=raw(a),b=raw(b),kind=kind,bits=f'{bits:016X}'))
  for c in (0x37f,0x37e,0x37d,0x37c):
   for a in VALUES:
    for b in VALUES:
@@ -38,6 +41,7 @@ if __name__=='__main__':
  cases=generate();(root/'vectors.json').write_text(json.dumps(cases,indent=2)+'\n',encoding='utf-8')
  chosen=[]
  def pick(op,c,a,b,kind=0,bits=0):
+  """Chooses a bounded, deterministic guest subset preserving the required architectural case families."""
   match=next(v for v in cases if v['operation']==op and v['control']==c and v['a']==raw(a) and v['b']==raw(b) and v['kind']==kind and int(v['bits'],16)==bits)
   if match not in chosen:chosen.append(match)
  for op in range(7):
@@ -72,4 +76,4 @@ if __name__=='__main__':
   av,bv=v['a'],v['b'];blocks.append(struct.pack('<4HQHQHIQ',v['control'],v['operation'],v['kind'],i,int(av['significand'],16),int(av['exponent'],16),int(bv['significand'],16),int(bv['exponent'],16),0,int(v['bits'],16)))
  data=b''.join(blocks);source=f'%define VECTOR_COUNT {len(chosen)}\n%macro compare_vectors 0\n'
  source+='\n'.join('db '+','.join(str(x) for x in data[i:i+40]) for i in range(0,len(data),40))+'\n%endmacro\n'
- (root/'x87-compare-data.inc').write_text(source,encoding='ascii');print(json.dumps(dict(vectors=len(cases),guestVectors=len(chosen))))
+ (root/'x87-compare-data.inc').write_text('; SPDX-License-Identifier: Apache-2.0\n; Copyright 2026 Nils Kopal\n' + (source),encoding='ascii');print(json.dumps(dict(vectors=len(cases),guestVectors=len(chosen))))

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Numerics;
 
 namespace DOSEmulator.Cpu.X86;
@@ -12,18 +14,30 @@ public static partial class Float80Math
     private const ushort Invalid = 1, Denormal = 2, ZeroDivide = 4, Overflow = 8, Underflow = 16, Precision = 32;
     private const ulong IntegerBit = 0x8000000000000000, QuietBit = 0x4000000000000000;
     private const int Bias = 16383, Emin = -16382, Emax = 16383;
+    /// <summary>Recognizes an unsupported raw extended encoding without normalizing away its explicit integer bit.</summary>
     private static bool Unsupported(Float80Value v) => v.Exponent != 0 && !v.IntegerBit;
+    /// <summary>Recognizes a raw extended NaN while keeping its payload bits available to the caller.</summary>
     private static bool Nan(Float80Value v) => v.Exponent == 0x7fff && v.IntegerBit && v.Significand != IntegerBit;
+    /// <summary>Checks the raw NaN quiet bit to distinguish signaling and quiet operands.</summary>
     private static bool Signaling(Float80Value v) => Nan(v) && (v.Significand & QuietBit) == 0;
+    /// <summary>Recognizes the exact raw extended infinity encoding.</summary>
     private static bool Infinity(Float80Value v) => v.Exponent == 0x7fff && v.Significand == IntegerBit;
+    /// <summary>Recognizes signed zero from its raw exponent and significand.</summary>
     private static bool Zero(Float80Value v) => v.Exponent == 0 && v.Significand == 0;
+    /// <summary>Identifies a nonzero exponent-zero operand for the documented denormal exception contract.</summary>
     private static bool DenormalOperand(Float80Value v) => v.Exponent == 0 && v.Significand != 0;
+    /// <summary>Returns the power of two multiplying the raw extended integer significand.</summary>
     private static int Scale(Float80Value v) => Math.Max(1, v.Exponent) - Bias - 63;
+    /// <summary>Constructs a raw extended zero with the requested sign bit.</summary>
     private static Float80Value SignedZero(bool negative) => new(0, negative ? (ushort)0x8000 : (ushort)0);
+    /// <summary>Constructs a raw extended infinity with the requested sign bit.</summary>
     private static Float80Value SignedInfinity(bool negative) => new(IntegerBit, (ushort)(0x7fff | (negative ? 0x8000 : 0)));
+    /// <summary>Packages a special numeric result with exception flags and the appropriate masked commit decision.</summary>
     private static Float80Result Special(Float80Value value, ushort flags, ushort control) => new(value, flags, false, (flags & ~control & 7) == 0);
+    /// <summary>Decodes PC24/PC53/PC64, including the reference default for the reserved precision encoding.</summary>
     private static int PrecisionBits(ushort control) => (control >> 8 & 3) switch { 0 => 24, 2 => 53, _ => 64 };
 
+    /// <summary>Evaluates elementary extended arithmetic using exact integers/rationals and explicit precision/rounding controls.</summary>
     public static Float80Result Calculate(Float80Value left, Float80Value right, Float80Operation operation, ushort control, bool memoryDenormal = false)
     {
         if (!Enum.IsDefined(operation)) throw new ArgumentOutOfRangeException(nameof(operation));
@@ -78,12 +92,14 @@ public static partial class Float80Math
     }
 
     private readonly record struct Rounded(BigInteger Significand, int Exponent, bool Subnormal, ushort Flags, bool Up, bool Commit = true, bool Infinite = false);
+    /// <summary>Finds the exact floor binary logarithm of a positive rational by integer comparisons.</summary>
     private static int FloorLog(BigInteger n, BigInteger d)
     {
         int k = checked((int)(n.GetBitLength() - d.GetBitLength()));
         if (k >= 0 ? n < d << k : n << -k < d) k--;
         return k;
     }
+    /// <summary>Rounds a scaled positive rational under RC and reports inexactness plus magnitude-rounding direction.</summary>
     private static (BigInteger Value, bool Inexact, bool Up) RoundInteger(BigInteger n, BigInteger d, int scale, bool negative, int rc)
     {
         if (scale >= 0) n <<= scale; else d <<= -scale;
@@ -97,6 +113,7 @@ public static partial class Float80Math
         };
         return (up ? q + 1 : q, !rem.IsZero, up);
     }
+    /// <summary>Quantizes a rational to the requested binary format with explicit overflow, underflow and precision responses.</summary>
     private static Rounded Quantize(BigInteger n, BigInteger d, int scale, bool negative, int p, int emin, int emax, ushort control, bool stack)
     {
         int rc = control >> 10 & 3, exponent = FloorLog(n, d) + scale;
@@ -124,18 +141,21 @@ public static partial class Float80Math
         }
         return new(normal.Value, exponent, false, normal.Inexact ? Precision : (ushort)0, normal.Up);
     }
+    /// <summary>Encodes a rounded binary significand/exponent as a raw extended register value.</summary>
     private static Float80Value ToExtended(Rounded value, bool negative, int p)
     {
         if (value.Infinite) return SignedInfinity(negative);
         return new((ulong)(value.Significand << (64 - p)), (ushort)((value.Subnormal ? 0 : value.Exponent + Bias) | (negative ? 0x8000 : 0)));
     }
+    /// <summary>Converts a signed integer to an exact extended significand/exponent without using host double.</summary>
     public static Float80Value FromInteger(long value)
     {
-        BigInteger absolute = BigInteger.Abs(new BigInteger(value));
-        if (absolute.IsZero) return Float80Value.Zero;
-        int bits = (int)absolute.GetBitLength();
-        return new((ulong)(absolute << (64 - bits)), (ushort)(Bias + bits - 1 | (value < 0 ? 0x8000 : 0)));
+        ulong absolute = value < 0 ? unchecked(0UL - (ulong)value) : (ulong)value;
+        if (absolute == 0) return Float80Value.Zero;
+        int shift = BitOperations.LeadingZeroCount(absolute);
+        return new(absolute << shift, (ushort)(Bias + 63 - shift | (value < 0 ? 0x8000 : 0)));
     }
+    /// <summary>Decodes binary32/binary64 and reports whether the original memory encoding was denormal.</summary>
     private static Float80Value DecodeBinary(ulong bits, int width, out bool denormal)
     {
         if (width is not (32 or 64)) throw new ArgumentOutOfRangeException(nameof(width));
@@ -150,6 +170,7 @@ public static partial class Float80Math
         int shift = BitOperations.LeadingZeroCount(sig);
         return new(sig << shift, (ushort)(Math.Max(1, e) - bias - (p - 1) + 63 - shift + Bias | (negative ? 0x8000 : 0)));
     }
+    /// <summary>Applies binary-memory load exception/quieting rules to an exactly decoded source.</summary>
     public static Float80Result LoadBinary(ulong bits, int width, ushort control)
     {
         var value = DecodeBinary(bits, width, out bool denormal);
@@ -157,11 +178,13 @@ public static partial class Float80Math
         // FLD pushes a normalized denormal even when DM is unmasked (486 contract).
         return new(value, denormal ? Denormal : (ushort)0);
     }
+    /// <summary>Preserves the original binary-memory denormal classification while selecting arithmetic operand order.</summary>
     public static Float80Result CalculateBinaryMemory(Float80Value left, ulong bits, int width, Float80Operation operation, ushort control, bool reverse = false)
     {
         var right = DecodeBinary(bits, width, out bool denormal);
         return reverse ? Calculate(right, left, operation, control, denormal) : Calculate(left, right, operation, control, denormal);
     }
+    /// <summary>Rounds an extended value to binary32/binary64 and returns its explicit store/exception decision.</summary>
     public static Float80Encoding StoreBinary(Float80Value value, int width, ushort control)
     {
         if (width is not (32 or 64)) throw new ArgumentOutOfRangeException(nameof(width));
@@ -176,6 +199,7 @@ public static partial class Float80Math
         ulong encoded = r.Infinite ? allExponent : (r.Subnormal ? 0 : (ulong)(r.Exponent + bias) << (p - 1)) | fraction;
         return new(sign | encoded, r.Flags, r.Up, r.Commit);
     }
+    /// <summary>Rounds an extended value to a signed integer width with range checks and integer-indefinite handling.</summary>
     public static Float80Encoding StoreInteger(Float80Value value, int width, ushort control)
     {
         if (width is not (16 or 32 or 64)) throw new ArgumentOutOfRangeException(nameof(width));

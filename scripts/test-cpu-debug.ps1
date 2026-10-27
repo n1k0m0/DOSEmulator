@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
 param([switch]$SkipBuild,[string]$OutputRoot='artifacts\m1-build',
@@ -55,8 +57,8 @@ foreach($paging in @($false,$true)){
 }
 foreach($item in @($originals)+@($assemblies)){if((Get-DosFileHash -LiteralPath $item.Path).Hash -ne $item.Hash){throw ('debug source or tested DLL changed: '+$item.Path)}}
 $summary=[pscustomobject]@{passed=$true;directory=$root;headlessColdBoots=8;cases=$cases;
-    debugEntriesPerBoot=@(7,8);instructionBreakpointFaultsPerBoot=1;generalDetectFaultsPerBoot=1;
-    dataTrapsPerBoot=@(3,4);singleStepTrapsPerBoot=2;negativeControlsRejected=$negativeCount;
+    debugEntriesPerBoot=@(13,14);ssContractFramesPerBoot=6;instructionBreakpointFaultsPerBoot=1;generalDetectFaultsPerBoot=3;
+    dataTrapsPerBoot=@(3,4);singleStepTrapsPerBoot=6;negativeControlsRejected=$negativeCount;
     ssShadowAndRfRetry=$true;repElementCommitted=$true;debugRegistersRestored=$true;identityPagingVariants=$true;
     privateTrCacheRemainsUntilReset=$true;originalsUnchanged=$true;testedAssembliesUnchanged=$true;
     nativeWindowsInput=$false;allDebugOrSiliconPrecisionAccepted=$false;milestoneM3Accepted=$false}

@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 namespace DOSEmulator.Cpu.X86;
 
 public sealed partial class X86Cpu
 {
+    /// <summary>Looks up a descriptor for query instructions while converting eligible selector errors into a failed query.</summary>
     private bool TryQueryDescriptor(ushort selector, out Descriptor descriptor)
     {
         descriptor = default;
@@ -12,6 +15,7 @@ public sealed partial class X86Cpu
         bool conformingCode = (cache.Access & 0x10) != 0 && cache.Conforming;
         return conformingCode || Math.Max(_cpl, selector & 3) <= cache.Privilege;
     }
+    /// <summary>Implements VERR/VERW accessibility checks and publishes their result through ZF.</summary>
     private void VerifySelector(Operand operand, bool write)
     {
         bool valid = TryQueryDescriptor((ushort)Read(operand, 2), out var descriptor);
@@ -20,6 +24,7 @@ public sealed partial class X86Cpu
         valid &= write ? !cache.Code && (cache.Access & 2) != 0 : !cache.Code || (cache.Access & 2) != 0;
         SetFlag(Zero, valid); // Present is deliberately not a query criterion.
     }
+    /// <summary>Implements LAR/LSL descriptor queries with protected-mode and visibility checks.</summary>
     private void QueryDescriptor(bool limit)
     {
         byte modrm = FetchByte();
@@ -32,6 +37,7 @@ public sealed partial class X86Cpu
         SetFlag(Zero, valid);
         if (valid) WriteRegister((modrm >> 3) & 7, Width, limit ? cache.Limit : ((uint)cache.Access << 8) | ((uint)cache.Flags << 20));
     }
+    /// <summary>Implements ARPL and changes ZF only when the destination RPL is raised.</summary>
     private void AdjustRpl()
     {
         byte modrm = FetchByte();

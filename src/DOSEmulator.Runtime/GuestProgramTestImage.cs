@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
@@ -7,6 +9,7 @@ namespace DOSEmulator.Runtime;
 /// <summary>Adds our COM probes to a new private copy of the verified minimal FreeDOS test medium.</summary>
 public static class GuestProgramTestImage
 {
+    /// <summary>Adds only original project probe files to a fresh private verified FAT16 test copy.</summary>
     public static object Create(string source, string programDirectory, string destination)
     {
         if (File.Exists(destination)) throw new IOException("Test images are never overwritten.");
@@ -16,6 +19,7 @@ public static class GuestProgramTestImage
             throw new InvalidDataException("Expected the verified minimal FreeDOS 1.4 IDE test image.");
         string[] programs = Directory.GetFiles(programDirectory, "*.COM").Order(StringComparer.Ordinal).ToArray();
         if (programs.Length is < 1 or > 16) throw new ArgumentException("Supply 1..16 original COM test programs.");
+        // Reads a little-endian BPB/FAT word from the private test-image bytes.
         int Word(int address) => BinaryPrimitives.ReadUInt16LittleEndian(image.AsSpan(address));
         int partition = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(image.AsSpan(454)) * 512);
         int bps = Word(partition + 11), clusterBytes = image[partition + 13] * bps;

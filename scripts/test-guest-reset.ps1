@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
 param([switch]$SkipBuild, [switch]$Install, [switch]$Gui, [string]$OutputRoot = 'artifacts\m1-build', [string]$MsdosDisk, [string]$MsdosOverlay)
@@ -20,6 +22,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Reset guest assembly failed' }
 python (Join-Path $workspaceRoot 'tests\prepare-font-media.py') $probe $floppy 'RESET.COM' > (Join-Path $testRoot 'own-floppy.json')
 if ($LASTEXITCODE -ne 0) { throw 'Reset probe floppy failed' }
 $stages = @()
+# Writes an explicit private guest-input plan with bounded waits and required output markers.
 function Scenario([string]$Name, [object[]]$Plan) {
     $path = Join-Path $testRoot ($Name+'.scenario.json')
     ConvertTo-Json -InputObject $Plan -Depth 8 | Set-Content -LiteralPath $path -Encoding utf8

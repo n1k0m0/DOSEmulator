@@ -1,8 +1,11 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own CSM level-latch probe. Timer-off intervals distinguish a latched level
 ; from immediately applying the register write. Only carrier 0 is audible.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -82,6 +85,7 @@ start:
     call print
     mov ax,0x4c00
     int 0x21
+; Writes an actual FM register with the required address/data port sequence.
 opl_write:
     push ax
     push dx
@@ -96,6 +100,7 @@ opl_write:
     pop dx
     pop ax
     ret
+; Waits for actual BIOS timer ticks rather than advancing virtual time from the host.
 wait_ticks:
     pusha
     mov bx,cx
@@ -110,6 +115,7 @@ wait_ticks:
     jb .wait
     popa
     ret
+; Prints the probe's diagnostic text through its actual guest DOS/BIOS output service.
 print:
     mov ah,9
     int 0x21

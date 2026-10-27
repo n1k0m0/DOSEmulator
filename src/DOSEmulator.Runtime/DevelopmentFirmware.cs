@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Text;
 
 namespace DOSEmulator.Runtime;
@@ -5,6 +7,7 @@ namespace DOSEmulator.Runtime;
 /// <summary>Original, reproducibly generated x86 machine code. No host-side BIOS interrupt interception.</summary>
 public static class DevelopmentFirmware
 {
+    /// <summary>Generates the original minimal reset/boot-sector BIOS fixture from explicit x86 opcodes.</summary>
     public static byte[] CreateBios()
     {
         var a = new CodeBuilder(0);
@@ -34,7 +37,7 @@ public static class DevelopmentFirmware
         a.Label("error"); a.Mov(0, 0xb800); a.Emit(0x8e, 0xc0); a.Mov(7, 160 * 6); a.Call("print");
         a.Label("stop"); a.Emit(0xfa, 0xf4); a.Jump("stop");
         EmitPrint(a);
-        a.Label("banner"); a.String("DOSEmulator - Virtual 486 AT / Development BIOS");
+        a.Label("banner"); a.String("DOSE - DosEmulator / Development BIOS fixture");
         a.Label("diskError"); a.String("BOOT ERROR: no readable primary IDE master (read-only LBA28).");
         a.Label("signatureError"); a.String("BOOT ERROR: sector has no 55 AA signature.");
         byte[] code = a.Finish();
@@ -45,11 +48,13 @@ public static class DevelopmentFirmware
         return rom;
     }
 
+    /// <summary>Generates the original project boot-sector fixture used by deterministic firmware tests.</summary>
     public static byte[] CreateDemoDisk()
     {
         var a = new CodeBuilder(0x7c00);
         a.Emit(0xfa, 0xfc, 0x31, 0xc0, 0x8e, 0xd8, 0x8e, 0xd0); a.Mov(4, 0x7c00);
         a.Mov(0, 0xb800); a.Emit(0x8e, 0xc0);
+        // Emits one text-position/string call in the original development BIOS generator.
         void Line(int row, string label) { a.Mov(7, (ushort)(row * 160)); a.MovLabel(6, label); a.Call("print"); }
         Line(4, "title"); Line(6, "path"); Line(8, "limit"); Line(10, "next"); Line(13, "controls");
         a.Emit(0xc7, 0x06, 0x00, 0x05, 0xef, 0xbe); // observable boot-sector marker
@@ -68,6 +73,7 @@ public static class DevelopmentFirmware
         return disk;
     }
 
+    /// <summary>Emits the original guest instruction loop that prints fixture strings through emulated output.</summary>
     private static void EmitPrint(CodeBuilder a)
     {
         a.Label("print"); a.Emit(0xac, 0x84, 0xc0); a.Jcc(0x74, "printDone"); // LODSB; TEST; JZ
@@ -80,19 +86,29 @@ public static class DevelopmentFirmware
         private readonly List<byte> _bytes = [];
         private readonly Dictionary<string, int> _labels = [];
         private readonly List<(int Offset, string Label, int Width, bool Relative)> _patches = [];
+        /// <summary>Appends explicit guest machine-code bytes to the private firmware builder.</summary>
         public void Emit(params byte[] bytes) => _bytes.AddRange(bytes);
+        /// <summary>Defines the current code offset for later absolute or relative label fixups.</summary>
         public void Label(string label) => _labels.Add(label, _bytes.Count);
+        /// <summary>Appends a zero-terminated ASCII fixture string to the generated guest image.</summary>
         public void String(string text) { _bytes.AddRange(Encoding.ASCII.GetBytes(text)); _bytes.Add(0); }
+        /// <summary>Emits a word-immediate MOV to the explicitly selected guest register.</summary>
         public void Mov(int register, ushort value) => Emit((byte)(0xb8 + register), (byte)value, (byte)(value >> 8));
+        /// <summary>Emits a guest MOV with a deferred absolute label-address fixup.</summary>
         public void MovLabel(int register, string label) { Emit((byte)(0xb8 + register)); Patch(label, 2, false); }
+        /// <summary>Emits a guest near CALL with a deferred relative label fixup.</summary>
         public void Call(string label) { Emit(0xe8); Patch(label, 2, true); }
+        /// <summary>Emits a guest near JMP with a deferred relative label fixup.</summary>
         public void Jump(string label) { Emit(0xe9); Patch(label, 2, true); }
+        /// <summary>Emits a short conditional guest branch with a checked label displacement.</summary>
         public void Jcc(byte opcode, string label) { Emit(opcode); Patch(label, 1, true); }
+        /// <summary>Reserves an absolute/relative label reference for resolution after the image is laid out.</summary>
         private void Patch(string label, int width, bool relative)
         {
             _patches.Add((_bytes.Count, label, width, relative));
             for (int i = 0; i < width; i++) _bytes.Add(0);
         }
+        /// <summary>Completes the current operation and releases its active device/transfer state.</summary>
         public byte[] Finish()
         {
             foreach (var p in _patches)

@@ -43,6 +43,7 @@ namespace SharpPixels.Properties {
         
         private static global::System.Globalization.CultureInfo resourceCulture;
         
+        /// <summary>Initializes Resources and connects the supplied dependencies before the component is used.</summary>
         [global::System.Diagnostics.CodeAnalysis.SuppressMessageAttribute("Microsoft.Performance", "CA1811:AvoidUncalledPrivateCode")]
         internal Resources() {
         }

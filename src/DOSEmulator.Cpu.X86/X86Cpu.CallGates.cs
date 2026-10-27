@@ -1,9 +1,13 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 namespace DOSEmulator.Cpu.X86;
 
 public sealed partial class X86Cpu
 {
+    /// <summary>Diagnostic count of call gate transfers.</summary>
     public long CallGateTransfers { get; private set; }
 
+    /// <summary>Checks gate/target privileges, prepares the TSS target stack and builds the width-specific call frame.</summary>
     private void TransferCallGate(ushort gateSelector, Descriptor gate, bool call)
     {
         if (Math.Max(_cpl, gateSelector & 3) > gate.Cache.Privilege) throw Gp(SelectorError(gateSelector));
@@ -44,6 +48,7 @@ public sealed partial class X86Cpu
             // CPL; new ring 0/1/2 stack accesses are supervisor accesses.
             uint pointer = stack.Pointer;
             uint mask = stack.Descriptor.Cache.Default32 ? uint.MaxValue : 0xffff;
+            // Preflights the next proposed stack write without changing the architectural stack pointer.
             void ProbePush()
             {
                 pointer = unchecked(pointer - (uint)width) & mask;

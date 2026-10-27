@@ -1,12 +1,16 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent high-precision constant derivation and x87 stack/control inputs."""
 import argparse,json,struct
 from decimal import Decimal,localcontext,ROUND_FLOOR,ROUND_HALF_EVEN
 from pathlib import Path
 
 def constants(precision):
+ """Constructs the independently bounded mathematical constants and their directed binary roundings."""
  with localcontext() as ctx:
   ctx.prec=precision
   def atan_inv(n):
+   """Bounds atan(1/n) with a rational alternating series for the independent constant oracle."""
    x=Decimal(1)/n;power=x;total=x;k=1
    while True:
     power*=-x*x;term=power/(2*k+1);next_value=total+term
@@ -26,6 +30,7 @@ def constants(precision):
   return result
 
 def generate():
+ """Builds deterministic x87 constant vectors vectors and original guest data tables; no original media are modified."""
  cases=[]
  for op in range(7):
   for pc in (0,2,3):
@@ -40,10 +45,11 @@ def generate():
 if __name__=='__main__':
  parser=argparse.ArgumentParser();parser.add_argument('directory');a=parser.parse_args();root=Path(a.directory);root.mkdir(parents=True,exist_ok=True)
  derived=constants(100);assert derived==constants(160)
- def write(name,v):root.joinpath(name).write_text(json.dumps(v,indent=2)+'\n',encoding='utf-8',newline='\n')
+ def write(name,v):"""Writes a deterministic generated vector JSON file in the explicitly supplied private output directory."""; root.joinpath(name).write_text(json.dumps(v,indent=2)+'\n',encoding='utf-8',newline='\n')
  write('derived-constants.json',dict(passed=True,constants=derived,decimalPrecisionCrossCheck=[100,160],hostFloatUsed=False,piFormula='16 atan(1/5) - 4 atan(1/239)'))
  cases=generate();write('vectors.json',cases);selected=[]
  def pick(op,pc,rc,clear=0,depth=2,seed=0x30):
+  """Chooses a bounded, deterministic guest subset preserving the required architectural case families."""
   v=next(v for v in cases if v['operation']==op and v['control']==((0x7f|pc<<8|rc<<10)&~clear) and v['kind']==depth|seed)
   if v not in selected:selected.append(v)
  for op in range(7):
@@ -61,5 +67,5 @@ if __name__=='__main__':
   a,b=v['a'],v['b'];chunks.append(struct.pack('<4HQHQHIQ',v['control'],v['operation'],v['kind'],i,int(a['significand'],16),int(a['exponent'],16),int(b['significand'],16),int(b['exponent'],16),0,0))
  data=b''.join(chunks);source=f'%define VECTOR_COUNT {len(selected)}\n%macro constant_vectors 0\n'
  source+='\n'.join('db '+','.join(str(x) for x in data[i:i+40]) for i in range(0,len(data),40))+'\n%endmacro\n'
- (root/'x87-constant-data.inc').write_text(source,encoding='ascii',newline='\n')
+ (root/'x87-constant-data.inc').write_text('; SPDX-License-Identifier: Apache-2.0\n; Copyright 2026 Nils Kopal\n' + (source),encoding='ascii',newline='\n')
  print(json.dumps(dict(vectors=len(cases),guestVectors=len(selected),derivedConstants=derived)))

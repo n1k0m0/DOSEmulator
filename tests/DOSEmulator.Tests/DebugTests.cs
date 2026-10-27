@@ -1,16 +1,21 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using static ProtectedModeTests;
 
 internal static class DebugTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value, string message = "486 debug invariant failed")
     { if (!value) throw new Exception(message); }
+    /// <summary>Programs a debug register by executing an actual guest MOV DR instruction.</summary>
     private static void Dr(X86Cpu c, MemoryBus m, int dr, uint value)
     {
         uint ip = c.Eip; c.SetRegister(Register.Ax, value);
         PagingTests.At(c, m, [0x0f, 0x23, (byte)(0xc0 | dr << 3)], 0x2400); c.Eip = ip;
     }
+    /// <summary>Executes the controlled event and validates the actual guest exception/debug frame.</summary>
     private static uint Frame(X86Cpu c, MemoryBus m, uint ip, bool fault = false, uint status = 0)
     {
         byte? entered = null; c.InterruptEntered += v => entered = v;
@@ -21,13 +26,16 @@ internal static class DebugTests
         Check((c.Eflags & X86Cpu.Trap) == 0 && (c.Dr6 & status) == status);
         return sp;
     }
+    /// <summary>Executes the fixture's real return instruction, optionally repairing only the explicitly selected stacked flags.</summary>
     private static void Return(X86Cpu c, MemoryBus m, uint? flags = null)
     {
         uint sp=c.GetRegister(Register.Sp);
         if(flags.HasValue)m.WriteDword(sp+8,flags.Value);
         m.WriteByte(0x6000,0xcf);c.Step();
     }
+    /// <summary>Builds explicit guest memory-access instruction bytes for the selected read/write case.</summary>
     private static byte[] Memory(bool write, uint address=0x30000) => [(byte)(write?0xa3:0xa1),..BitConverter.GetBytes(address)];
+    /// <summary>Registers the named debug regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
         foreach(int debug in Enumerable.Range(0,8)) foreach(int mod in Enumerable.Range(0,4))

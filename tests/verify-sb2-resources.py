@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Check every resource probe's real FM port accesses, IRQ vector and PIC masks.
 
 ADC bytes and complete PCM have their separate independent oracle. This adds the

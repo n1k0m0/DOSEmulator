@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Test-only actual host x87, same 160-byte ABI as X87.NativeReference.
 bits 64
     sub rsp,520

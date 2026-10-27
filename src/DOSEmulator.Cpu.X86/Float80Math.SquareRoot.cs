@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Numerics;
 
 namespace DOSEmulator.Cpu.X86;
@@ -39,6 +41,7 @@ public static partial class Float80Math
         return new(result, (ushort)(flags | (inexact ? Precision : 0)), up);
     }
 
+    /// <summary>Computes the floor integer square root with a monotone Newton iteration and no floating-point approximation.</summary>
     private static BigInteger IntegerSquareRoot(BigInteger value)
     {
         if (value.IsZero) return BigInteger.Zero;

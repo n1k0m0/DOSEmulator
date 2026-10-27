@@ -1,7 +1,10 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own OPL2 five-instrument probe. /S exercises the Sound Blaster FM alias.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cld
     push cs
@@ -123,6 +126,7 @@ start:
     call print
     mov ax,0x4c00
     int 0x21
+; Writes an actual FM register with the required address/data port sequence.
 opl_write:
     push ax
     push cx
@@ -145,6 +149,7 @@ opl_write:
     pop cx
     pop ax
     ret
+; Waits for actual BIOS timer ticks rather than advancing virtual time from the host.
 wait_ticks:
     pushad
     mov bx,cx
@@ -159,6 +164,7 @@ wait_ticks:
     jb .wait
     popad
     ret
+; Prints the probe's diagnostic text through its actual guest DOS/BIOS output service.
 print:
     mov ah,9
     int 0x21

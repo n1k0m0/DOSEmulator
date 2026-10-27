@@ -1,17 +1,25 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using static ProtectedModeTests;
 
 internal static class X87StateTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value,string message="x87 state invariant failed") {if(!value)throw new Exception(message);}
+    /// <summary>Builds explicit locked or unlocked memory-opcode bytes with the requested width and address.</summary>
     private static byte[] Mem(byte opcode,int group,uint address=0x30000,bool address32=true) => address32 ?
         [opcode,(byte)(group*8+5),..BitConverter.GetBytes(address)] : [opcode,(byte)(group*8+6),(byte)address,(byte)(address>>8)];
+    /// <summary>Writes the explicitly specified ten-byte raw extended operand into private test memory.</summary>
     private static void Raw(MemoryBus m,uint address,Float80Value value)
     {m.WriteDword(address,(uint)value.Significand);m.WriteDword(address+4,(uint)(value.Significand>>32));m.WriteWord(address+8,value.SignExponent);}
+    /// <summary>Writes the explicitly specified ten-byte raw extended operand into private test memory.</summary>
     private static Float80Value Raw(MemoryBus m,uint address) => new(m.ReadDword(address)|((ulong)m.ReadDword(address+4)<<32),m.ReadWord(address+8));
+    /// <summary>Places controlled bytes at a private guest address and executes through the normal decoder.</summary>
     private static void At(X86Cpu c,MemoryBus m,byte[] code)
     {code.CopyTo(m.Ram,0x2200);c.Eip=0x2200;c.Step();}
+    /// <summary>Prepares the explicit test source required by the following guest instruction or BIOS operation.</summary>
     private static void Load(X86Cpu c,MemoryBus m,Float80Value value)
     {Raw(m,0x30000,value);At(c,m,Mem(0xdb,5));}
     private static readonly (Float80Value Value,int Tag,int Class)[] Values =
@@ -22,6 +30,7 @@ internal static class X87StateTests
         (new(0x8000000000000000,0x7fff),2,0x500),(new(0xc000000000000042,0xffff),2,0x300),
         (new(0x8000000000000042,0x7fff),2,0x100),(new(0x4000000000000000,1),2,0)
     ];
+    /// <summary>Registers the named x87 state regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
         foreach(var row in Values)

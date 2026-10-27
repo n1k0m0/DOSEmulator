@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Actual constant loads, full-stack overflow and pending image capture inside DOS.
 body_start:
 %if PROTECTED
@@ -79,6 +81,7 @@ constant_loop:
     movzx eax,ax
     mov [proof+220],eax
     jmp body_end
+; Initializes the controlled x87 stack before the constant-push case.
 constant_fill:
     jcxz .done
 .loop:
@@ -92,6 +95,7 @@ constant_fill:
     loop .loop
 .done:
     ret
+; Executes the selected actual x87 constant-load instruction.
 constant_execute:
     mov ax,[si+2]
 %assign OP 0

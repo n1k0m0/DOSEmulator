@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
@@ -5,8 +7,10 @@ using DOSEmulator.Runtime;
 
 internal static class FloppyFormatBiosTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition, string message = "Format BIOS assertion failed")
     { if (!condition) throw new Exception(message); }
+    /// <summary>Creates fresh private test media paths; existing original files are never overwritten.</summary>
     private static (string Base, string Overlay) Files(string id = "1440k")
     {
         string directory = Path.Combine(Environment.CurrentDirectory, "artifacts", "tests", "format-" + Guid.NewGuid().ToString("N"));
@@ -15,12 +19,14 @@ internal static class FloppyFormatBiosTests
         byte[] bytes = new byte[FloppyGeometry.FromId(id)!.SectorCount * 512]; bytes.AsSpan().Fill(0x39);
         File.WriteAllBytes(image, bytes); return (image, Path.Combine(directory, "private.cow"));
     }
+    /// <summary>Builds an isolated machine fixture with the specified guest code and optional identity paging.</summary>
     private static PcMachine Machine(string id, IReadOnlyBlockDevice? a = null, IReadOnlyBlockDevice? b = null)
     {
         var m = new PcMachine(new() { FloppyDriveA = id, FloppyDriveB = id },
             new MemoryDisk(DevelopmentFirmware.CreateDemoDisk(), "test boot"), a, b);
         m.RunSteps(100000); return m;
     }
+    /// <summary>Executes the controlled guest service/instruction path used by the surrounding regression.</summary>
     private static byte Call(PcMachine m, ushort ax)
     {
         m.Cpu.SetSegment(Segment.Cs, 0); m.Cpu.Eip = 0x1000; m.Memory.WriteByte(0x1000, 0xf4);
@@ -28,6 +34,7 @@ internal static class FloppyFormatBiosTests
         Check(m.Fault is null && m.Cpu.Halted, m.Fault ?? "BIOS did not return");
         return (byte)(m.Cpu.GetRegister(Register.Ax) >> 8);
     }
+    /// <summary>Sets up the real guest BIOS request with the case's registers and caller-owned source buffer.</summary>
     private static void Request(PcMachine m, int cylinder, int head, int drive, int count, bool custom = true, byte fill = 0xf6, uint source = 0x4000)
     {
         for (int i = 0; i < count; i++)
@@ -45,12 +52,14 @@ internal static class FloppyFormatBiosTests
         m.Cpu.SetRegister(Register.Cx, (uint)(cylinder << 8 | 0xff)); // CL is unused, including its high bits.
         m.Cpu.SetRegister(Register.Dx, (uint)(head << 8 | drive));
     }
+    /// <summary>Executes the guest service and checks its actual returned status byte.</summary>
     private static void Status(PcMachine m, ushort ax, byte expected)
     {
         Check(Call(m, ax) == expected, $"Expected AH={expected:X2}, AX={m.Cpu.GetRegister(Register.Ax):X}");
         Check(((m.Cpu.Eflags & X86Cpu.Carry) != 0) == (expected != 0));
         Check(m.Memory.ReadByte(0x441) == expected);
     }
+    /// <summary>Registers the named floppy format bios regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("BIOS AH05 uses active INT1E parameters and bounce DMA across caller 64K boundary on drive B", () =>

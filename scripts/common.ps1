@@ -1,9 +1,12 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 #requires -Version 7.4
 # Dot-sourced in each project script: preferences stay in that script's scope.
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 $script:DosWorkspaceRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 
+# Resolves an explicit workspace-relative path without requiring the target to exist.
 function Resolve-DosPath {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Path, [string]$BaseDirectory = (Get-Location).ProviderPath)
@@ -11,12 +14,14 @@ function Resolve-DosPath {
     return [IO.Path]::GetFullPath($Path, $BaseDirectory)
 }
 
+# Selects the common build output directory shared by launch and regression scripts.
 function Get-DosBuildRoot {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$OutputRoot)
     return Resolve-DosPath -Path $OutputRoot -BaseDirectory $script:DosWorkspaceRoot
 }
 
+# Computes the source identity with .NET SHA-256, independent from optional PowerShell modules.
 function Get-DosFileHash {
     [CmdletBinding()]
     param(

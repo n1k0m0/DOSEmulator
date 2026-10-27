@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Text.Json;
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
@@ -5,23 +7,31 @@ using static ProtectedModeTests;
 
 internal static class X87ComparisonTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value,string detail="x87 comparison invariant") {if(!value)throw new Exception(detail);}
+    /// <summary>Places controlled bytes at a private guest address and executes through the normal decoder.</summary>
     private static void At(X86Cpu c,MemoryBus m,byte[] code,uint address=0x2200)
     {code.CopyTo(m.Ram,(int)address);c.Eip=address;c.Step();}
+    /// <summary>Builds explicit locked or unlocked memory-opcode bytes with the requested width and address.</summary>
     private static byte[] Mem(byte op,int group,uint address=0x31000)=>[op,(byte)(group*8+5),..BitConverter.GetBytes(address)];
+    /// <summary>Prepares the explicit test source required by the following guest instruction or BIOS operation.</summary>
     private static void Load(X86Cpu c,MemoryBus m,Float80Value v,uint address=0x30000)
     {m.WriteDword(address,(uint)v.Significand);m.WriteDword(address+4,(uint)(v.Significand>>32));m.WriteWord(address+8,v.SignExponent);At(c,m,Mem(0xdb,5,address));}
+    /// <summary>Builds and installs the controlled initial pixels required by the graphics regression.</summary>
     private static void Seed(X86Cpu c,MemoryBus m,ushort control,ushort conditions=0x4500)
     {
         At(c,m,Mem(0xd9,6,0x32000));m.WriteWord(0x32000,control);m.WriteWord(0x32004,(ushort)((c.FpuStatusWord&~0x4700)|0x0200|conditions));
         At(c,m,Mem(0xd9,4,0x32000));
     }
+    /// <summary>Builds explicit guest instruction bytes for the requested numeric/control operation.</summary>
     internal static byte[] Code(int op)=>op switch
     {
         0=>[0xd8,0xd1],1=>[0xd8,0xd9],2=>[0xde,0xd9],3=>[0xdd,0xe1],4=>[0xdd,0xe9],5=>[0xda,0xe9],6=>[0xd9,0xe4],
         7=>Mem(0xd8,2),8=>Mem(0xd8,3),9=>Mem(0xdc,2),10=>Mem(0xdc,3),11=>Mem(0xda,2),12=>Mem(0xda,3),13=>Mem(0xde,2),14=>Mem(0xde,3),_=>throw new ArgumentOutOfRangeException(nameof(op))
     };
+    /// <summary>Retrieves one explicitly named launch-option value or rejects a missing required argument.</summary>
     private static Float80Value Value(JsonElement v)=>new(Convert.ToUInt64(v.GetProperty("significand").GetString(),16),Convert.ToUInt16(v.GetProperty("exponent").GetString(),16));
+    /// <summary>Compares the independent reference-vector file with the actual numeric core/decoder results.</summary>
     public static int VerifyNativeVectors(string vectorsPath,string expectedPath)
     {
         using var input=JsonDocument.Parse(File.ReadAllText(vectorsPath));using var output=JsonDocument.Parse(File.ReadAllText(expectedPath));
@@ -57,6 +67,7 @@ internal static class X87ComparisonTests
         Console.WriteLine(JsonSerializer.Serialize(new{passed=failures.Count==0,vectors=vectors.Length,checkedCases,failed=failures.Count,failures},new JsonSerializerOptions{WriteIndented=true}));
         return failures.Count==0?0:1;
     }
+    /// <summary>Registers the named x87 comparison regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
         foreach(int op in Enumerable.Range(0,7))foreach(var(a,b,want) in new(long,long,int)[]{(1,2,0x100),(2,1,0),(1,1,0x4000),(-2,-1,0x100),(0,0,0x4000)})

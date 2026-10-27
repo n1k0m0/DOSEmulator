@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own actual numeric instruction sequence; no host numerical emulation.
 body_start:
     mov si,vector_data

@@ -1,10 +1,14 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using static ProtectedModeTests;
 
 internal static class PrivilegeTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition, string message = "Privilege invariant failed") { if (!condition) throw new Exception(message); }
+    /// <summary>Creates this regression's isolated CPU/device fixture with explicit parameters and private data.</summary>
     private static (X86Cpu Cpu, MemoryBus Memory) Create(byte[] code)
     {
         var (c, m) = ProtectedModeTests.Rig(code);
@@ -15,15 +19,18 @@ internal static class PrivilegeTests
         m.WriteDword(0x9004, 0x1a000); m.WriteWord(0x9008, 16);
         return (c, m);
     }
+    /// <summary>Places controlled bytes at a private guest address and executes through the normal decoder.</summary>
     private static void ExecuteAt(X86Cpu c, MemoryBus m, byte[] code, uint address = 0x2200)
     {
         code.CopyTo(m.Ram, (int)address); c.Eip = address; c.Step();
     }
+    /// <summary>Executes a real LTR with the controlled TSS selector.</summary>
     private static void LoadTr(X86Cpu c, MemoryBus m, ushort selector = 0x40)
     {
         c.SetRegister(Register.Ax, selector); ExecuteAt(c, m, [0x0f, 0x00, 0xd8]);
         Check(c.Tr == selector && c.TrCache.Usable);
     }
+    /// <summary>Builds and executes the actual return frame used to enter the requested user privilege.</summary>
     private static void EnterUser(X86Cpu c, MemoryBus m, uint flags = 0x202, uint pointer = 0x1b000)
     {
         uint sp = c.GetRegister(Register.Sp);
@@ -32,13 +39,16 @@ internal static class PrivilegeTests
         ExecuteAt(c, m, [0xcf], 0x2100);
         Check(c.CurrentPrivilegeLevel == 3 && c.GetSegment(Segment.Cs) == 0x2b && c.GetSegment(Segment.Ss) == 0x33 && c.Eip == 0x2000);
     }
+    /// <summary>Installs the fixture's local handler gate for the expected architectural fault.</summary>
     private static void LocalFaultGate(MemoryBus m, byte vector) => Gate(m, vector, 0x2b);
+    /// <summary>Writes a controlled LDT data descriptor with the requested base/access fields.</summary>
     private static void LdtData(MemoryBus m, uint address, uint basis, byte access = 0xf2)
     {
         m.WriteDword(address, 0xffff | basis << 16);
         m.WriteDword(address + 4, (basis >> 16 & 255) | ((uint)access << 8) | (basis & 0xff000000));
     }
 
+    /// <summary>Registers the named privilege regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("LLDT caches a GDT system descriptor without setting an accessed bit", () =>

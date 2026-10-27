@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent pixel oracle for tests/guests/vga-test.asm. Python standard library only."""
 import hashlib
 import json

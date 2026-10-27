@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Diagnostics;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
@@ -26,8 +28,16 @@ public sealed partial class DosWindow : SharpPixelsWindow
     private readonly string? _smokeDirectory;
     private readonly Stopwatch _elapsed = Stopwatch.StartNew();
     private Task? _worker;
+    private Task? _diskCreation;
+    private readonly CancellationTokenSource _diskCreationStop = new();
+    private int _machineOperationPending;
+    private long _noticeUntil;
     private HostSettings _settings;
     private VideoFrame? _frame;
+    private long _displayPixelRevision;
+    private readonly LatestBufferExchange<VgaFrameBuffer> _frames = new(() => new());
+    // Held until the NEXT UI update: SharpPixels uploads after OnUserUpdate returns.
+    private LatestBufferExchange<VgaFrameBuffer>.ReadLease? _displayFrame;
     private MachineStatus? _status;
     private string[] _items = [];
     private string _page = "";
@@ -40,8 +50,9 @@ public sealed partial class DosWindow : SharpPixelsWindow
     private readonly List<string> _smokeCaptures = [];
     private readonly System.Collections.Concurrent.ConcurrentQueue<string> _notices = new();
     private readonly HashSet<Key> _guestKeys = [];
+    private int _guestRepeatEnabled;
     private readonly RelativeMouseInput _mouseInput = new();
-    private int _releaseMouseRequested;
+    private long _uiInputGeneration;
     private readonly bool _freeDosAcceptance;
     private readonly string? _captureAfter;
     private readonly byte[] _automaticKeys;
@@ -52,10 +63,19 @@ public sealed partial class DosWindow : SharpPixelsWindow
     private readonly List<object> _audioMeasurements = [];
     private readonly GuestTestScenario? _scenario;
 
-    public DosWindow(PcMachine machine, HostSettings settings, string settingsPath, string? smokeDirectory, bool freeDosAcceptance = false, string? automaticText = null, string? captureAfter = null, string? audioOutPath = null, bool audioAcceptance = false, GuestTestScenario? scenario = null, bool resourceAcceptance = false, bool nativeMouseAcceptance = false)
-        : base(960, 720, "DOSEmulator - 486 Development")
+    /// <summary>Reports the instantiated board and nominal clock without presenting its validation subset as a finished historical PC.</summary>
+    private static string PlatformLabel(MachineProfile? profile) => profile?.IsFxHost == true
+        ? "430FX host / P54C B5 subset / 100 MHz"
+        : profile?.IsP54c == true ? "DOSE AT / P54C B5 subset / 90 MHz" : "486 Development";
+
+    /// <summary>Menus may repeat while the guest is paused; guest makes require its current owner to permit execution.</summary>
+    protected override bool KeyRepeatsEnabled => IsFocused && (_page.Length != 0 || Volatile.Read(ref _guestRepeatEnabled) != 0);
+
+    /// <summary>Initializes DosWindow and connects the supplied dependencies before the component is used.</summary>
+    public DosWindow(PcMachine machine, HostSettings settings, string settingsPath, string? smokeDirectory, bool freeDosAcceptance = false, string? automaticText = null, string? captureAfter = null, string? audioOutPath = null, bool audioAcceptance = false, GuestTestScenario? scenario = null, bool resourceAcceptance = false, bool nativeMouseAcceptance = false, bool storageAcceptance = false)
+        : base(960, 720, DOSEIdentity.DisplayName + " - " + PlatformLabel(machine.Profile))
     {
-        _session = new(machine); _settings = settings with { MasterVolume = Math.Clamp(settings.MasterVolume, 0, 100),
+        _session = new(machine); _uiInputGeneration = _session.InputGeneration; _settings = settings with { MasterVolume = Math.Clamp(settings.MasterVolume, 0, 100),
             SpeakerVolume = Math.Clamp(settings.SpeakerVolume, 0, 100), DigitalVolume = Math.Clamp(settings.DigitalVolume, 0, 100),
             FmVolume = Math.Clamp(settings.FmVolume, 0, 100) }; _settingsPath = settingsPath;
         _smokeDirectory = smokeDirectory;
@@ -66,6 +86,9 @@ public sealed partial class DosWindow : SharpPixelsWindow
         _scenario = scenario;
         _resourceAcceptance = resourceAcceptance;
         _nativeMouseAcceptance = nativeMouseAcceptance;
+        _storageAcceptance = storageAcceptance;
+        if (storageAcceptance && (smokeDirectory is null || nativeMouseAcceptance || resourceAcceptance || audioAcceptance))
+            throw new ArgumentException("Storage acceptance requires its own private directory and no other acceptance mode.");
         if (nativeMouseAcceptance && (smokeDirectory is null || machine.Mouse is null || resourceAcceptance || audioAcceptance))
             throw new ArgumentException("Native mouse acceptance requires a PS/2 profile and its own acceptance directory.");
         if (scenario is not null && automaticText is not null) throw new ArgumentException("Choose scenario or automatic text.");
@@ -73,6 +96,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         _ipc = new(_session, instanceDirectory: Path.Combine(Path.GetDirectoryName(settingsPath)!, "ipc", "instances"));
     }
 
+    /// <summary>Initializes renderer/session integration on the window's owning UI thread.</summary>
     public override void OnUserInitialize()
     {
         var audio = _audio = new HostAudioOutput(_audioOutPath);
@@ -84,12 +108,13 @@ public sealed partial class DosWindow : SharpPixelsWindow
         MouseMove += e => SendMouse(_mouseInput.Move(e.DeltaX, e.DeltaY));
         MouseDown += e => NativeMouseButton(e.Button, true);
         MouseUp += e => NativeMouseButton(e.Button, false);
-        _session.Machine.Running = true;
+        if (!_session.Machine.IsRestoredSnapshot) _session.Machine.Running = true;
         _worker = Task.Run(() =>
         {
             var hostClock = Stopwatch.StartNew();
             // A small audio lead absorbs callback/batch jitter; it does not change guest rates.
             var pacing = new RealtimePacer(audio.Available ? 40_000_000UL : 0);
+            // Converts the monotonic host timestamp to nanoseconds using integer arithmetic.
             ulong HostNanoseconds() => (ulong)((UInt128)(ulong)hostClock.ElapsedTicks * 1_000_000_000 / (ulong)Stopwatch.Frequency);
             PcMachine? previousMachine = null;
             try
@@ -104,14 +129,16 @@ public sealed partial class DosWindow : SharpPixelsWindow
                         _scenario?.Pump(machine);
                         if (!ReferenceEquals(previousMachine, machine))
                         {
-                            if (previousMachine is not null) { previousMachine.Audio.AudioReady -= audio.Write; Interlocked.Exchange(ref _releaseMouseRequested, 1); }
+                            if (previousMachine is not null) previousMachine.Audio.AudioReady -= audio.Write;
                             audio.Clear(); machine.Audio.AudioReady += audio.Write;
                             pacing.Reset(machine.Scheduler.Now, HostNanoseconds()); previousMachine = machine;
                         }
                         var levels = Volatile.Read(ref _settings);
                         machine.Speaker.Volume = levels.SpeakerVolume / 100.0;
                         if (machine.SoundBlaster is { } sb) sb.Volume = levels.DigitalVolume / 100.0;
+                        if (machine.SoundBlaster16 is { } sb16) sb16.Volume = levels.DigitalVolume / 100.0;
                         if (machine.Opl is { } opl) opl.Volume = levels.FmVolume / 100.0;
+                        if (machine.Opl3 is { } opl3) opl3.Volume = levels.FmVolume / 100.0;
                         if (_automaticKeyIndex < _automaticKeys.Length && machine.Board.DebugText.Contains(machine.Profile.BootDevice == "floppy-a" ? "A:\\>" : "C:\\>", StringComparison.Ordinal)
                             && GuestKeyboard.TryInjectForBios(machine, _automaticKeys[_automaticKeyIndex])) _automaticKeyIndex++;
                         if (machine.Running && machine.Fault is null)
@@ -121,24 +148,49 @@ public sealed partial class DosWindow : SharpPixelsWindow
                             delay = pacing.DelayMilliseconds(machine.Scheduler.Now, HostNanoseconds());
                         }
                         else { audio.Clear(); pacing.Reset(machine.Scheduler.Now, HostNanoseconds()); }
+                        Volatile.Write(ref _guestRepeatEnabled, machine.Running && machine.Fault is null && !machine.CpuResetHeld ? 1 : 0);
                         Volatile.Write(ref _status, machine.GetStatus());
-                        Volatile.Write(ref _frame, machine.CaptureFrame());
+                        _frames.TryPublish(machine, static (surface, owner) => owner.CaptureFrame(surface));
                     }
                     _stop.Token.WaitHandle.WaitOne(delay);
                 }
             }
             catch (Exception ex)
             {
+                Volatile.Write(ref _guestRepeatEnabled, 0);
                 lock (_gate) Volatile.Write(ref _status, _session.Machine.GetStatus() with { State = MachineRunState.Faulted, Fault = ex.Message });
             }
         });
     }
 
+    /// <summary>Presents the most recent leased guest frame and handles UI-only overlays/settings.</summary>
     public override void OnUserUpdate(double time)
     {
-        if (Interlocked.Exchange(ref _releaseMouseRequested, 0) != 0) ReleaseMouse();
-        while (_notices.TryDequeue(out string? notice)) _notice = notice;
+        if (_frames.AcquireLatest() is { } nextFrame)
+        {
+            var previousFrame = _displayFrame;
+            if (previousFrame is not null && previousFrame.Value.HasSamePixels(nextFrame.Value)) nextFrame.Dispose();
+            else
+            {
+                _displayFrame = nextFrame; unchecked { _displayPixelRevision++; }
+                Volatile.Write(ref _frame, nextFrame.Value.Frame); previousFrame?.Dispose();
+            }
+        }
+        long observedInputGeneration = _session.InputGeneration;
+        if (observedInputGeneration != Volatile.Read(ref _uiInputGeneration))
+        {
+            // Clear local held state without guest releases, then acknowledge exactly the epoch observed above.
+            // A second replacement during/after this UI update therefore still makes our old token stale.
+            _mouseInput.Release(); CursorState = CursorState.Normal; _guestKeys.Clear(); ResetKeyRepeat(true);
+            Volatile.Write(ref _uiInputGeneration, observedInputGeneration);
+        }
+        while (_notices.TryDequeue(out string? notice)) { _notice = notice; _noticeUntil = _elapsed.ElapsedMilliseconds + 8000; }
         if (_ipc.Fault is not null) _notice = "LOCAL IPC UNAVAILABLE: " + _ipc.Fault;
+        if (SourceUploadError != ErrorCode.NoError)
+        {
+            string uploadNotice = "VIDEO OUTPUT ERROR: " + SourceUploadError;
+            if (_notice != uploadNotice) { _notice = uploadNotice; _noticeUntil = _elapsed.ElapsedMilliseconds + 8000; }
+        }
         if (_smokeDirectory is not null) AdvanceSmokeTest();
         var frame = Volatile.Read(ref _frame);
         var status = Volatile.Read(ref _status);
@@ -151,11 +203,11 @@ public sealed partial class DosWindow : SharpPixelsWindow
             _ = Enum.TryParse(_settings.Upscale, out SharpPixelsGpuUpscaleMode upscale);
             int factor = upscale switch { SharpPixelsGpuUpscaleMode.Scale2x => 2, SharpPixelsGpuUpscaleMode.Scale3x => 3, _ => 1 };
             DrawArgbPixelsGpuPresented(frame.ArgbPixels, frame.Width, frame.Height, 0, 0, frame.Width, frame.Height,
-                (PixelsWidth - width) / 2, (PixelsHeight - 40 - height) / 2, width, height, filter, upscale, factor, 8, 10, 21);
+                (PixelsWidth - width) / 2, (PixelsHeight - 40 - height) / 2, width, height, filter, upscale, factor, 8, 10, 21, _displayPixelRevision);
         }
         else ClearScreen();
         DrawFilledRectangle(0, PixelsHeight - 38, PixelsWidth, 38, 12, 15, 29);
-        Text(15, PixelsHeight - 31, $"486 DEV | {status?.State.ToString().ToUpperInvariant() ?? "STARTING"} | VGA {frame?.Width}X{frame?.Height} | {status?.Position ?? "RESET"} | {FPS} FPS", 1, Color.LightSteelBlue);
+        Text(15, PixelsHeight - 31, $"{PlatformLabel(status?.Configuration).ToUpperInvariant()} | {status?.State.ToString().ToUpperInvariant() ?? "STARTING"} | VGA {frame?.Width}X{frame?.Height} | {status?.Position ?? "RESET"} | {FPS} FPS", 1, Color.LightSteelBlue);
         Text(15, PixelsHeight - 16, _mouseInput.Captured ? "MOUSE CAPTURED / CTRL+ALT RELEASE   CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN" :
             status?.Configuration?.Mouse == "ps2-two-button" ? "CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN   CLICK GUEST FOR PS/2 MOUSE" :
             "CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN   EXPERIMENTAL REAL-MODE DOS", 1, Color.Gray);
@@ -166,14 +218,22 @@ public sealed partial class DosWindow : SharpPixelsWindow
             Text(32, 57, status.Fault.Length > 112 ? status.Fault[..112] : status.Fault, 1, Color.White);
         }
         if (_page.Length > 0) { RebuildItems(); DrawMenu(status); }
+        else if (Volatile.Read(ref _machineOperationPending) > 0 || _elapsed.ElapsedMilliseconds < _noticeUntil)
+        {
+            string message = Volatile.Read(ref _machineOperationPending) > 0 ? "LOADING PC / PLEASE WAIT..." : _notice;
+            int y = status?.Fault is null ? 12 : 110;
+            DrawFilledRectangleWithAlpha(16, y, PixelsWidth - 32, 28, 12, 15, 29, 235);
+            Text(24, y + 9, message.Length > 135 ? message[..132] + "..." : message, 1, Color.LightSteelBlue);
+        }
         else if (_notice.Length > 0)
         {
             DrawFilledRectangleWithAlpha(0, PixelsHeight - 61, PixelsWidth, 23, 35, 15, 20, 240);
             Text(15, PixelsHeight - 54, _notice.Length > 140 ? _notice[..140] : _notice, 1, Color.Salmon);
         }
-        Title = $"DOSEmulator - 486 Development | {status?.State} | {FPS} FPS";
+        Title = $"{DOSEIdentity.DisplayName} - {PlatformLabel(status?.Configuration)} | {status?.State} | {FPS} FPS";
     }
 
+    /// <summary>Renders the active keyboard-driven overlay and its published state without mutating guest hardware.</summary>
     private void DrawMenu(MachineStatus? status)
     {
         const int x = 126, y = 116, width = 708, height = 472;
@@ -181,7 +241,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         DrawFilledRectangleWithAlpha(x, y, width, height, 9, 12, 29, 246);
         DrawLine(x, y, x + width, y, Color.SlateBlue); DrawLine(x, y + height, x + width, y + height, Color.Cyan);
         DrawLine(x, y, x, y + height, Color.SlateBlue); DrawLine(x + width, y, x + width, y + height, Color.Cyan);
-        Text(x + 22, y + 24, _page, 3, Color.White);
+        Text(x + 22, y + 24, DOSEIdentity.Name + " / " + _page, 3, Color.White);
         Text(x + 22, y + 58, "ENTER CHANGE   LEFT/RIGHT ADJUST   ESC BACK", 1, Color.LightSteelBlue);
         for (int i = 0; i < _items.Length; i++)
         {
@@ -190,10 +250,14 @@ public sealed partial class DosWindow : SharpPixelsWindow
             Text(x + 22, rowY, (i == _selected ? "> " : "  ") + _items[i], 2, i == _selected ? Color.LightGoldenrodYellow : Color.LightSteelBlue);
         }
         Text(x + 22, y + height - 61, _notice.Length > 100 ? _notice[..100] : _notice, 1, Color.Khaki);
-        Text(x + 22, y + height - 38, $"IDE: {status?.MediaName ?? "NONE"}", 1, Color.LightSteelBlue);
-        Text(x + 22, y + height - 21, $"STATE: {status?.State}   PROFILE: VIRTUAL486 DEV   WINDOWS 95 PENDING", 1, Color.Gray);
+        int? selectedSlot = _page == "HARD DISKS" && _selected < 4 ? _selected :
+            _page.StartsWith("IDE ", StringComparison.Ordinal) && _page.Length == 5 ? _page[^1] - '0' : null;
+        string media = selectedSlot is { } slot ? $"IDE {slot}: {status?.HardDisks?.FirstOrDefault(d => d.Slot == slot)?.Name ?? "EMPTY"}" : $"IDE: {status?.MediaName ?? "NONE"}";
+        Text(x + 22, y + height - 38, media.Length > 110 ? media[..107] + "..." : media, 1, Color.LightSteelBlue);
+        Text(x + 22, y + height - 21, $"STATE: {status?.State}   PROFILE: {PlatformLabel(status?.Configuration).ToUpperInvariant()}   WINDOWS 95 PENDING", 1, Color.Gray);
     }
 
+    /// <summary>Draws bounded bitmap UI text using the original project font.</summary>
     private void Text(int x, int y, string value, int scale, Color color)
     {
         foreach (char c in value)
@@ -208,12 +272,15 @@ public sealed partial class DosWindow : SharpPixelsWindow
         }
     }
 
+    /// <summary>Opens an overlay page, pausing guest execution and releasing guest input capture on the first open.</summary>
     private void OpenPage(string page)
     {
+        ResetKeyRepeat();
         bool wasClosed = _page.Length == 0;
         _page = page; _selected = 0; _notice = ""; RebuildItems();
         if (wasClosed) { ReleaseMouse(); ReleaseGuestKeys(); Command("Pause"); _audio?.Clear(); }
     }
+    /// <summary>Derives the current overlay rows from published machine status and host presentation settings.</summary>
     private void RebuildItems()
     {
         var status = Volatile.Read(ref _status);
@@ -221,42 +288,71 @@ public sealed partial class DosWindow : SharpPixelsWindow
         var profile = status?.Configuration ?? new MachineProfile();
         _items = _page switch
         {
-        "MAIN MENU" => ["CONTINUE", "VIDEO SETTINGS", "MACHINE / HARDWARE", "MEDIA", "REMOTE PLAY / NETWORK", "AUDIO SETTINGS", "RESET / POWER", "EXIT"],
+        "MAIN MENU" => ["CONTINUE", "VIDEO SETTINGS", "MACHINE / HARDWARE", "MEDIA", "REMOTE PLAY / NETWORK", "AUDIO SETTINGS", "RESET / POWER", "SAVED MACHINES", "EXIT"],
+        "SAVED MACHINES" => ["SAVE THIS PC...", "LOAD PC... (COLD START)", "SAVE FULL SNAPSHOT...", "LOAD FULL SNAPSHOT...", "PC FILES COLD START / SNAPSHOTS RESUME", "BACK"],
+        "HARD DISKS" => [HardDiskLabel(status, 0), HardDiskLabel(status, 1), HardDiskLabel(status, 2), HardDiskLabel(status, 3), "CREATE BLANK DISK IMAGE...", "BACK"],
+        "IDE 0" or "IDE 1" or "IDE 2" or "IDE 3" => [HardDiskLabel(status, _page[^1] - '0'), "ATTACH READ-ONLY IMAGE... (RESTART)",
+            "ATTACH WITH PRIVATE OVERLAY... (RESTART)", "DETACH DISK (RESTART)", "BACK"],
         "RESET / POWER" => ["SEND CTRL+ALT+DEL TO GUEST", "HARDWARE RESET / CPU, RAM RETAINED", "POWER CYCLE / RAM CLEARED", "BACK"],
         "VIDEO SETTINGS" => [$"FILTER          {_settings.Filter.ToUpperInvariant()}", $"UPSCALE         {_settings.Upscale.ToUpperInvariant()}",
             $"ASPECT          {(_settings.CorrectAspect ? "4:3" : "SOURCE PIXELS")}", $"VSYNC           {(_settings.VSync ? "ON" : "OFF")}", "BACK"],
-        "MACHINE / HARDWARE" => ["CPU: 486 REAL-MODE DEVELOPMENT SUBSET", $"RAM: {profile.RamMiB} MIB (CHANGE RESTARTS)",
+        "MACHINE / HARDWARE" => [profile.IsFxHost ? "CPU: 430FX HOST / P54C 100 MHZ (FIXED)" : profile.IsP54c ? "CPU: DOSE AT / P54C B5 SUBSET 90 MHZ (RESTART)" : "CPU: 486DX / 33 MHZ (RESTART)", $"RAM: {profile.RamMiB} MIB ({(profile.IsFxHost ? "FIXED HOST BOARD" : "CHANGE RESTARTS")})",
             $"FLOPPY A: {profile.FloppyDriveA.ToUpperInvariant()} (CHANGE RESTARTS)", $"FLOPPY B: {profile.FloppyDriveB.ToUpperInvariant()} (CHANGE RESTARTS)",
             $"BOOT: {profile.BootDevice.ToUpperInvariant()} (CHANGE RESTARTS)",
             profile.SoundCard switch { "adlib-opl2-development" => "SOUND: ADLIB OPL2 MELODIC DEV (RESTART)",
                 "sb2-opl2-development" => $"SOUND: SB2+OPL2 A{profile.SoundBlasterBasePort:X3} I{profile.SoundBlasterIrq} D1 (RESTART)",
+                "sb16-ct1740-dsp405-development" => "SOUND: SB16 CT1740 / PCM+OPL3 DEV (RESTART)",
                 "sb2-dsp-development" => $"SOUND: SB2 DSP A{profile.SoundBlasterBasePort:X3} I{profile.SoundBlasterIrq} D1 (RESTART)", _ => "SOUND: SPEAKER (CHANGE RESTARTS)" },
             "SOUND CARD RESOURCES...",
             $"MOUSE: {profile.Mouse.ToUpperInvariant()} (CHANGE RESTARTS)",
-            $"VGA: {frame?.Width}X{frame?.Height} / IDE: LBA28 PIO", "BACK"],
-        "SOUND CARD RESOURCES" => profile.SoundCard is "sb2-dsp-development" or "sb2-opl2-development"
+            $"VIDEO: {(profile.IsEt4000 ? "ET4000AX 1M DEV" : "DOSE VGA")} (CHANGE RESTARTS)",
+            $"GAMEPORT: {(profile.Gameport == "none" ? "NONE" : "IBM ANALOG / VIRTUAL INPUT")} (RESTART)",
+            $"COM1: {(profile.SerialPort == "none" ? "NONE" : "PC16550D / VIRTUAL INPUT")} (RESTART)",
+            $"LPT1: {(profile.ParallelPort == "none" ? "NONE" : "IBM PRINTER / VIRTUAL PINS")} (RESTART)",
+            $"MIDI: {(profile.MidiInterface == "none" ? "NONE" : "CT1740 MPU-UART / VIRTUAL")} (RESTART)", "BACK"],
+        "SOUND CARD RESOURCES" => profile.IsSb16
+            ? [$"SB16 PORT: {profile.SoundBlasterBasePort:X3}H (CHANGE RESTARTS)",
+                $"SB16 IRQ: {profile.SoundBlasterIrq} (CHANGE RESTARTS)",
+                $"SB16 DMA8: {profile.SoundBlasterDmaChannel} (CHANGE RESTARTS)",
+                $"SB16 DMA16: {profile.SoundBlasterDma16Channel} (CHANGE RESTARTS)",
+                $"MPU PORT: {profile.MidiBasePort:X3}H (CHANGE RESTARTS)",
+                $"DOS: SET BLASTER={profile.GetBlasterEnvironment()}", "PCM / OPL3 / OPTIONAL MPU UART; FULL CARD PENDING", "BACK"]
+            : profile.SoundCard is "sb2-dsp-development" or "sb2-opl2-development"
             ? [$"SB2 PORT: {profile.SoundBlasterBasePort:X3}H (CHANGE RESTARTS)",
                 $"SB2 IRQ: {profile.SoundBlasterIrq} (CHANGE RESTARTS)", "SB2 DMA: 1 (FIXED ON THIS CARD)",
                 $"DOS: SET BLASTER={profile.GetBlasterEnvironment()}", "BACK"]
-            : ["SELECT AN SB2 CARD IN HARDWARE FIRST", "BACK"],
+            : ["SELECT AN SB2 OR SB16 CARD IN HARDWARE FIRST", "BACK"],
         "MEDIA" => [status?.DiskWritable == true ? "IDE: WRITES TO PRIVATE OVERLAY" : "IDE: READ-ONLY", "OPEN RAW IDE IMAGE... (READ-ONLY)", "OPEN IDE + PRIVATE OVERLAY...",
-            $"FLOPPY A: {ShortName(status?.FloppyAMedia)}", $"FLOPPY B: {ShortName(status?.FloppyBMedia)}", "BOOT BUILT-IN TEST SECTOR", "BACK"],
+            $"FLOPPY A: {ShortName(status?.FloppyAMedia)}", $"FLOPPY B: {ShortName(status?.FloppyBMedia)}", "BOOT BUILT-IN TEST SECTOR", "HARD DISKS / CREATE IMAGE...", "BACK"],
         "FLOPPY A" or "FLOPPY B" => [$"DRIVE TYPE: {(_page == "FLOPPY A" ? profile.FloppyDriveA : profile.FloppyDriveB).ToUpperInvariant()}",
             "INSERT READ-ONLY IMAGE...", "INSERT + PRIVATE OVERLAY...", "EJECT MEDIUM", "BACK"],
         "AUDIO SETTINGS" => [_audio?.Available == true ? "OUTPUT: WINDOWS DEFAULT / 48 KHZ STEREO" : "OUTPUT: UNAVAILABLE",
             $"MUTE            {(_settings.AudioMuted ? "ON" : "OFF")}", $"MASTER          {_settings.MasterVolume}%", $"PC SPEAKER      {_settings.SpeakerVolume}%",
-            $"SB2 DIGITAL     {_settings.DigitalVolume}%", $"OPL2 FM         {_settings.FmVolume}% (MELODIC DEV)", "BACK"],
+            $"DIGITAL PCM     {_settings.DigitalVolume}%", $"FM SYNTH        {_settings.FmVolume}% (DEVELOPMENT)", "BACK"],
         _ => ["GUEST NIC: NOT IMPLEMENTED", "REMOTE PLAY: NOT IMPLEMENTED", "BACK"]
         };
     }
+    /// <summary>Bounds and normalizes a media name for the overlay's fixed-width display.</summary>
     private static string ShortName(string? name) => name is null ? "EMPTY" : name.Length > 38 ? name[..35] + "..." : name.ToUpperInvariant();
-    private void CloseMenu() { _page = ""; Command("Resume"); }
+    /// <summary>Closes the overlay and requests guest execution to resume through the command queue.</summary>
+    private void CloseMenu() { ResetKeyRepeat(true); _page = ""; Command("Resume"); }
+    /// <summary>Submits the requested operation through the component's normal command interface.</summary>
     private void Command(string command, object? payload = null)
     {
-        _ = _session.Enqueue(IpcProtocol.CreateRequest(command, payload))
-            .ContinueWith(task => { if (task.IsCompletedSuccessfully && !task.Result.Success) _notices.Enqueue($"{task.Result.ErrorCode}: {task.Result.Payload}"); }, TaskScheduler.Default);
+        bool topology = command is "SetHardDisk" or "LoadMachineDefinition" or "LoadSnapshot" or "CommitConfigurationChange" or "PowerCycleReadOnlyDisk" or "PowerCycleOverlayDisk";
+        if (topology) Interlocked.Increment(ref _machineOperationPending);
+        _ = _session.Enqueue(IpcProtocol.CreateRequest(command, payload), Volatile.Read(ref _uiInputGeneration))
+            .ContinueWith(task =>
+            {
+                if (topology) Interlocked.Decrement(ref _machineOperationPending);
+                if (task.IsCompletedSuccessfully && !task.Result.Success) _notices.Enqueue($"{task.Result.ErrorCode}: {task.Result.Payload}");
+                else if (task.IsCompletedSuccessfully && command == "SaveMachineDefinition") _notices.Enqueue("PC CONFIGURATION SAVED");
+                else if (task.IsCompletedSuccessfully && command == "CreateSnapshot") _notices.Enqueue("FULL SNAPSHOT SAVED");
+                else if (task.IsCompletedSuccessfully && command == "LoadSnapshot") _notices.Enqueue("FULL SNAPSHOT RESTORED");
+            }, TaskScheduler.Default);
     }
 
+    /// <summary>Applies the selected overlay action, routing hardware/media changes through the session owner.</summary>
     private void Activate(int delta = 1)
     {
         if (_page == "MAIN MENU")
@@ -270,7 +366,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
                 case 4: OpenPage("NETWORK"); break;
                 case 5: OpenPage("AUDIO SETTINGS"); break;
                 case 6: OpenPage("RESET / POWER"); break;
-                case 7: Close(); break;
+                case 7: OpenPage("SAVED MACHINES"); break;
+                case 8: Close(); break;
             }
         }
         else if (_page == "RESET / POWER")
@@ -285,6 +382,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         }
         else if (_page == "VIDEO SETTINGS")
         {
+            // Selects the adjacent supported setting value with bounded wraparound.
             string Cycle(string current, string[] values) => values[(Array.IndexOf(values, current) + delta + values.Length) % values.Length];
             switch (_selected)
             {
@@ -331,10 +429,59 @@ public sealed partial class DosWindow : SharpPixelsWindow
             else if (_selected == 3) OpenPage("FLOPPY A");
             else if (_selected == 4) OpenPage("FLOPPY B");
             else if (_selected == 5) { Command("PowerCycleDemo"); CloseMenu(); }
-            else if (_selected == 6) OpenPage("MAIN MENU");
+            else if (_selected == 6) OpenPage("HARD DISKS");
+            else if (_selected == 7) OpenPage("MAIN MENU");
+        }
+        else if (_page == "SAVED MACHINES")
+        {
+            if (_selected == 0)
+            {
+                string currentName;
+                lock (_gate) currentName = _session.Machine.CaptureDefinition().Name;
+                string? name = StorageDialogs.AskMachineName(currentName);
+                if (name is null) return;
+                using var dialog = new SaveFileDialog { Title = "Maschine speichern", Filter = "DOS-PC (*.dospc.json)|*.dospc.json", DefaultExt = "dospc.json",
+                    FileName = string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)) + ".dospc.json", InitialDirectory = Path.GetDirectoryName(_settingsPath) };
+                if (dialog.ShowDialog() == DialogResult.OK) { Command("SaveMachineDefinition", new { path = dialog.FileName, name }); _notice = "PC CONFIGURATION SAVE REQUESTED"; }
+            }
+            else if (_selected == 1)
+            {
+                using var dialog = new OpenFileDialog { Title = "Maschine laden", Filter = "DOS-PC (*.dospc.json;*.json)|*.dospc.json;*.json" };
+                if (dialog.ShowDialog() == DialogResult.OK) { Command("LoadMachineDefinition", new { path = dialog.FileName }); CloseMenu(); }
+            }
+            else if (_selected == 2)
+            {
+                using var dialog = new SaveFileDialog { Title = "VollstÃ¤ndigen DOSE-Snapshot anlegen (neuer Ordner)", Filter = "DOSE Snapshot (*.dossav)|*.dossav",
+                    DefaultExt = "dossav", FileName = "Snapshot-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".dossav", InitialDirectory = Path.GetDirectoryName(_settingsPath) };
+                if (dialog.ShowDialog() == DialogResult.OK) { Command("CreateSnapshot", new { path = dialog.FileName }); _notice = "FULL SNAPSHOT SAVE REQUESTED"; }
+            }
+            else if (_selected == 3)
+            {
+                using var source = new FolderBrowserDialog { Description = "DOSE-Snapshotordner (.dossav) wÃ¤hlen", UseDescriptionForTitle = true, ShowNewFolderButton = false };
+                if (source.ShowDialog() != DialogResult.OK) return;
+                string parent = Path.GetDirectoryName(source.SelectedPath)!;
+                string destination = Path.Combine(parent, "Resume-" + Guid.NewGuid().ToString("N") + ".dosebranch");
+                Command("LoadSnapshot", new { path = source.SelectedPath, destination });
+                _notice = "FULL SNAPSHOT LOAD REQUESTED";
+            }
+            else if (_selected == 5) OpenPage("MAIN MENU");
+        }
+        else if (_page == "HARD DISKS")
+        {
+            if (_selected < 4) OpenPage("IDE " + _selected);
+            else if (_selected == 4) CreateDiskImage();
+            else OpenPage("MEDIA");
+        }
+        else if (_page is "IDE 0" or "IDE 1" or "IDE 2" or "IDE 3")
+        {
+            int slot = _page[^1] - '0';
+            if (_selected is 1 or 2) AttachDiskImage(slot, _selected == 2);
+            else if (_selected == 3) { Command("SetHardDisk", new { slot }); CloseMenu(); }
+            else if (_selected == 4) OpenPage("HARD DISKS");
         }
         else if (_page == "MACHINE / HARDWARE")
         {
+            // Cycles only the enumerated supported physical floppy geometries.
             string CycleDrive(string current)
             {
                 string[] values = ["none", "360k", "720k", "1200k", "1440k", "2880k"];
@@ -342,23 +489,50 @@ public sealed partial class DosWindow : SharpPixelsWindow
             }
             switch (_selected)
             {
-                case 1: ChangeProfile(p => { int[] values = [4, 8, 16]; return p with { RamMiB = values[(Array.IndexOf(values, p.RamMiB) + delta + values.Length) % values.Length] }; }); break;
+                case 0: ChangeProfile(p => p.IsFxHost ? p : p.WithDevelopmentCpu(!p.IsP54c)); break;
+                case 1: ChangeProfile(p => { if (p.IsFxHost) return p; int[] values = [4, 8, 16]; return p with { RamMiB = values[(Array.IndexOf(values, p.RamMiB) + delta + values.Length) % values.Length] }; }); break;
                 case 2: ChangeProfile(p => p with { FloppyDriveA = CycleDrive(p.FloppyDriveA) }); break;
                 case 3: ChangeProfile(p => p with { FloppyDriveB = CycleDrive(p.FloppyDriveB) }); break;
                 case 4: ChangeProfile(p => p with { BootDevice = p.BootDevice == "ide" ? "floppy-a" : "ide" }); break;
                 case 5: ChangeProfile(p =>
                 {
-                    string[] cards = ["none", "adlib-opl2-development", "sb2-dsp-development", "sb2-opl2-development"];
-                    return p with { SoundCard = cards[(Array.IndexOf(cards, p.SoundCard) + delta + cards.Length) % cards.Length] };
+                    string[] cards = ["none", "adlib-opl2-development", "sb2-dsp-development", "sb2-opl2-development", "sb16-ct1740-dsp405-development"];
+                    string card = cards[(Array.IndexOf(cards, p.SoundCard) + delta + cards.Length) % cards.Length];
+                    bool sb16 = card == "sb16-ct1740-dsp405-development";
+                    return p with { SoundCard = card,
+                        SoundBlasterBasePort = sb16 || p.SoundBlasterBasePort is 0x220 or 0x240 ? p.SoundBlasterBasePort : 0x220,
+                        SoundBlasterIrq = sb16 ? (p.SoundBlasterIrq == 3 ? 5 : p.SoundBlasterIrq) : (p.SoundBlasterIrq == 10 ? 5 : p.SoundBlasterIrq),
+                        SoundBlasterDmaChannel = sb16 ? p.SoundBlasterDmaChannel : 1, MidiInterface = sb16 ? p.MidiInterface : "none" };
                 }); break;
                 case 6: OpenPage("SOUND CARD RESOURCES"); break;
                 case 7: ChangeProfile(p => p with { Mouse = p.Mouse == "none" ? "ps2-two-button" : "none" }); break;
-                case 9: OpenPage("MAIN MENU"); break;
+                case 8: ChangeProfile(p => p with { VideoCard = p.IsEt4000 ? "dose-vga-development" : "et4000ax-isa-1m-development" }); break;
+                case 9: ChangeProfile(p => p with { Gameport = p.Gameport == "none" ? "ibm-game-control-development" : "none" }); break;
+                case 10: ChangeProfile(p => p with { SerialPort = p.SerialPort == "none" ? "pc16550d-com1-development" : "none" }); break;
+                case 11: ChangeProfile(p => p with { ParallelPort = p.ParallelPort == "none" ? "ibm-printer-adapter-development" : "none" }); break;
+                case 12:
+                    if (Volatile.Read(ref _status)?.Configuration?.IsSb16 == true)
+                        ChangeProfile(p => p with { MidiInterface = p.MidiInterface == "none" ? "ct1740-mpu401-uart-development" : "none" });
+                    else _notice = "SELECT SB16 CT1740 BEFORE ENABLING ITS MPU UART";
+                    break;
+                case 13: OpenPage("MAIN MENU"); break;
             }
         }
         else if (_page == "SOUND CARD RESOURCES")
         {
             if (_selected == _items.Length - 1) OpenPage("MACHINE / HARDWARE");
+            else if (Volatile.Read(ref _status)?.Configuration?.IsSb16 == true && _selected < 5)
+            {
+                ChangeProfile(p => _selected switch
+                {
+                    0 => p with { SoundBlasterBasePort = Cycle(new[] { 0x220, 0x240, 0x260, 0x280 }, p.SoundBlasterBasePort, delta) },
+                    1 => p with { SoundBlasterIrq = Cycle(new[] { 5, 7, 9, 10 }, p.SoundBlasterIrq, delta) },
+                    2 => p with { SoundBlasterDmaChannel = Cycle(new[] { 0, 1, 3 }, p.SoundBlasterDmaChannel, delta) },
+                    3 => p with { SoundBlasterDma16Channel = Cycle(new[] { 5, 6, 7 }, p.SoundBlasterDma16Channel, delta) },
+                    4 => p with { MidiBasePort = p.MidiBasePort == 0x330 ? 0x300 : 0x330 },
+                    _ => p
+                });
+            }
             else if (Volatile.Read(ref _status)?.Configuration?.SoundCard is "sb2-dsp-development" or "sb2-opl2-development")
             {
                 if (_selected == 0) ChangeProfile(p => p with { SoundBlasterBasePort = p.SoundBlasterBasePort == 0x220 ? 0x240 : 0x220 });
@@ -393,19 +567,69 @@ public sealed partial class DosWindow : SharpPixelsWindow
         else if (_selected == _items.Length - 1) OpenPage("MAIN MENU");
     }
 
+    /// <summary>Builds a revision-checked configuration plan and requests the required controlled power cycle.</summary>
     private void ChangeProfile(Func<MachineProfile, MachineProfile> change)
     {
         ConfigurationPlan plan;
-        lock (_gate) plan = new(_session.Revision, change(_session.Machine.Profile), true);
+        lock (_gate)
+        {
+            var current = _session.Machine.Profile;
+            var requested = change(current);
+            if (requested == current) { _notice = "CONFIGURATION UNCHANGED"; return; }
+            plan = new(_session.Revision, requested, true);
+        }
         Command("CommitConfigurationChange", plan); Command("Pause"); _notice = "HARDWARE CHANGE REQUESTED / POWER CYCLE";
     }
 
+    /// <summary>Requests a cold start from an explicitly chosen protected raw IDE base image.</summary>
     private void BootRawImage(string path)
     {
         Command("PowerCycleReadOnlyDisk", new { path = Path.GetFullPath(path) });
         CloseMenu();
     }
 
+    /// <summary>Shows fixed controller slots and actual image capacity without confusing BIOS drive numbering with physical placement.</summary>
+    private static string HardDiskLabel(MachineStatus? status, int slot)
+    {
+        var disk = status?.HardDisks?.FirstOrDefault(d => d.Slot == slot);
+        string location = slot switch { 0 => "PRIMARY MASTER", 1 => "PRIMARY SLAVE", 2 => "SECONDARY MASTER", _ => "SECONDARY SLAVE" };
+        return disk is null ? $"{slot}: {location} / EMPTY" : $"{slot}: {location} / {disk.Bytes / 1048576m:0.##} MIB / {(disk.Writable ? "OVERLAY" : "READ-ONLY")}";
+    }
+
+    /// <summary>Creates only a new image in the background so large zero-filled disks cannot freeze the UI or guest command owner.</summary>
+    private void CreateDiskImage()
+    {
+        if (_diskCreation is { IsCompleted: false }) { _notice = "A DISK IMAGE IS ALREADY BEING CREATED"; return; }
+        long? bytes = StorageDialogs.AskDiskSize(); if (bytes is null) return;
+        using var dialog = new SaveFileDialog { Title = "Neue leere Festplattendatei", Filter = "RAW-Festplatte (*.img)|*.img", DefaultExt = "img", OverwritePrompt = false };
+        if (dialog.ShowDialog() != DialogResult.OK) return;
+        string path = dialog.FileName;
+        _notice = "CREATING BLANK IMAGE...";
+        _diskCreation = Task.Run(() =>
+        {
+            try { RawDiskImage.Create(path, bytes.Value, _diskCreationStop.Token); _notices.Enqueue("IMAGE CREATED: " + path + " / ATTACH TO AN IDE SLOT"); }
+            catch (OperationCanceledException) { _notices.Enqueue("IMAGE CREATION CANCELLED"); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { _notices.Enqueue("IMAGE CREATION FAILED: " + ex.Message); }
+        });
+    }
+
+    /// <summary>Selects a protected base and optional journal, then requests an atomic cold topology change on the emulation owner.</summary>
+    private void AttachDiskImage(int slot, bool writable)
+    {
+        using var image = new OpenFileDialog { Title = "Festplatte fÃ¼r IDE " + slot, Filter = "RAW-Festplatten (*.img;*.raw;*.ima)|*.img;*.raw;*.ima" };
+        if (image.ShowDialog() != DialogResult.OK) return;
+        string? overlayPath = null;
+        if (writable)
+        {
+            using var overlay = new SaveFileDialog { Title = "Privates Overlay anlegen oder fortsetzen", Filter = "Private Overlays (*.cow)|*.cow", DefaultExt = "cow", OverwritePrompt = false,
+                FileName = Path.GetFileNameWithoutExtension(image.FileName) + "-ide" + slot + ".cow", InitialDirectory = Path.GetDirectoryName(_settingsPath) };
+            if (overlay.ShowDialog() != DialogResult.OK) return;
+            overlayPath = overlay.FileName;
+        }
+        Command("SetHardDisk", new { slot, path = image.FileName, overlayPath }); CloseMenu();
+    }
+
+    /// <summary>Atomically replaces the host presentation/audio preferences file after a UI setting changes.</summary>
     private void SaveSettings()
     {
         string temporary = _settingsPath + ".tmp";
@@ -413,6 +637,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         File.Move(temporary, _settingsPath, true);
     }
 
+    /// <summary>Routes a local key-down event to overlay navigation, host shortcuts or the guest keyboard.</summary>
     public override void OnUserKeyDown(KeyEventArgs e)
     {
         bool hotkey = (e.Modifiers & (KeyModifiers.Control | KeyModifiers.Alt)) == (KeyModifiers.Control | KeyModifiers.Alt);
@@ -429,10 +654,25 @@ public sealed partial class DosWindow : SharpPixelsWindow
             case Key.Escape: if (_page == "MAIN MENU") CloseMenu(); else OpenPage("MAIN MENU"); break;
         }
     }
-    public override void OnUserKeyPress(KeyEventArgs e) { }
+    /// <summary>Handles local character input only under the active overlay/guest input policy.</summary>
+    public override void OnUserKeyPress(KeyEventArgs e)
+    {
+        if (!IsFocused) return;
+        if (_page.Length == 0)
+        {
+            if (GuestKeyRepeatPolicy.ShouldRepeat(GuestScanCode(e.Key), _guestKeys.Contains(e.Key))) SendGuestKey(e.Key, false);
+        }
+        else if (e.Key is Key.Up or Key.Down or Key.Left or Key.Right) OnUserKeyDown(e);
+    }
+    /// <summary>Selects the adjacent supported setting value with bounded wraparound.</summary>
+    private static int Cycle(int[] values, int current, int delta) => values[(Array.IndexOf(values, current) + delta + values.Length) % values.Length];
+    /// <summary>Balances a mapped local key release through the guest keyboard path.</summary>
     public override void OnUserKeyUp(KeyEventArgs e) { if (_guestKeys.Remove(e.Key)) SendGuestKey(e.Key, true); }
+    /// <summary>Processes the window's mouse movement callback under its capture policy.</summary>
     public override void OnUserMouseMove(int x, int y) { }
+    /// <summary>Handles a local guest-area click without treating menu/status areas as a capture request.</summary>
     public override void OnUserMouseClick(int x, int y, MouseState mouseState) { }
+    /// <summary>Updates this window's captured-button state from an actual local mouse event.</summary>
     private void NativeMouseButton(OpenTK.Windowing.GraphicsLibraryFramework.MouseButton button, bool down)
     {
         int bit = button switch { OpenTK.Windowing.GraphicsLibraryFramework.MouseButton.Left => 1,
@@ -451,24 +691,26 @@ public sealed partial class DosWindow : SharpPixelsWindow
         }
         SendMouse(_mouseInput.Button(bit, down));
     }
+    /// <summary>Queues bounded relative PS/2 input only when the local capture policy permits it.</summary>
     private void SendMouse(RelativeMouseInput.Input? input)
     {
         if (_nativeMouseAcceptance && input is not null && _nativeGuestMouseEvents.Count < 64) _nativeGuestMouseEvents.Add(input);
         if (input is not null) Command("SendMouseInput", input);
     }
+    /// <summary>Releases this window's mouse capture and balances its emulated button state.</summary>
     private void ReleaseMouse()
     {
         if (!_mouseInput.Captured) return;
         SendMouse(_mouseInput.Release()); CursorState = CursorState.Normal;
     }
+    /// <summary>Queues releases for guest keys held by this window before input ownership is lost.</summary>
     private void ReleaseGuestKeys()
     {
         foreach (Key key in _guestKeys) SendGuestKey(key, true);
-        _guestKeys.Clear();
+        _guestKeys.Clear(); ResetKeyRepeat(true);
     }
-    private void SendGuestKey(Key key, bool released)
-    {
-        byte code = key switch
+    /// <summary>Maps an existing host key to its translated set-1 make code independently of repeat/release routing.</summary>
+    private static byte GuestScanCode(Key key) => key switch
         {
             Key.Escape => 0x01, Key.BackSpace => 0x0e, Key.Tab => 0x0f, Key.Enter => 0x1c,
             Key.ControlLeft => 0x1d, Key.ShiftLeft => 0x2a, Key.ShiftRight => 0x36, Key.AltLeft => 0x38, Key.Space => 0x39,
@@ -485,18 +727,26 @@ public sealed partial class DosWindow : SharpPixelsWindow
             Key.Delete => 0x53, Key.Home => 0x47, Key.PageUp => 0x49, Key.PageDown => 0x51,
             _ => 0
         };
+    /// <summary>Routes one complete mapped make/break packet through atomic owner-thread admission.</summary>
+    private void SendGuestKey(Key key, bool released)
+    {
+        byte code = GuestScanCode(key);
         if (code == 0) return;
+        byte value = (byte)(code | (released ? 0x80 : 0));
         if (key is Key.Up or Key.Down or Key.Left or Key.Right or Key.Delete or Key.Home or Key.PageUp or Key.PageDown)
-            Command("SendScanCode", new { scanCode = (byte)0xe0 });
-        Command("SendScanCode", new { scanCode = (byte)(code | (released ? 0x80 : 0)) });
+            Command("SendScanCode", new { scanCodes = new[] { (int)0xe0, value } });
+        else Command("SendScanCode", new { scanCode = value });
     }
+    /// <summary>Routes a user-dropped media file through the explicit media-selection workflow.</summary>
     public override void OnUserFileDrop(string[] fileNames)
     {
         if (fileNames.Length > 0) BootRawImage(fileNames[0]);
     }
 
+    /// <summary>Advances the internally driven GUI acceptance sequence without synthesizing Windows input.</summary>
     private void AdvanceSmokeTest()
     {
+        if (_storageAcceptance) { AdvanceStorageAcceptance(); return; }
         if (_nativeMouseAcceptance) { AdvanceNativeMouseAcceptance(); return; }
         if (_audioAcceptance) { AdvanceAudioAcceptance(); return; }
         if (_resourceAcceptance) { AdvanceSoundResourceAcceptance(); return; }
@@ -534,21 +784,26 @@ public sealed partial class DosWindow : SharpPixelsWindow
         _smokeStage++;
     }
 
+    /// <summary>Publishes current host source/master levels without changing guest sample timing.</summary>
     private void ApplyAudioLevels() => _audio?.SetLevels(_settings.AudioMuted, _settings.MasterVolume);
+    /// <summary>Collects actual provider-level audio/mute/gain evidence in the explicit internal GUI test.</summary>
     private void AdvanceAudioAcceptance()
     {
         if (_audio is null || _elapsed.ElapsedMilliseconds < _nextSmokeTime || _captureIndex >= 0) return;
         if (_smokeStage == 0 && (Volatile.Read(ref _status)?.DebugOutput.Contains(_captureAfter ?? "SPEAKER-HOLD-READY", StringComparison.Ordinal) != true || _audio.NonSilentFrames < 4800)) return;
         bool digital = Volatile.Read(ref _status)?.Configuration?.SoundCard == "sb2-dsp-development";
         bool fm = _captureAfter == "OPL2-HOLD-READY";
+        // Measures the explicitly delimited phase without including fixture construction in its timing window.
         void Measure(string phase) => _audioMeasurements.Add(new { phase, frames = _audio.ReadFrames, nonSilent = _audio.NonSilentFrames,
             energy = _audio.Energy, output = _audio.Snapshot() });
+        // Opens and navigates the audio overlay for the internally driven provider-level test.
         void AudioMenu()
         {
             OnUserKeyDown(new(Key.F10, KeyModifiers.Control | KeyModifiers.Alt));
             for (int i = 0; i < 5; i++) OnUserKeyDown(new(Key.Down, 0));
             OnUserKeyDown(new(Key.Enter, 0));
         }
+        // Closes the test overlay and restores normal guest presentation.
         void BackToGuest() { OnUserKeyDown(new(Key.Escape, 0)); OnUserKeyDown(new(Key.Escape, 0)); }
         switch (_smokeStage)
         {
@@ -589,6 +844,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         _captureDelay = 2; _nextSmokeTime = _elapsed.ElapsedMilliseconds + 450; _smokeStage++;
     }
 
+    /// <summary>Runs the local pre-presentation hook used for explicit private screenshot evidence.</summary>
     protected override void OnFrameReady()
     {
         base.OnFrameReady();
@@ -610,7 +866,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         var guestFrame = Volatile.Read(ref _frame);
         File.WriteAllText(path + ".json", JsonSerializer.Serialize(new { page = _page, viewport, textureWidth, textureHeight,
             guestWidth = guestFrame?.Width, guestHeight = guestFrame?.Height, modeGeneration = guestFrame?.ModeGeneration,
-            footerBrightPixels, error = GL.GetError().ToString() }));
+            footerBrightPixels, error = GL.GetError().ToString(), sourceUploadError = SourceUploadError.ToString() }));
         using var bitmap = new Bitmap(width, height, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
         var data = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, bitmap.PixelFormat);
         try { Marshal.Copy(pixels, 0, data.Scan0, pixels.Length); }
@@ -620,14 +876,35 @@ public sealed partial class DosWindow : SharpPixelsWindow
         GL.ReadBuffer(ReadBufferMode.Back);
     }
 
+    /// <summary>Writes an opt-in private teardown stage so playback and device-release failures remain distinguishable.</summary>
+    private void ShutdownStage(string stage)
+    {
+        if (_smokeDirectory is null) return;
+        File.AppendAllText(Path.Combine(_smokeDirectory, "shutdown.jsonl"), JsonSerializer.Serialize(new { stage, elapsedMilliseconds = _elapsed.ElapsedMilliseconds }) + "\n");
+    }
+
+    /// <summary>Stops owned workers before releasing audio, IPC, reader leases and machine media.</summary>
     protected override void OnUnload()
     {
+        ShutdownStage("begin");
         ReleaseMouse();
         FinishNativeMouseInput();
-        _stop.Cancel(); _worker?.GetAwaiter().GetResult();
-        _audio?.Dispose();
-        _ipc.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        _stop.Cancel(); _worker?.GetAwaiter().GetResult(); ShutdownStage("worker-stopped");
+        _diskCreationStop.Cancel(); _diskCreation?.GetAwaiter().GetResult(); _diskCreationStop.Dispose();
+        _audio?.Dispose(stage => ShutdownStage("audio-" + stage)); ShutdownStage("audio-stopped");
+        _ipc.DisposeAsync().AsTask().GetAwaiter().GetResult(); ShutdownStage("ipc-stopped");
+        _displayFrame?.Dispose(); _displayFrame = null;
+        ShutdownStage("frame-released");
         _session.Dispose(); _stop.Dispose();
+        ShutdownStage("session-stopped");
         base.OnUnload();
+        ShutdownStage("complete");
+        if (_smokeDirectory is not null)
+            File.WriteAllText(Path.Combine(_smokeDirectory, "shutdown-result.json"), JsonSerializer.Serialize(new
+            {
+                completed = true, audio = _audio?.Snapshot(), hostAudioTeardownAccepted = _audio?.ShutdownFault is null,
+                nativeInputSent = _nativeInputsSent != 0 || _nativePointerMoved, nativeInputEventsSent = _nativeInputsSent,
+                nativeInputCleanupFault = _nativeCleanupFault
+            }, IpcProtocol.JsonOptions));
     }
 }

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Text.Json;
 using DOSEmulator.Contracts;
 using DOSEmulator.Core;
@@ -15,16 +17,19 @@ internal static partial class SoundBlasterTests
         public readonly SoundBlasterDsp Dsp;
         public readonly List<AudioBlock> Audio = [];
         public readonly List<(ulong Time, bool High)> Irqs = [];
+        /// <summary>Builds the isolated rig fixture and initializes its caller-owned test state.</summary>
         public Rig()
         {
             Dma = new(Memory); Mixer = new(Clock); Mixer.AudioReady += Audio.Add;
             Dsp = new(Clock, Dma, Mixer, high => Irqs.Add((Clock.Now, high)));
         }
+        /// <summary>Restarts the component using its documented reset state and the supplied reset parameters.</summary>
         public void Reset()
         {
             Dsp.Write(0x226, 1, 1); Advance(3000); Dsp.Write(0x226, 0, 1); Advance(100000);
             Check(Dsp.Read(0x22e, 1) == 0x80 && Dsp.Read(0x22a, 1) == 0xaa);
         }
+        /// <summary>Sends the controlled test data through the real device-facing transfer interface.</summary>
         public void Send(params byte[] bytes)
         {
             foreach (byte value in bytes)
@@ -33,7 +38,9 @@ internal static partial class SoundBlasterTests
                 Dsp.Write(0x22c, value, 1); Advance(SoundBlasterDsp.CommandNanoseconds);
             }
         }
+        /// <summary>Advances the fixture clock and integrated mixer together to the requested virtual instant.</summary>
         public void Advance(ulong nanoseconds) { Clock.AdvanceTo(Clock.Now + nanoseconds); Mixer.AdvanceTo(Clock.Now); }
+        /// <summary>Programs the fixture's actual DMA controller rather than injecting a completed transfer.</summary>
         public void ProgramDma(byte[] data, byte mode = 0x49, uint address = 0x12000)
         {
             for (int i = 0; i < data.Length; i++) Memory.WriteByte((address & 0xf0000) | ((address + (uint)i) & 65535), data[i]);
@@ -42,9 +49,12 @@ internal static partial class SoundBlasterTests
             Dma.Write(3, (byte)(data.Length - 1), 1); Dma.Write(3, (byte)((data.Length - 1) >> 8), 1);
             Dma.Write(0x0b, mode, 1); Dma.Write(0x0a, 1, 1);
         }
+        /// <summary>Flushes and collects completed fixture PCM blocks for the independent signal oracle.</summary>
         public float[] Samples() { Mixer.Flush(); return Audio.SelectMany(b => b.Samples).ToArray(); }
     }
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition, string message = "Sound Blaster assertion failed.") { if (!condition) throw new Exception(message); }
+    /// <summary>Registers the named sound blaster regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("SB DSP reset observes high-pulse and virtual initialization delays", () =>
@@ -186,6 +196,7 @@ internal static partial class SoundBlasterTests
         });
         test("mixed speaker and PCM equal independently integrated sources across chunk sizes", () =>
         {
+            // Executes the component's explicit runner with the supplied bounds and reports its resulting evidence.
             float[] Run(bool speaker, bool digital, bool chunks)
             {
                 var r = new Rig(); var pit = new Pit8254(r.Clock, () => { }); var pc = new PcSpeaker(r.Clock, pit.SpeakerCounter, r.Mixer);

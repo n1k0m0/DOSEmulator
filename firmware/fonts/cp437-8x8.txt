@@ -1,4 +1,4 @@
-# DOSEmulator original CP437 pixel artwork, Apache-2.0, 2026.
+# DOSE original CP437 pixel artwork, Apache-2.0, 2026.
 # Each record: byte code, eight hexadecimal scanlines, descriptive comment.
 # Bit 7 is the left pixel. This is project artwork, not an IBM/OS ROM dump.
 # 00/20/FF are intentional blanks. 01..1F/7F are video glyphs, not controls.

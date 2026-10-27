@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Text.Json;
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
@@ -5,14 +7,21 @@ using static ProtectedModeTests;
 
 internal static class X87NumericTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value, string message = "x87 numerical invariant failed") { if (!value) throw new Exception(message); }
+    /// <summary>Builds explicit locked or unlocked memory-opcode bytes with the requested width and address.</summary>
     private static byte[] Mem(byte opcode, int group, uint address = 0x30000) => [opcode, (byte)(group * 8 + 5), .. BitConverter.GetBytes(address)];
+    /// <summary>Places controlled bytes at a private guest address and executes through the normal decoder.</summary>
     private static void At(X86Cpu c, MemoryBus m, byte[] code) { code.CopyTo(m.Ram, 0x2200); c.Eip = 0x2200; c.Step(); }
+    /// <summary>Writes the explicitly specified ten-byte raw extended operand into private test memory.</summary>
     private static void Raw(MemoryBus m, uint at, Float80Value value)
     { m.WriteDword(at, (uint)value.Significand); m.WriteDword(at + 4, (uint)(value.Significand >> 32)); m.WriteWord(at + 8, value.SignExponent); }
+    /// <summary>Prepares the explicit test source required by the following guest instruction or BIOS operation.</summary>
     private static void Load(X86Cpu c, MemoryBus m, Float80Value value, uint address = 0x30000) { Raw(m, address, value); At(c, m, Mem(0xdb, 5, address)); }
+    /// <summary>Decodes the independent vector file's raw significand/exponent fields without host floating-point conversion.</summary>
     private static Float80Value Parse(JsonElement v) => new(Convert.ToUInt64(v.GetProperty("significand").GetString(), 16), Convert.ToUInt16(v.GetProperty("exponent").GetString(), 16));
 
+    /// <summary>Compares the independent reference-vector file with the actual numeric core/decoder results.</summary>
     public static int VerifyNativeVectors(string vectorPath, string nativePath)
     {
         using var source = JsonDocument.Parse(File.ReadAllText(vectorPath));
@@ -94,6 +103,7 @@ internal static class X87NumericTests
         return failures.Count == 0 ? 0 : 1;
     }
 
+    /// <summary>Registers the named x87 numeric regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("x87 tininess before denormalization retains UE when final rounding reaches minimum-normal", () =>

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Compare actual DOS FM traffic/audio to a separately built YMFM executable.
 
 Checks functional timing, all five percussion voices, gain relative to one
@@ -91,12 +93,15 @@ for frame in range(frames):
     reference_frames.append(filtered)
 
 def rms(values):
+    """Measures RMS over the explicit captured sample window, independently from the synthesizer."""
     return math.sqrt(sum(x*x for x in values)/len(values))
 def pitch(values):
+    """Estimates signal frequency from the captured waveform independently from the chip's phase accumulator."""
     rises=[i for i in range(1,len(values)) if values[i-1]<0<=values[i]]
     assert len(rises)>10
     return (len(rises)-1)*48000/(rises[-1]-rises[0])
 def window(values,start,end):
+    """Selects the exact captured percussion interval using the independently observed guest markers."""
     return values[(start+80000000)*48000//1000000000:(end-30000000)*48000//1000000000]
 melody_on=next(t for t,reg,v in registers if reg==0xb8 and v&0x20)
 melody_off=next(t for t,reg,v in registers if t>melody_on and reg==0xb8 and not v&0x20)

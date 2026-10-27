@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent guest-font and cursor-interval -> full RGB framebuffer oracle."""
 import argparse
 import hashlib
@@ -7,10 +9,12 @@ from pathlib import Path
 import struct
 
 def module(name,filename):
+    """Imports the adjacent read-only oracle helper explicitly by file path."""
     spec=importlib.util.spec_from_file_location(name,Path(__file__).with_name(filename))
     value=importlib.util.module_from_spec(spec);spec.loader.exec_module(value);return value
 
 def verify(args):
+    """Validates cursor frame evidence from actual guest state, immutable program bytes and independently expected results."""
     if args.guest=='msdos':
         fonts=module('cpi','verify-font-frame.py')
         files,_,_=fonts.installation(args.base,args.overlay)
@@ -28,6 +32,7 @@ def verify(args):
     rows=400//args.points
     cells=[[(32,0x17) for _ in range(80)] for _ in range(rows)]
     def text(row,value):
+        """Writes expected character/attribute cells into the independent frame oracle."""
         for col,code in enumerate(value.encode('ascii'),2): cells[row][col]=(code,0x1f)
     text(1,'BIOS CURSOR / AH12 BL34')
     text(3,'Same legacy request: CH=06 / CL=07')

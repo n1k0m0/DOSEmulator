@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent code/RAM/fault/restart oracle for the controlled 486 LOCK/AC guest."""
 import argparse
 import copy
@@ -15,6 +17,7 @@ SYMBOLS = ('start code_end proof gdt tss kernel_sp user_sp ud_reg after_ud_reg u
 
 
 def verify(report_path, memory_path, program_path, os_name, paging=False):
+    """Validates cpu lock alignment evidence from actual guest state, immutable program bytes and independently expected results."""
     report = json.loads(Path(report_path).read_text(encoding='utf-8-sig'))
     memory = Path(memory_path).read_bytes()
     program = Path(program_path).read_bytes()
@@ -134,6 +137,7 @@ def verify(report_path, memory_path, program_path, os_name, paging=False):
 
 
 def negative_controls(paths, directory):
+    """Corrupts selected independent evidence fields and requires each corrupted oracle input to fail."""
     rp, mp, pp, os_name, paging = paths
     directory = Path(directory)
     directory.mkdir(exist_ok=False)
@@ -145,6 +149,7 @@ def negative_controls(paths, directory):
     rejected = []
 
     def reject(name, args):
+        """Requires an independently corrupted input to fail instead of accepting the guest's success marker alone."""
         try:
             verify(*args)
         except (AssertionError, ValueError, KeyError, IndexError, struct.error):

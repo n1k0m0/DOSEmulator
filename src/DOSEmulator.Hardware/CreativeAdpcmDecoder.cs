@@ -1,25 +1,33 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 namespace DOSEmulator.Hardware;
 
 /// <summary>Unsigned 8-bit Creative ADPCM predictor. Bit depths 2, 3 (3/3/2 packing),
 /// and 4 are distinct from IMA/MS ADPCM. Arithmetic derived from the documented
 /// format and DOSLIB's original-hardware observations; no foreign decoder is embedded.</summary>
-public sealed class CreativeAdpcmDecoder
+public sealed partial class CreativeAdpcmDecoder
 {
+    /// <summary>Current decoded ADPCM predictor sample retained between encoded input components.</summary>
     public byte Predictor { get; private set; } = 128;
+    /// <summary>Current ADPCM adaptation step under the selected Creative coding mode.</summary>
     public int Step { get; private set; }
 
+    /// <summary>Installs the encoded stream's explicit predictor reference and initial adaptation state.</summary>
     public void Reference(byte value) { Predictor = value; Step = 0; }
     // Creative's "accumulated reference" retains the predictor, but the measured
     // block boundary restarts adaptation at its largest step, including auto-init.
     public void ContinueBlock(int bits) => Step = MaximumStep(bits);
+    /// <summary>Returns the number of decoded components carried by one byte in the selected Creative ADPCM mode.</summary>
     public static int SamplesPerByte(int bits) => bits switch
     {
         2 => 4, 3 => 3, 4 => 2, _ => throw new ArgumentOutOfRangeException(nameof(bits))
     };
+    /// <summary>Bounds a block DMA request before its counter/address wrapping boundary.</summary>
     private static int MaximumStep(int bits) => bits switch
     {
         2 => 5, 3 => 4, 4 => 3, _ => throw new ArgumentOutOfRangeException(nameof(bits))
     };
+    /// <summary>Decodes one encoded byte and updates the reference predictor/adaptation state in component order.</summary>
     public byte Decode(byte packed, int bits, int sample)
     {
         int count = SamplesPerByte(bits);

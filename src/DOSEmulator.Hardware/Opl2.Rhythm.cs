@@ -1,17 +1,24 @@
+// SPDX-License-Identifier: Apache-2.0 AND BSD-3-Clause
+// Copyright 2026 Nils Kopal
+// Noise/percussion formulas derived from YMFM, Copyright (c) 2021 Aaron Giles.
+// The applicable BSD notice is in LICENSES/BSD-3-Clause.txt and docs/THIRD-PARTY-NOTICES.md.
 namespace DOSEmulator.Hardware;
 
 public sealed partial class Opl2
 {
+    /// <summary>Immutable static-data percussion key masks used by all six rhythm operators.</summary>
+    private static ReadOnlySpan<int> RhythmKeyMasks => [16, 16, 1, 8, 4, 2];
+    /// <summary>Updates the percussion operators' independent key sources from the rhythm-control register.</summary>
     private void UpdateRhythmKeys()
     {
         byte controls = _registers[0xbd];
         for (int channel = 6; channel < 9; channel++)
             SetKey(channel, !RhythmEnabled && (_registers[0xb0 + channel] & 0x20) != 0);
         // BD owns both operators of channel 6; HH/SD and TOM/CY are independent.
-        int[] masks = [16,16,1,8,4,2];
         for (int slot = 12; slot < 18; slot++)
-            SetKeySource(_operators[slot], 4, RhythmEnabled && (controls & masks[slot - 12]) != 0);
+            SetKeySource(_operators[slot], 4, RhythmEnabled && (controls & RhythmKeyMasks[slot - 12]) != 0);
     }
+    /// <summary>Computes the reference percussion contribution from the current phases and deterministic noise state.</summary>
     private double RhythmSample(double am, double vibrato)
     {
         Operator bassMod = _operators[12], bass = _operators[13];

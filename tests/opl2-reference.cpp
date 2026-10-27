@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 // Own test-only adapter for an independently supplied BSD-licensed YMFM build.
 // No YMFM implementation is linked into or distributed with the emulator.
 // Input: nanoseconds, address/data offset (0/1), value. Output: signed32 mono
@@ -12,9 +14,11 @@
 
 struct Interface : ymfm::ymfm_interface {
     uint64_t now = 0, expiry[2] = {UINT64_MAX,UINT64_MAX};
+    // Converts the isolated reference engine's relative timer request into a native-clock deadline.
     void ymfm_set_timer(uint32_t timer,int32_t clocks) override {
         expiry[timer] = clocks < 0 ? UINT64_MAX : now + uint32_t(clocks);
     }
+    // Delivers every due timer in stable order before reaching the next observed guest write/sample.
     void advance(uint64_t target) {
         while(std::min(expiry[0],expiry[1]) <= target) {
             unsigned timer = expiry[0] <= expiry[1] ? 0 : 1;
@@ -25,6 +29,7 @@ struct Interface : ymfm::ymfm_interface {
     }
 };
 struct Event { uint64_t time; uint32_t offset,value; };
+// Replays only observed guest OUT events and exports independent native reference frames.
 int main(int argc,char** argv) {
     if(argc != 4) { std::cerr << "usage: opl2-reference events.txt chip.s32 end-nanoseconds\n"; return 2; }
     std::ifstream input(argv[1]); std::ofstream output(argv[2],std::ios::binary);

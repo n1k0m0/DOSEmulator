@@ -38,6 +38,8 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
+Der spätere eigene YMF262-Pfad in `Opl3.Synthesis.cs` verwendet dieselben bereits zugeordneten Rausch-/Schlaginstrumentformeln. `tests/opl3-reference.cpp` ist ein weiterer eigener Adapter für die getrennte private Vergleichsreferenz. Die oben mitgeführte BSD-Lizenz gilt entsprechend auch für diese übernommenen Formeln; YMFM selbst ist weiterhin kein Produktbackend.
+
 ## Creative ADPCM
 
 Der Decoder verwendet eigene skalare Arithmetik. Format-/Befehlsgrundlage ist Creatives Hardware Programming Guide; die Schrittgrößen, 3/3/2-Packung und Blockbeobachtungen werden gegen [DOSLIBs ursprüngliche Hardwareversuche](https://github.com/joncampbell123/doslib/tree/master/hw/sndsb) geprüft. Keine DOSLIB-/DOSBox-Decoderroutine oder fremde ADPCM-Tabelle ist als Produktbestandteil eingebettet. Grenzen und Provenienz stehen in [hardware/SB2-DSP.md](hardware/SB2-DSP.md).

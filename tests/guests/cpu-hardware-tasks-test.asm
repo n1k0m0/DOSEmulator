@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own DOS program. Actual hardware tasks, no host BIOS/DOS emulation shortcuts.
 ; All tables, TSSs, stacks and optional page tables belong to this COM block.
 ; The private bootstrap TR remains loaded until reset (LTR cannot unload TR).
@@ -25,6 +27,7 @@ S3 equ 120
 LDT equ 128
 ABSENT equ 136
 
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -110,6 +113,7 @@ start:
     or eax,1
     mov cr0,eax
     jmp dword C0:0x10000+main_entry
+; Patches the explicit descriptor base bytes for this probe's allocated guest segment.
 patch_base:
     mov [di+2],ax
     shr eax,16
@@ -426,6 +430,7 @@ real_return:
     int 0x21
     mov ax,0x4c00
     int 0x21
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al

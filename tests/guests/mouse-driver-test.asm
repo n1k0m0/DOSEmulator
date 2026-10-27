@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original acceptance program. Uses the real resident DOS mouse driver's INT33.
 ; Movement/buttons enter only through the emulated PS/2 device and IRQ12.
 bits 16
@@ -112,6 +114,7 @@ failed:
     call hexword
     mov ax,0x4c01
     int 0x21
+; Prints a word as hexadecimal through the actual guest output path.
 hexword:
     mov bp,ax
     mov di,4
@@ -132,6 +135,7 @@ hexword:
     mov ah,2
     int 0x21
     ret
+; Prints the zero-terminated guest diagnostic message.
 message:
     push ax
     mov ah,9

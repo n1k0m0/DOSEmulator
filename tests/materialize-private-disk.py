@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Materialize a read-only DOSCOW01 source into a NEW private test base."""
 import importlib.util
 import json

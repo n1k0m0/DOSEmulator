@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
@@ -7,6 +9,7 @@ namespace DOSEmulator.Runtime;
 /// <summary>Minimal startup in a new official FreeDOS floppy copy. Boot code, kernel and shell stay byte-identical.</summary>
 public static class FreeDosFloppyTestImage
 {
+    /// <summary>Creates a fresh private minimal FreeDOS floppy copy while preserving original boot/system files.</summary>
     public static object Create(string source, string destination)
     {
         if (Path.GetFullPath(source).Equals(Path.GetFullPath(destination), StringComparison.OrdinalIgnoreCase) || File.Exists(destination))
@@ -20,6 +23,7 @@ public static class FreeDosFloppyTestImage
         int fatSize = BinaryPrimitives.ReadUInt16LittleEndian(image.AsSpan(22));
         int clusterBytes = image[13] * 512, fat = reserved * 512, root = (reserved + image[16] * fatSize) * 512;
         int data = root + ((entries * 32 + 511) / 512) * 512;
+        // Walks a checked private FAT cluster chain and rejects loops or invalid cluster references.
         IEnumerable<int> Chain(int first)
         {
             var seen = new HashSet<int>(); int cluster = first;
@@ -31,6 +35,7 @@ public static class FreeDosFloppyTestImage
                 cluster = (cluster & 1) == 0 ? pair & 0xfff : pair >> 4;
             }
         }
+        // Finds the explicitly named FAT entry in the private test image or rejects a missing file.
         int Find(int directory, string name)
         {
             IEnumerable<int> blocks = directory == 0 ? [root] : Chain(directory);
@@ -43,7 +48,9 @@ public static class FreeDosFloppyTestImage
                 }
             throw new InvalidDataException("Missing floppy file " + name);
         }
+        // Reads the first-cluster field of a checked FAT directory entry.
         int Cluster(int entry) => BinaryPrimitives.ReadUInt16LittleEndian(image.AsSpan(entry + 26));
+        // Reads a checked file from the original-derived private FAT12 image.
         byte[] Read(int entry)
         {
             int length = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(image.AsSpan(entry + 28))), copied = 0;
@@ -55,6 +62,7 @@ public static class FreeDosFloppyTestImage
             }
             throw new InvalidDataException("Short FAT12 file.");
         }
+        // Replaces only the selected test startup file in the fresh private image, retaining the original medium.
         void Replace(int entry, string text)
         {
             byte[] bytes = Encoding.ASCII.GetBytes(text); int copied = 0;

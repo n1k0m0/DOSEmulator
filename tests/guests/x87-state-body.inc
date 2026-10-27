@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Shared actual x87 instruction sequence, assembled in real/V86 or PE32 code.
 body_start:
     fninit

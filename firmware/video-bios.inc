@@ -1,6 +1,25 @@
-; Original reference VGA firmware, Apache-2.0. All device changes use guest IN/OUT.
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
+; Original DOSE VGA firmware, Apache-2.0. All device changes use guest IN/OUT.
 ; AL=03h,12h,13h, with bit 7 preserving display memory.
 set_video_mode:
+    cmp byte [cs:et4000_present],0
+    je .vga
+    push ax
+    and al,0x7f
+    cmp al,0x2e
+    je .extended
+    cmp al,0x30
+    je .extended
+    cmp al,0x38
+    je .extended
+    pop ax
+    jmp .vga
+.extended:
+    pop ax
+    call et4000_set_mode
+    ret
+.vga:
     push bp
     mov bp,sp
     pushad
@@ -15,6 +34,10 @@ set_video_mode:
     cmp bl,0x13
     jne .done
 .supported:
+    cmp byte [cs:et4000_present],0
+    je .standard_adapter
+    call et4000_vga_reset
+.standard_adapter:
     xor ax,ax
     mov ds,ax
     mov [0x449],bl
@@ -474,3 +497,5 @@ vga_crtc_planar: db 0x5f,0x4f,0x50,0x82,0x54,0x80,0x0b,0x3e,0,0,0,0,0,0,0,0,0xea
 vga_crtc_indexed: db 0x5f,0x4f,0x50,0x82,0x54,0x80,0xbf,0x1f,0,0x41,0,0,0,0,0,0,0x9c,0x0e,0x8f,0x28,0x40,0x96,0xb9,0xa3,0xff
 vga_attr_planar: db 0,1,2,3,4,5,0x14,7,0x38,0x39,0x3a,0x3b,0x3c,0x3d,0x3e,0x3f,0x0c,0,15,0,0
 vga_attr_indexed: db 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,0x41,0,15,0,0
+
+%include "video-et4000-bios.inc"

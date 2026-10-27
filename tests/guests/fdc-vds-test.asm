@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original 486/VDS/FDC client. Only private scratch drive B is modified.
 ; Calls the resident manager's INT4B API, never a host DMA/BIOS shortcut.
 bits 16
@@ -7,6 +9,7 @@ org 0x100
 %define EMS 0
 %endif
 
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     cli
     mov ax,cs
@@ -219,6 +222,7 @@ exercise_region:
     stc
     ret
 
+; Locks the probe-owned buffer and balances actual VDS channel/transfer/unlock services.
 vds_transfer:
     mov dword [dds],512
     mov word [dds+10],0
@@ -276,6 +280,7 @@ vds_transfer:
     stc
     ret
 
+; Executes the requested real BIOS floppy transfer using this probe's own buffer.
 bios_transfer:
     mov ax,[dds+8]
     mov es,ax
@@ -402,6 +407,7 @@ hardware_transfer:
     stc
     ret
 
+; Waits for controller readiness and records one actual FDC command byte.
 send:
     push eax
     push ecx
@@ -431,6 +437,7 @@ send:
     clc
     ret
 
+; Receives and records an actual bounded-time FDC result byte.
 receive:
     push ecx
     push dx
@@ -455,6 +462,7 @@ receive:
     clc
     ret
 
+; Initializes the probe's own transfer pattern and guard bytes.
 fill_region:
     mov ax,[dds+8]
     mov es,ax
@@ -466,6 +474,7 @@ fill_region:
     add al,0x17
     loop .fill
     ret
+; Clears only the probe's own guarded transfer region.
 clear_region:
     mov ax,[dds+8]
     mov es,ax
@@ -476,6 +485,7 @@ clear_region:
     call put_byte
     loop .clear
     ret
+; Compares the actual guarded transfer region byte by byte.
 check_region:
     mov ax,[dds+8]
     mov es,ax
@@ -493,6 +503,7 @@ check_region:
 .bad:
     stc
     ret
+; Copies the actual DMA result into the guest proof without changing the controller.
 capture_region:
     push ds
     push cs
@@ -513,8 +524,10 @@ capture_region:
     loop .copy
     pop ds
     ret
+; Stores the next observed protocol byte in the bounded guest proof record.
 put_byte:
     mov [es:di],al
+; Advances the guest's explicit transfer-buffer pointer without bypassing actual device I/O.
 advance:
     inc di
     jnz .done
@@ -526,6 +539,7 @@ advance:
 .done:
     ret
 
+; Restores the probe's saved EMS mappings and releases its owned handle.
 release_ems:
     cmp byte [ems_allocated],0
     je .done
@@ -550,6 +564,7 @@ release_ems:
 .bad:
     stc
     ret
+; Releases only this probe's explicitly allocated DOS memory block.
 release_dos:
     mov ax,[allocation]
     test ax,ax
@@ -614,6 +629,7 @@ report:
     int 0x21
     mov ax,0x4c00
     int 0x21
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al

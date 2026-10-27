@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Text.Json;
 using DOSEmulator.Contracts;
 using DOSEmulator.Core;
@@ -6,14 +8,18 @@ using DOSEmulator.Runtime;
 
 internal static class SoundBlasterResourceTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value) { if (!value) throw new Exception("SB2 resource assertion failed"); }
+    /// <summary>Builds the explicit supported sound-card resource profile used by the following case.</summary>
     private static MachineProfile Profile(int address = 0x240, int irq = 9) => new() {
         SoundCard = "sb2-opl2-development", SoundBlasterBasePort = address, SoundBlasterIrq = irq };
+    /// <summary>Submits the requested operation through the component's normal command interface.</summary>
     private static IpcResponse Command(MachineSession session, string command, object payload)
     {
         var reply = session.Enqueue(new(1, Guid.NewGuid().ToString("N"), command, JsonSerializer.SerializeToElement(payload, IpcProtocol.JsonOptions)));
         session.PumpCommands(); return reply.GetAwaiter().GetResult();
     }
+    /// <summary>Restarts the component using its documented reset state and the supplied reset parameters.</summary>
     private static void Reset(PcMachine machine)
     {
         ushort port = (ushort)(machine.Profile.SoundBlasterBasePort + 6);
@@ -21,6 +27,7 @@ internal static class SoundBlasterResourceTests
         machine.Ports.Write(port, 0, 1); machine.Scheduler.AdvanceTo(machine.Scheduler.Now + 100000);
         Check(machine.Ports.Read((ushort)(port + 4), 1) == 0xaa);
     }
+    /// <summary>Sends the controlled test data through the real device-facing transfer interface.</summary>
     private static void Send(PcMachine machine, params byte[] bytes)
     {
         foreach (byte value in bytes)
@@ -29,6 +36,7 @@ internal static class SoundBlasterResourceTests
             machine.Scheduler.AdvanceTo(machine.Scheduler.Now + 1000);
         }
     }
+    /// <summary>Registers the named sound blaster resource regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("old JSON sound profiles retain A220 I5 D1 and new resource values roundtrip", () =>

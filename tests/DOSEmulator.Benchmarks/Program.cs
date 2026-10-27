@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -5,11 +7,17 @@ using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using DOSEmulator.Runtime;
 
+if (args.Length > 0 && args[0] == "review") { ReviewBenchmarks.Run(args.Length > 1 ? int.Parse(args[1]) : 9); return; }
+if (args.Length == 3 && args[0] == "review2") { StorageReviewBenchmarks.Run(int.Parse(args[1]), args[2]); return; }
+if (args.Length == 2 && args[0] == "cpu-throughput") { CpuThroughputBenchmarks.Run(int.Parse(args[1])); return; }
+if (args.Length == 2 && args[0] == "bios") { BiosBenchmarks.Run(int.Parse(args[1])); return; }
+
 // Fixed-work microbenchmarks, not historical CPU timing or a sampling profiler.
 int scale = args.Length > 0 ? int.Parse(args[0]) : 1;
 int repeats = args.Length > 1 ? int.Parse(args[1]) : 7;
 if (scale < 1 || repeats < 3) throw new ArgumentOutOfRangeException();
 var rows = new List<object>();
+// Measures the explicitly delimited phase without including fixture construction in its timing window.
 void Measure(string name, int iterations, Func<Action<int>> setup)
 {
     setup()(Math.Min(iterations, 200_000)); // JIT/PGO warmup outside timed samples.
@@ -24,6 +32,7 @@ void Measure(string name, int iterations, Func<Action<int>> setup)
     rows.Add(new { name, iterations, repetitions = repeats, medianMilliseconds = median,
         operationsPerSecond = iterations * 1000.0 / median, milliseconds = times, checksum = State.Checksum.ToString("X16") });
 }
+// Builds the benchmark's explicit RAM/ROM/MMIO layout before any timed operation.
 MemoryBus Bus()
 {
     var m = new MemoryBus(8 * 1024 * 1024);
@@ -65,8 +74,10 @@ Console.WriteLine(JsonSerializer.Serialize(new { runtime=RuntimeInformation.Fram
     tieredCompilation=Environment.GetEnvironmentVariable("DOTNET_TieredCompilation"),readyToRun=Environment.GetEnvironmentVariable("DOTNET_ReadyToRun"),
     fixedVirtualTimingUnchanged=true,profilingMethod="fixed-work stopwatch microbenchmarks",rows },new JsonSerializerOptions{WriteIndented=true}));
 
+// Initializes the surrounding test or benchmark fixture before measured execution begins.
 static void Setup(X86Cpu c,MemoryBus m,byte[] code)
 {
+    // Writes the test's explicit descriptor bytes into its private guest-memory fixture.
     void Descriptor(uint at,byte access) {m.WriteDword(at,0xffff);m.WriteDword(at+4,0x00cf0000u|((uint)access<<8));}
     Descriptor(0x408,0x9a);Descriptor(0x410,0x92);m.WriteWord(0x300,0x17);m.WriteDword(0x302,0x400);
     byte[] boot=[0x0f,0x01,0x16,0,3,0x66,0xb8,0x11,0,0,0x60,0x0f,0x22,0xc0,0x66,0xea,0,0x20,0,0,8,0];

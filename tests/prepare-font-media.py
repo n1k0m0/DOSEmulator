@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Build a NEW private FAT12 floppy containing only our assembled font probe.
 No operating system, driver or font bytes are copied to this disk.
 """
@@ -14,6 +16,7 @@ spec.loader.exec_module(fat_oracle)
 
 
 def prepare(probe, destination, filename="FONTCP.COM"):
+    """Creates a fresh private font media image from validated inputs, leaving every source medium unchanged."""
     probe, destination = map(Path, (probe, destination))
     stem, extension = filename.split(".")
     assert 1 <= len(stem) <= 8 and 1 <= len(extension) <= 3

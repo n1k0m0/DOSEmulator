@@ -1,18 +1,24 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using static ProtectedModeTests;
 
 internal static class X87ControlTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool condition) { if (!condition) throw new Exception("x87/model invariant failed"); }
+    /// <summary>Builds an isolated real-mode CPU fixture around the explicit guest instruction bytes.</summary>
     private static (X86Cpu Cpu, MemoryBus Memory) Real(byte[] code)
     {
         var m=new MemoryBus(2*1048576);var c=new X86Cpu(m,new());
         c.SetSegment(Segment.Cs,0);c.Eip=0x2000;c.SetRegister(Register.Sp,0x9000);
         code.CopyTo(m.Ram,0x2000);return(c,m);
     }
+    /// <summary>Places controlled bytes at a private guest address and executes through the normal decoder.</summary>
     private static void At(X86Cpu c,MemoryBus m,byte[] code)
     {code.CopyTo(m.Ram,0x2000);c.Eip=0x2000;c.Step();}
+    /// <summary>Registers the named x87 control regression cases with the common runner.</summary>
     public static void AddTo(Action<string,Action> test)
     {
         test("Original DOS4GW x87 detection sequence observes initialized status and control",()=>

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Create a NEW private FAT12 test floppy, extracting CuteMouse only from local FreeDOS.
 No OS, driver or ROM binary becomes a repository asset. Stdlib independent of emulator.
 """
@@ -16,6 +18,7 @@ spec.loader.exec_module(fat_oracle)
 
 
 def prepare(source, probe, destination):
+    """Creates a fresh private mouse media image from validated inputs, leaving every source medium unchanged."""
     source, probe, destination = map(Path, (source, probe, destination))
     original = source.read_bytes()
     digest = hashlib.sha256(original).hexdigest().upper()
@@ -39,6 +42,7 @@ def prepare(source, probe, destination):
     fat[:3] = b"\xf0\xff\xff"
 
     def entry(cluster, value):
+        """Writes one FAT12 cluster entry while preserving the neighboring nibble."""
         offset = cluster * 3 // 2
         word = int.from_bytes(fat[offset:offset + 2], "little")
         word = (word & 0xF if cluster & 1 else word & 0xF000) | (value << 4 if cluster & 1 else value)

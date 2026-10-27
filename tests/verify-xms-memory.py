@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Verify actual original-HIMEM XMS calls using own data, RAM and CPU diagnostics."""
 import argparse
 import hashlib
@@ -8,6 +10,7 @@ from pathlib import Path
 
 
 def verify(report_path, memory_path, absent=False):
+    """Validates xms memory evidence from actual guest state, immutable program bytes and independently expected results."""
     report = json.loads(Path(report_path).read_text(encoding="utf-8-sig"))
     memory = Path(memory_path).read_bytes()
     output = report["status"]["debugOutput"]
@@ -25,6 +28,7 @@ def verify(report_path, memory_path, absent=False):
     assert len(proof) == 96 and proof[:8] == b"CPXMS001"
 
     def word(offset):
+        """Reads one explicitly little-endian word from the selected guest proof bytes."""
         return struct.unpack_from("<I", proof, offset)[0]
 
     assert word(8) == 1

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent rational interval certificate for actual native FSQRT results.
 
 Checks adjacent representable outputs and their squared midpoints; it does not
@@ -9,10 +11,12 @@ from pathlib import Path
 
 J=1<<63
 def number(sig,exp):
+ """Reconstructs the exact signed rational represented by a finite extended operand."""
  scale=max(1,exp)-16383-63
  return Fraction(sig<<scale) if scale>=0 else Fraction(sig,1<<-scale)
 
 def verify(vectors,reference):
+ """Checks x87 sqrt native values, status and preserved raw registers against the independent mathematical contract."""
  assert reference['referenceOnly'] and reference['architecture']=='host-x87-x64'
  results={x['id']:x for x in reference['results']};checked=aborted=exact=up=0;pcs=set();rcs=set()
  for v in vectors:

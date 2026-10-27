@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Own actual comparison instructions; the native oracle is never a guest service.
 body_start:
     mov si,vector_data

@@ -1,7 +1,10 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Original LIM EMS client: eight 16-KiB pages, real remapping and aliasing.
 bits 16
 cpu 486
 org 0x100
+; Runs this original DOS probe, capturing actual device/CPU results before its checked DOS return.
 start:
     push cs
     pop ds
@@ -209,6 +212,7 @@ report:
     int 0x21
     mov ax,0x4c00
     int 0x21
+; Maps the explicitly selected EMS page through the actual memory-manager service.
 map_page:
     ; AL = frame slot, BX = logical page. Preserve the requested operands.
     push ax
@@ -226,6 +230,7 @@ map_page:
 .error:
     stc
     ret
+; Compares the actual EMS window bytes against the independently initialized page pattern.
 check_page:
     ; For BX 0..3, use the matching physical slot; otherwise use slot zero.
     push bx
@@ -260,6 +265,7 @@ check_page:
     pop bx
     stc
     ret
+; Releases the probe's actual EMS allocation through the resident manager.
 release_handle:
     cmp byte [allocated],0
     je .done
@@ -276,6 +282,7 @@ release_handle:
     mov byte [allocated],0
 .done:
     ret
+; Writes the zero-terminated proof marker through actual guest OUT instructions.
 debug_string:
     lodsb
     test al,al

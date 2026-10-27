@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent stdlib oracle: private FAT16/CPI bytes -> every pixel of our font sheet.
 No emulator imports, exported ROM/font assets or reference images. CPI structure:
 Microsoft MS-DOS Programmer's Reference (1991), chapter 6.6, pp. 93ff.
@@ -15,6 +17,7 @@ spec.loader.exec_module(fat_oracle)
 
 
 def installation(base, cow):
+    """Locates and validates the private DOS installation used to obtain the original font resource."""
     disk, journal = fat_oracle.materialize(Path(base), Path(cow))
     partition = struct.unpack_from("<I", disk, 454)[0] * 512
     files, allocation = fat_oracle.Fat(disk, partition).files()
@@ -22,6 +25,7 @@ def installation(base, cow):
 
 
 def cpi_fonts(data, codepage):
+    """Extracts the requested font from the locally supplied DOS CPI structure after validating its offsets."""
     assert data[:8] == b"\xffFONT   "
     assert struct.unpack_from("<HB", data, 16) == (1, 1)  # one absolute offset pointer
     offset = struct.unpack_from("<I", data, 19)[0]
@@ -56,6 +60,7 @@ def cpi_fonts(data, codepage):
 
 
 def verify_frame(base, cow, frame, points, rows, report):
+    """Reconstructs and compares the complete text/font output from original glyph bytes and palette values."""
     files, _, _ = installation(base, cow)
     cpi = files["DOS/EGA.CPI"]
     font = cpi_fonts(cpi, 850)[points]
@@ -67,6 +72,7 @@ def verify_frame(base, cow, frame, points, rows, report):
     screen = [bytearray(b" " * 80) for _ in range(rows)]
 
     def text(row, column, value):
+        """Writes expected character/attribute cells into the independent frame oracle."""
         screen[row][column:column + len(value)] = value
 
     text(0, 2, b"VGA FONT / ORIGINAL DOS DISPLAY.SYS + MODE")
@@ -100,6 +106,7 @@ def verify_frame(base, cow, frame, points, rows, report):
 
 
 def verify_ansi(base, original, modified):
+    """Checks the original ANSI driver's observed mode/font behavior against the independent expected text state."""
     before, _, _ = installation(base, original)
     after, journal, allocation = installation(base, modified)
     assert set(after) == set(before) | {"CONFIG.PRE"}

@@ -28,6 +28,7 @@ layout(location = 1) in vec2 aTexCoord;
 
 out vec2 texCoord;
 
+// Passes the texture coordinate and clip-space vertex position to the fragment stage.
 void main(void)
 {
 	texCoord = aTexCoord;

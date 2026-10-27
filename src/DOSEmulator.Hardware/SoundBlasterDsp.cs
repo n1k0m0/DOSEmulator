@@ -1,14 +1,17 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 
 namespace DOSEmulator.Hardware;
 
 /// <summary>SB2 development DSP path: unsigned mono DAC/ADC, normal/high-speed 8-bit DMA,
 /// Creative ADPCM, DSP blocks and configurable IRQ. FM is a separate device.</summary>
-public sealed class SoundBlasterDsp : IIoPortDevice
+public sealed partial class SoundBlasterDsp : IIoPortDevice
 {
     public const ushort BasePort = 0x220;
     public const int DmaChannel = 1, Irq = 5;
     public const ulong ResetHoldNanoseconds = 3000, ResetReadyNanoseconds = 100000, CommandNanoseconds = 1000;
+    /// <summary>Current guest-visible ISA base port for this concrete sound-card model.</summary>
     public ushort IoBasePort { get; }
     private readonly DeviceScheduler _clock;
     private readonly Dma8237 _dma;
@@ -27,49 +30,81 @@ public sealed class SoundBlasterDsp : IIoPortDevice
     private bool _resetHigh, _ready, _commandBusy, _autoInit, _exitAuto, _silence, _recording, _queuedSingleRecording;
     private ulong _resetSince, _sampleDeadline, _pausedDelay;
     private long _resetEvent, _commandEvent, _sampleEvent;
+    /// <summary>DSP speaker-status latch, whose audible effect follows the selected card revision's contract.</summary>
     public bool SpeakerEnabled { get; private set; }
+    /// <summary>Whether the SB2 DSP is in its restricted high-speed transfer command mode.</summary>
     public bool HighSpeed { get; private set; }
+    /// <summary>Whether a DSP transfer/sample engine is currently active.</summary>
     public bool Active => _remaining > 0;
+    /// <summary>Whether the active DSP engine is paused by a guest control command.</summary>
     public bool Paused { get; private set; }
+    /// <summary>Externally observable interrupt line after the component's enable/mask policy.</summary>
     public bool InterruptAsserted { get; private set; }
+    /// <summary>Remaining sample/components in the current programmed DSP block.</summary>
     public int RemainingSamples => _remaining;
+    /// <summary>Most recent sample value held by the reference byte DAC.</summary>
     public byte DacValue => _dac;
+    /// <summary>Most recent sample value produced by the virtual byte ADC.</summary>
     public byte AdcValue => _adc;
+    /// <summary>Whether the active DSP stream reads the virtual ADC input instead of playing PCM.</summary>
     public bool Recording => Active && _recording;
+    /// <summary>Active Creative ADPCM encoded component width.</summary>
     public int AdpcmBits => Active ? _adpcmBits : 0;
+    /// <summary>Number of actual encoded ADPCM bytes obtained from device-paced DMA grants.</summary>
     public long AdpcmDmaBytes { get; private set; }
+    /// <summary>Diagnostic count of adpcm decoded samples.</summary>
     public long AdpcmDecodedSamples { get; private set; }
     /// <summary>Machine-owned virtual analog source. Null is an unconnected midpoint input;
     /// no host microphone is opened. Evaluate against virtual time, not wall-clock time.</summary>
     public Func<ulong, byte>? AdcInput { get; set; }
     public event Action<ulong, byte, DmaReadResult?>? AdcSampled;
+    /// <summary>Raw guest time-constant byte controlling the legacy DSP sample period.</summary>
     public byte TimeConstant => _timeConstant;
+    /// <summary>Current integer legacy DSP sample period in virtual nanoseconds.</summary>
     public ulong SamplePeriodNanoseconds => (ulong)(256 - _timeConstant) * 1000;
+    /// <summary>Diagnostic count of transferred samples.</summary>
     public long TransferredSamples { get; private set; }
+    /// <summary>Diagnostic count of recorded samples.</summary>
     public long RecordedSamples { get; private set; }
+    /// <summary>Diagnostic count of converted samples.</summary>
     public long ConvertedSamples { get; private set; }
+    /// <summary>Diagnostic count of high speed recorded samples.</summary>
     public long HighSpeedRecordedSamples { get; private set; }
+    /// <summary>Diagnostic count of high speed samples.</summary>
     public long HighSpeedSamples { get; private set; }
+    /// <summary>Diagnostic count of high speed transfers.</summary>
     public long HighSpeedTransfers { get; private set; }
+    /// <summary>Diagnostic count of high speed resets.</summary>
     public long HighSpeedResets { get; private set; }
+    /// <summary>Diagnostic count of ignored high speed writes.</summary>
     public long IgnoredHighSpeedWrites { get; private set; }
+    /// <summary>Diagnostic count of completed blocks.</summary>
     public long CompletedBlocks { get; private set; }
+    /// <summary>Diagnostic count of interrupt requests.</summary>
     public long InterruptRequests { get; private set; }
+    /// <summary>Diagnostic count of reset count.</summary>
     public long ResetCount { get; private set; }
+    /// <summary>Diagnostic count of rejected writes.</summary>
     public long RejectedWrites { get; private set; }
+    /// <summary>Diagnostic indication that the guest selected commands outside the implemented reference contract.</summary>
     public long UnsupportedCommands { get; private set; }
+    /// <summary>Most recent unsupported DSP command byte retained for diagnostics.</summary>
     public byte? LastUnsupportedCommand { get; private set; }
+    /// <summary>Most recent actual DMA-grant result, separate from a completed sound sample.</summary>
     public DmaReadResult LastDmaResult { get; private set; } = DmaReadResult.Blocked;
+    /// <summary>Host-side source gain, separate from guest DSP/mixer register state.</summary>
     public double Volume { get => _input.Gain; set => _input.Gain = value; }
 
+    /// <summary>Initializes SoundBlasterDsp and connects the supplied dependencies before the component is used.</summary>
     public SoundBlasterDsp(DeviceScheduler clock, Dma8237 dma, PcAudioMixer audio, Action<bool> irq, ushort basePort = BasePort)
     {
         if (basePort is not (0x220 or 0x240)) throw new ArgumentOutOfRangeException(nameof(basePort));
         IoBasePort = basePort;
         _clock = clock; _dma = dma; _audio = audio; _irq = irq;
         _input = audio.AddSource((start, end) => SpeakerEnabled
-            ? (Int128)(end - start) * PitSpeakerCounter.Frequency * (_dac - 128) * 256 : 0, 0.5);
+            ? (Int128)(end - start) * PitSpeakerCounter.Frequency * (_dac - 128) * 256 : 0, 0.5, () => !SpeakerEnabled || _dac == 128);
     }
+    /// <summary>Reads DSP replies/status and acknowledges the implemented byte-DMA IRQ at its designated status port.</summary>
     public uint Read(ushort port, int width)
     {
         if (width != 1) return 0xff;
@@ -81,6 +116,7 @@ public sealed class SoundBlasterDsp : IIoPortDevice
             default: return 0xff;
         }
     }
+    /// <summary>Processes the timed DSP command/reset interface and ordinary 8-bit DMA sound controls.</summary>
     public void Write(ushort port, uint value, int width)
     {
         if (width != 1) return;
@@ -95,8 +131,9 @@ public sealed class SoundBlasterDsp : IIoPortDevice
         _commandEvent = _clock.ScheduleAfter(CommandNanoseconds, () =>
         {
             _commandEvent = 0; _commandBusy = false; Receive(data);
-        });
+        }, this, "event0", () => StateValues.Pack(data));
     }
+    /// <summary>Restarts the component using its documented reset state and the supplied reset parameters.</summary>
     private void Reset(bool high)
     {
         if (high)
@@ -120,9 +157,10 @@ public sealed class SoundBlasterDsp : IIoPortDevice
             _resetEvent = _clock.ScheduleAfter(ResetReadyNanoseconds, () =>
             {
                 _resetEvent = 0; _ready = true; _readBuffer.Enqueue(0xaa);
-            });
+            }, this, "event1");
         }
     }
+    /// <summary>Consumes the SB2 command stream, respecting high-speed restrictions and expected parameters.</summary>
     private void Receive(byte value)
     {
         if (_parameterLength > 0)
@@ -144,6 +182,7 @@ public sealed class SoundBlasterDsp : IIoPortDevice
         _parameterCount = 0;
         if (_parameterLength == 0) Execute();
     }
+    /// <summary>Dispatches a decoded primary opcode, including prefix validity and operand-width rules.</summary>
     private void Execute()
     {
         int length = (_parameters[0] | _parameters[1] << 8) + 1;
@@ -194,16 +233,19 @@ public sealed class SoundBlasterDsp : IIoPortDevice
             default: UnsupportedCommands++; LastUnsupportedCommand = _command; break;
         }
     }
+    /// <summary>Queues a device response through the ordinary controller-visible output path.</summary>
     private void Reply(byte value)
     {
         // Finite response FIFO; a guest which never reads cannot grow host memory without bound.
         if (_readBuffer.Count < 64) _readBuffer.Enqueue(value);
     }
+    /// <summary>Queues a single-cycle DSP response/sample operation through the normal device timing path.</summary>
     private void QueueSingle(int length, bool recording, int bits, bool reference)
     {
         _queuedSingleLength = length; _queuedSingleRecording = recording; _queuedSingleBits = bits;
         _queuedSingleReference = reference; _exitAuto = true;
     }
+    /// <summary>Starts a validated SB2 DMA/ADC/ADPCM block with the selected legacy timing mode.</summary>
     private void Start(int length, bool autoInit, bool silence, bool highSpeed = false, bool recording = false,
         int adpcmBits = 0, bool reference = false)
     {
@@ -213,17 +255,20 @@ public sealed class SoundBlasterDsp : IIoPortDevice
         HighSpeed = highSpeed; if (highSpeed) HighSpeedTransfers++;
         _queuedSingleLength = null; _exitAuto = false; ScheduleSample(SamplePeriodNanoseconds);
     }
+    /// <summary>Stops the active SB2 stream while retaining the model's held DAC/status contract.</summary>
     private void Stop()
     {
         Cancel(ref _sampleEvent); _remaining = 0; Paused = false; _autoInit = false; _exitAuto = false;
         HighSpeed = false; _recording = false;
         _adpcmBits = _adpcmIndex = 0; _adpcmReferencePending = false;
     }
+    /// <summary>Schedules the next legacy DSP sample deadline in virtual nanoseconds.</summary>
     private void ScheduleSample(ulong delay)
     {
         _sampleDeadline = checked(_clock.Now + delay);
-        _sampleEvent = _clock.ScheduleAfter(delay, Tick);
+        _sampleEvent = _clock.ScheduleAfter(delay, Tick, this, "event2");
     }
+    /// <summary>Processes one due reference DSP sample and its actual DMA/ADPCM/ADC completion effects.</summary>
     private void Tick()
     {
         _sampleEvent = 0;
@@ -279,12 +324,16 @@ public sealed class SoundBlasterDsp : IIoPortDevice
         if (_adpcmIndex < CreativeAdpcmDecoder.SamplesPerByte(_adpcmBits)) return false;
         _adpcmIndex = 0; return true;
     }
+    /// <summary>Updates a DAC component and invalidates the derived palette/scanout state as required.</summary>
     private void SetDac(byte value) { _audio.AdvanceTo(_clock.Now); _dac = value; }
+    /// <summary>Applies the selected DSP revision's speaker-status/output behavior at the current virtual time.</summary>
     private void SetSpeaker(bool enabled) { _audio.AdvanceTo(_clock.Now); SpeakerEnabled = enabled; }
+    /// <summary>Publishes the sound device's interrupt latch through its configured physical IRQ route.</summary>
     private void SetIrq(bool high)
     {
         if (InterruptAsserted == high) return;
         InterruptAsserted = high; _irq(high);
     }
+    /// <summary>Cancels the identified or currently scheduled component operation before it can publish another completion.</summary>
     private void Cancel(ref long id) { if (id != 0) _clock.Cancel(id); id = 0; }
 }

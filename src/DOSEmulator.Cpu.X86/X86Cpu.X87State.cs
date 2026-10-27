@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using System.Buffers.Binary;
 
 namespace DOSEmulator.Cpu.X86;
@@ -8,12 +10,19 @@ public sealed partial class X86Cpu
     private byte _fpuEmpty = 0xff;
     private uint _fpuIp, _fpuData, _fpuRealIp, _fpuRealData;
     private ushort _fpuCs, _fpuDs, _fpuOpcode;
+    /// <summary>Physical register index currently selected as logical ST0 by TOP.</summary>
     public int FpuTop => FpuStatusWord >> 11 & 7;
+    /// <summary>Saved eleven-bit x87 opcode field for environment reporting.</summary>
     public ushort FpuOpcode => _fpuOpcode;
+    /// <summary>Saved x87 instruction offset under the active environment-format contract.</summary>
     public uint FpuInstructionPointer => _fpuIp;
+    /// <summary>Saved x87 operand offset under the active environment-format contract.</summary>
     public uint FpuDataPointer => _fpuData;
+    /// <summary>Saved protected-mode selector associated with the x87 instruction pointer.</summary>
     public ushort FpuCodeSelector => _fpuCs;
+    /// <summary>Saved protected-mode selector associated with the x87 data pointer.</summary>
     public ushort FpuDataSelector => _fpuDs;
+    /// <summary>Physical-register tag word including empty slots and raw-value classifications.</summary>
     public ushort FpuTagWord
     {
         get
@@ -23,22 +32,28 @@ public sealed partial class X86Cpu
             return (ushort)tags;
         }
     }
+    /// <summary>Returns a logical ST register after translating TOP to the physical eight-register file.</summary>
     public Float80Value GetFpuRegister(int logical)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(logical);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(logical, 7);
         return _fpuRegisters[(FpuTop + logical) & 7];
     }
+    /// <summary>Checks the empty tag of a logical ST register without changing its stable raw bits.</summary>
     public bool IsFpuRegisterEmpty(int logical)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(logical);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(logical, 7);
         return EmptyFpu((FpuTop + logical) & 7);
     }
+    /// <summary>Checks the physical slot's empty tag independently of its retained raw register value.</summary>
     private bool EmptyFpu(int physical) => (_fpuEmpty & (1 << physical)) != 0;
+    /// <summary>Updates only the TOP field of the x87 status word.</summary>
     private void FpuTopTo(int value) => FpuStatusWord = (ushort)((FpuStatusWord & ~0x3800) | ((value & 7) << 11));
+    /// <summary>Stores raw bits into a physical x87 slot and marks it nonempty without moving TOP.</summary>
     private void FpuSet(int physical, Float80Value value)
     { _fpuRegisters[physical] = value; _fpuEmpty &= (byte)~(1 << physical); }
+    /// <summary>Initializes x87 control/status/tags and pointer state and republishes the resulting error level.</summary>
     private void InitializeFpu()
     {
         FpuControlWord = 0x037f; FpuStatusWord = 0; _fpuEmpty = 0xff;
@@ -47,18 +62,21 @@ public sealed partial class X86Cpu
         PublishFpuError();
         // FNINIT/FNSAVE invalidate the tags, not the raw register bits.
     }
+    /// <summary>Recomputes ES/B from pending unmasked numeric flags and updates the external FERR level.</summary>
     private void FpuSummary()
     {
         bool pending = (FpuStatusWord & ~FpuControlWord & 0x3f) != 0;
         FpuStatusWord = (ushort)(pending ? FpuStatusWord | 0x8080 : FpuStatusWord & ~0x8080);
         PublishFpuError();
     }
+    /// <summary>Records stack underflow/overflow and reports whether masked execution may commit an indefinite result.</summary>
     private bool FpuStackFault(bool overflow)
     {
         FpuStatusWord = (ushort)((FpuStatusWord & ~0x200) | 0x41 | (overflow ? 0x200 : 0));
         FpuSummary();
         return (FpuControlWord & 1) != 0;
     }
+    /// <summary>Reads a logical stack source or applies the masked/unmasked empty-source contract.</summary>
     private bool FpuReadTop(int logical, out Float80Value value)
     {
         int physical = (FpuTop + logical) & 7;
@@ -67,6 +85,7 @@ public sealed partial class X86Cpu
         value = Float80Value.Indefinite;
         return FpuStackFault(false);
     }
+    /// <summary>Checks the next physical slot before moving TOP and installing a value or masked indefinite response.</summary>
     private void FpuPush(Float80Value value)
     {
         int physical = (FpuTop - 1) & 7;
@@ -78,8 +97,10 @@ public sealed partial class X86Cpu
         else FpuStatusWord &= 0xfdff;
         FpuTopTo(physical); FpuSet(physical, value);
     }
+    /// <summary>Marks the old top slot empty and advances TOP while retaining its raw register bits.</summary>
     private void FpuPop()
     { _fpuEmpty |= (byte)(1 << FpuTop); FpuTopTo(FpuTop + 1); }
+    /// <summary>Records the current x87 instruction/opcode and optional data address for later environment saves.</summary>
     private void RecordFpuInstruction(byte opcode, byte modrm, Operand? operand = null)
     {
         _fpuIp = _instructionStart; _fpuCs = GetSegment(Segment.Cs);
@@ -91,14 +112,16 @@ public sealed partial class X86Cpu
             _fpuRealData = memory.Address;
         }
     }
+    /// <summary>Preflights segmentation, alignment and paging before collecting every physical byte address for an x87 operand.</summary>
     private uint[] FpuMemory(Operand operand, int size, bool write, int alignment)
     {
         CheckOperand(operand, size, write); CheckAlignment(operand.Address, alignment);
         ProbeMemory(operand.Address, size, write);
         var physical = new uint[size];
-        for (int i = 0; i < size; i++) physical[i] = TranslateLinear(unchecked(operand.Address + (uint)i), write);
+        for (int i = 0; i < size; i++) { physical[i] = TranslateLinear(unchecked(operand.Address + (uint)i), write); EnsureDeviceCheckpoint(physical[i]); }
         return physical;
     }
+    /// <summary>Reads prevalidated physical bytes and records one eligible debug-data observation.</summary>
     private byte[] FpuReadBytes(Operand operand, uint[] physical)
     {
         ObserveDebugData(operand.Address, physical.Length, false, false);
@@ -106,24 +129,30 @@ public sealed partial class X86Cpu
         for (int i = 0; i < bytes.Length; i++) bytes[i] = _memory.ReadByte(physical[i]);
         return bytes;
     }
+    /// <summary>Stores prevalidated physical bytes and records one eligible debug-data observation.</summary>
     private void FpuWriteBytes(Operand operand, uint[] physical, ReadOnlySpan<byte> bytes)
     {
         ObserveDebugData(operand.Address, physical.Length, true, false);
         for (int i = 0; i < bytes.Length; i++) _memory.WriteByte(physical[i], bytes[i]);
     }
+    /// <summary>Decodes the explicit significand and sign/exponent fields of a ten-byte little-endian extended value.</summary>
     private static Float80Value DecodeFloat80(ReadOnlySpan<byte> bytes) =>
         new(BinaryPrimitives.ReadUInt64LittleEndian(bytes), BinaryPrimitives.ReadUInt16LittleEndian(bytes[8..]));
+    /// <summary>Writes a raw extended value into its exact ten-byte little-endian representation.</summary>
     private static void EncodeFloat80(Span<byte> bytes, Float80Value value)
     {
         BinaryPrimitives.WriteUInt64LittleEndian(bytes, value.Significand);
         BinaryPrimitives.WriteUInt16LittleEndian(bytes[8..], value.SignExponent);
     }
+    /// <summary>Encodes the current 14/28-byte environment and optional eight raw registers without host floating-point conversion.</summary>
     private byte[] SaveFpuImage(bool registers)
     {
         int env = _operand32 ? 28 : 14;
         var bytes = new byte[env + (registers ? 80 : 0)];
         int word = _operand32 ? 4 : 2;
+        // Writes a little-endian 16-bit field into the surrounding environment or firmware buffer.
         void W(int offset, uint value) => BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(offset), (ushort)value);
+        // Writes a little-endian 32-bit field into the surrounding environment or firmware buffer.
         void D(int offset, uint value) => BinaryPrimitives.WriteUInt32LittleEndian(bytes.AsSpan(offset), value);
         W(0, FpuControlWord); W(word, FpuStatusWord); W(word * 2, FpuTagWord);
         bool real = !ProtectedMode || Virtual8086;
@@ -150,6 +179,7 @@ public sealed partial class X86Cpu
             for (int i = 0; i < 8; i++) EncodeFloat80(bytes.AsSpan(env + i * 10, 10), GetFpuRegister(i));
         return bytes;
     }
+    /// <summary>Restores the selected environment/register format and recalculates pending numeric-error state.</summary>
     private void RestoreFpuImage(ReadOnlySpan<byte> bytes, bool registers)
     {
         int env = _operand32 ? 28 : 14, word = _operand32 ? 4 : 2;
@@ -184,6 +214,7 @@ public sealed partial class X86Cpu
             for (int i = 0; i < 8; i++) _fpuRegisters[(FpuTop + i) & 7] = DecodeFloat80(bytes.Slice(env + i * 10, 10));
         FpuSummary();
     }
+    /// <summary>Executes x87 register, environment and save/restore instructions through their width-specific memory contracts.</summary>
     private bool ExecuteFpuState(byte opcode, byte modrm)
     {
         if (modrm < 0xc0)

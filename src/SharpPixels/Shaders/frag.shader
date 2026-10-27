@@ -26,16 +26,19 @@ uniform vec2 cropOrigin;
 uniform vec2 cropSize;
 uniform vec2 sourceTextureSize;
 
+// Keeps source-to-output coordinates at a positive integer scale.
 int effectiveUpscaleFactor()
 {
     return max(1, upscaleFactor);
 }
 
+// Returns the cropped source dimensions after integer presentation scaling.
 vec2 upscaledSize()
 {
     return cropSize * float(effectiveUpscaleFactor());
 }
 
+// Clamps source coordinates to the selected crop before fetching neighbors.
 vec2 clampSourcePixel(vec2 pixel)
 {
     vec2 minPixel = cropOrigin;
@@ -43,6 +46,7 @@ vec2 clampSourcePixel(vec2 pixel)
     return clamp(pixel, minPixel, maxPixel);
 }
 
+// Clamps output coordinates before converting to source pixels.
 vec2 clampUpscaledPixel(vec2 pixel)
 {
     vec2 minPixel = vec2(0.0, 0.0);
@@ -50,39 +54,46 @@ vec2 clampUpscaledPixel(vec2 pixel)
     return clamp(pixel, minPixel, maxPixel);
 }
 
+// Fetches one exact cropped source texel without texture-filter interpolation.
 vec4 fetchSourcePixel(vec2 pixel)
 {
     vec2 clampedPixel = clampSourcePixel(floor(pixel));
     return texelFetch(texture0, ivec2(clampedPixel), 0);
 }
 
+// Tests the small RGB/alpha tolerance used by edge-preserving integer scalers.
 bool sameColor(vec4 a, vec4 b)
 {
     return distance(a.rgb, b.rgb) < 0.001 && abs(a.a - b.a) < 0.001;
 }
 
+// Weights RGB/alpha differences for the local edge heuristic.
 float colorDistance(vec4 a, vec4 b)
 {
     vec3 delta = abs(a.rgb - b.rgb);
     return dot(delta, vec3(0.299, 0.587, 0.114)) + abs(a.a - b.a);
 }
 
+// Tests the looser color-distance threshold of the optional blending modes.
 bool nearColor(vec4 a, vec4 b)
 {
     return colorDistance(a, b) < 0.055;
 }
 
+// Maps a clamped integer output pixel into the cropped source rectangle.
 vec2 sourcePixelFromUpscaled(vec2 upscaledPixel)
 {
     float factor = float(effectiveUpscaleFactor());
     return cropOrigin + floor(clampUpscaledPixel(upscaledPixel) / factor);
 }
 
+// Repeats the exact source texel for nearest-neighbor presentation.
 vec4 sampleRawUpscaledPixel(vec2 upscaledPixel)
 {
     return fetchSourcePixel(sourcePixelFromUpscaled(upscaledPixel));
 }
 
+// Chooses the 2x corner texel from four axial source neighbors.
 vec4 sampleScale2xPixel(vec2 upscaledPixel)
 {
     vec2 clampedPixel = clampUpscaledPixel(floor(upscaledPixel));
@@ -118,6 +129,7 @@ vec4 sampleScale2xPixel(vec2 upscaledPixel)
     return e;
 }
 
+// Chooses the 3x subpixel from the complete local source neighborhood.
 vec4 sampleScale3xPixel(vec2 upscaledPixel)
 {
     vec2 clampedPixel = clampUpscaledPixel(floor(upscaledPixel));
@@ -190,11 +202,13 @@ vec4 sampleScale3xPixel(vec2 upscaledPixel)
     return e;
 }
 
+// Interpolates bounded RGB weight while retaining source alpha.
 vec4 blendToward(vec4 baseColor, vec4 blendColor, float weight)
 {
     return vec4(mix(baseColor.rgb, blendColor.rgb, clamp(weight, 0.0, 1.0)), baseColor.a);
 }
 
+// Applies the project's local corner/edge smoothing heuristic at the selected scale.
 vec4 sampleHqPixel(vec2 upscaledPixel)
 {
     float factor = float(effectiveUpscaleFactor());
@@ -244,15 +258,18 @@ vec4 sampleHqPixel(vec2 upscaledPixel)
     return result;
 }
 
+// Blends the selected corner with finite ordered Hermite edge ramps.
 vec4 blendCorner(vec4 baseColor, vec4 blendColor, vec2 local, vec2 corner, float strength)
 {
     vec2 cornerSpace = abs(local - corner);
     float diagonalDistance = cornerSpace.x + cornerSpace.y;
     float edgeDistance = max(cornerSpace.x, cornerSpace.y);
-    float weight = smoothstep(1.05, 0.12, diagonalDistance) * smoothstep(0.92, 0.04, edgeDistance) * strength;
+    // GLSL leaves reversed smoothstep edges undefined; invert the ordered ramps instead.
+    float weight = (1.0 - smoothstep(0.12, 1.05, diagonalDistance)) * (1.0 - smoothstep(0.04, 0.92, edgeDistance)) * strength;
     return blendToward(baseColor, blendColor, weight);
 }
 
+// Chooses the closer of two explicit edge-neighbor colors.
 vec4 pickDiagonalColor(vec4 center, vec4 first, vec4 second)
 {
     float firstDistance = colorDistance(center, first);
@@ -260,6 +277,7 @@ vec4 pickDiagonalColor(vec4 center, vec4 first, vec4 second)
     return firstDistance <= secondDistance ? first : second;
 }
 
+// Evaluates the project's diagonal-edge heuristic; no imported xBRZ code is used.
 bool shouldXbrzBlend(vec4 center, vec4 first, vec4 second, vec4 diagonal, vec4 firstOpposite, vec4 secondOpposite)
 {
     if (sameColor(center, first) && sameColor(center, second))
@@ -285,6 +303,7 @@ bool shouldXbrzBlend(vec4 center, vec4 first, vec4 second, vec4 diagonal, vec4 f
         && oppositeBias > 0.025;
 }
 
+// Applies the project's diagonal-corner presentation heuristic to local source pixels.
 vec4 sampleXbrzPixel(vec2 upscaledPixel)
 {
     float factor = float(effectiveUpscaleFactor());
@@ -340,6 +359,7 @@ vec4 sampleXbrzPixel(vec2 upscaledPixel)
     return result;
 }
 
+// Blends continuous differently colored edges with a bounded ordered falloff.
 vec4 clean4EdgeBlend(vec4 baseColor, vec4 neighborColor, float distanceToEdge, bool edgeIsContinuous)
 {
     if (!edgeIsContinuous || sameColor(baseColor, neighborColor))
@@ -347,10 +367,11 @@ vec4 clean4EdgeBlend(vec4 baseColor, vec4 neighborColor, float distanceToEdge, b
         return baseColor;
     }
 
-    float weight = smoothstep(0.34, 0.03, distanceToEdge) * 0.34;
+    float weight = (1.0 - smoothstep(0.03, 0.34, distanceToEdge)) * 0.34;
     return blendToward(baseColor, neighborColor, weight);
 }
 
+// Combines continuous edge and corner smoothing for the optional 4x mode.
 vec4 sampleClean4Pixel(vec2 upscaledPixel)
 {
     float factor = float(effectiveUpscaleFactor());
@@ -397,6 +418,7 @@ vec4 sampleClean4Pixel(vec2 upscaledPixel)
     return result;
 }
 
+// Dispatches the supported scaler, falling back to exact source pixels.
 vec4 sampleUpscaledPixel(vec2 upscaledPixel)
 {
     if (upscaleMode == 1 && effectiveUpscaleFactor() == 2)
@@ -427,11 +449,13 @@ vec4 sampleUpscaledPixel(vec2 upscaledPixel)
     return sampleRawUpscaledPixel(upscaledPixel);
 }
 
+// Clamps one output-space pixel before invoking the selected scaler.
 vec4 fetchUpscaledPixel(vec2 pixel)
 {
     return sampleUpscaledPixel(clampUpscaledPixel(floor(pixel)));
 }
 
+// Applies the horizontal three-tap CRT presentation kernel.
 vec3 blendCrtUpscaledPixel(vec2 pixel)
 {
     vec3 center = fetchUpscaledPixel(pixel).rgb;
@@ -440,6 +464,7 @@ vec3 blendCrtUpscaledPixel(vec2 pixel)
     return ((center * 6.0) + left + right) * 0.125;
 }
 
+// Applies the weighted five-tap television presentation kernel.
 vec3 blendTvUpscaledPixel(vec2 pixel)
 {
     vec3 center = fetchUpscaledPixel(pixel).rgb;
@@ -450,6 +475,7 @@ vec3 blendTvUpscaledPixel(vec2 pixel)
     return ((center * 10.0) + (left * 3.0) + (right * 3.0) + (up * 2.0) + (down * 2.0)) * 0.05;
 }
 
+// Interpolates the CRT kernel while retaining a sharp source contribution.
 vec3 sampleCrt(vec2 upscaledPixel)
 {
     vec2 basePixel = floor(upscaledPixel);
@@ -463,6 +489,7 @@ vec3 sampleCrt(vec2 upscaledPixel)
     return mix(topLeft, mix(top, bottom, fraction.y), 48.0 / 256.0);
 }
 
+// Interpolates the TV kernel while retaining a sharp source contribution.
 vec3 sampleTv(vec2 upscaledPixel)
 {
     vec2 basePixel = floor(upscaledPixel);
@@ -476,6 +503,7 @@ vec3 sampleTv(vec2 upscaledPixel)
     return mix(topLeft, mix(top, bottom, fraction.y), 64.0 / 256.0);
 }
 
+// Selects sharp/CRT/TV presentation and applies its scanline/mask treatment.
 void main()
 {
     vec2 upscaledPixel = texCoord * upscaledSize();

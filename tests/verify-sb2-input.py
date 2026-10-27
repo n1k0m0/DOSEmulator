@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent oracle for our ADC probe's guest port timeline, private RAM and PCM.
 
 No emulator assemblies, DSP snapshots or pre-recorded sound are used to calculate

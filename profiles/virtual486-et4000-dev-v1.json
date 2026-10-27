@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "virtual486-dev-v1",
+  "name": "DOSE 486 AT - ET4000AX ISA 1M Development",
+  "cpu": "i486dx-development",
+  "cpuHz": 33000000,
+  "ramMiB": 8,
+  "videoCard": "et4000ax-isa-1m-development"
+}

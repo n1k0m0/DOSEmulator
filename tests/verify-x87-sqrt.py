@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent DOS RAM/state comparison against actual native x87 squareRoot results."""
 import argparse
 import copy
@@ -11,6 +13,7 @@ NAMES='start code_end proof vectors results original restored body_start body_en
 
 
 def verify_data(r,m,p,vectors,reference,system,protected,paging):
+    """Validates x87 sqrt evidence from actual guest state, immutable program bytes and independently expected results."""
     c=r['cpu'];out=r['status']['debugOutput'];managed=system.startswith('emm386')
     assert not (managed and protected) and (not paging or protected)
     assert r['status']['fault'] is None and r['scenario']['complete']
@@ -22,11 +25,12 @@ def verify_data(r,m,p,vectors,reference,system,protected,paging):
     markers=re.findall(r'X87-SQRT-PROOF=([0-9A-F]{8})\r\n',out);assert len(markers)==1
     address=int(markers[0],16);raw=lambda at:struct.unpack_from('<I',m,at)[0]
     def physical(at):
+        """Walks the reported classic 4-KiB page tables to translate a guest linear proof address."""
         if not c['pagingEnabled']:return at
         pde=raw((c['cr3']&0xfffff000)+((at>>20)&0xffc));assert pde&1
         pte=raw((pde&0xfffff000)+((at>>10)&0xffc));assert pte&1
         return (pte&0xfffff000)|(at&4095)
-    def read(at,size):return bytes(m[physical(at+i)] for i in range(size))
+    def read(at,size):"""Reads checked guest proof bytes through the actual reported page tables, including page crossings."""; return bytes(m[physical(at+i)] for i in range(size))
     proof=read(address,1024);u32=lambda off:struct.unpack_from('<I',proof,off)[0]
     assert proof[:8]==b'FPSQ0001' and (u32(8),u32(12),u32(20),u32(232),u32(236))==(1,1,0,len(vectors),1)
     index=p.index(b'FPSQADDR')+8;assert struct.unpack_from('<I',p,index)[0]==len(NAMES)==17
@@ -125,6 +129,7 @@ def verify_data(r,m,p,vectors,reference,system,protected,paging):
 
 
 def negative_controls(r,m,p,vectors,reference,system,protected,paging,root):
+    """Corrupts selected independent evidence fields and requires each corrupted oracle input to fail."""
     assert not system.startswith('emm386')
     good=verify_data(r,m,p,vectors,reference,system,protected,paging);a=good['proofAddress'];index=p.index(b'FPSQADDR')+12
     labels=dict(zip(NAMES,struct.unpack_from('<17I',p,index)));base=a-labels['proof'];changes=[];first={}

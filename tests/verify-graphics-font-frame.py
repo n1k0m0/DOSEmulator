@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent private CPI -> full VGA graphics-font image oracle.
 No emulator imports, host font encoder, reference screenshot or public font asset.
 The guest copies its prepared text font through real VGA plane-2 reads, then
@@ -16,6 +18,7 @@ spec.loader.exec_module(font_oracle)
 
 
 def verify(args):
+    """Validates graphics font frame evidence from actual guest state, immutable program bytes and independently expected results."""
     files, journal, allocation = font_oracle.installation(args.base, args.overlay)
     cpi = files['DOS/EGA.CPI']
     font = font_oracle.cpi_fonts(cpi, 850)[args.points]
@@ -35,6 +38,7 @@ def verify(args):
     cells = [[(32,0) for _ in range(columns)] for _ in range(rows)]
 
     def text(row, col, value, color):
+        """Writes expected character/attribute cells into the independent frame oracle."""
         for ch in value.encode('ascii'):
             cells[row][col] = (ch,color)
             col += 1

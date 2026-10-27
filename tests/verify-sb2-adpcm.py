@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 Nils Kopal
 """Independent Creative-format, guest DMA/IRQ and complete PCM acceptance.
 
 Expected input is the probe's own affine byte sequence. No DSP sample trace,
@@ -80,6 +82,7 @@ predictor, level, samples, transitions, completions, dma_bytes = 128, 0, 0, [(0,
 period = 125000
 
 def block(bits, payload, reference):
+    """Decodes one explicitly selected ADPCM block using the independent predictor/scale contract."""
     global predictor, level, dma_bytes
     out = []
     if reference:

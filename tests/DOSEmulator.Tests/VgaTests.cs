@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
@@ -5,39 +7,50 @@ using DOSEmulator.Runtime;
 
 internal static class VgaTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value, string message = "VGA assertion failed.") { if (!value) throw new Exception(message); }
+    /// <summary>Writes an actual indexed VGA register for the controlled fixture setup.</summary>
     private static void Reg(VgaAdapter v, ushort port, int index, int value) => v.Write(port, (uint)(index | value << 8), 2);
+    /// <summary>Reads an actual indexed device register for the surrounding independent assertions.</summary>
     private static byte Get(VgaAdapter v, ushort port, int index) { v.Write(port, (uint)index, 1); return (byte)v.Read((ushort)(port + 1), 1); }
+    /// <summary>Resets the actual VGA attribute flip-flop and writes the selected index/data value.</summary>
     private static void Attribute(VgaAdapter v, int index, int value)
     {
         v.Read(0x3da, 1); v.Write(0x3c0, (uint)index, 1); v.Write(0x3c0, (uint)value, 1); v.Write(0x3c0, 0x20, 1);
     }
+    /// <summary>Builds the original project's planar VGA palette table.</summary>
     private static VgaAdapter Planar()
     {
         var v = new VgaAdapter(); Reg(v, 0x3c4, 4, 6); Reg(v, 0x3c4, 2, 15); Reg(v, 0x3ce, 5, 0); Reg(v, 0x3ce, 6, 5); return v;
     }
+    /// <summary>Reads one actual VGA plane while preserving the fixture's original access registers.</summary>
     private static void Plane(VgaAdapter v, int plane, int address, byte value)
     {
         Reg(v, 0x3c4, 2, 1 << plane); v.WriteByte((uint)address, value);
     }
+    /// <summary>Reads one actual VGA plane while preserving the fixture's original access registers.</summary>
     private static byte Plane(VgaAdapter v, int plane, int address)
     {
         Reg(v, 0x3ce, 4, plane); return v.ReadByte((uint)address);
     }
+    /// <summary>Boots the supplied private/synthetic medium through the emulated CPU and firmware.</summary>
     private static PcMachine Boot()
     {
         var m = PcMachine.CreateDemo(); m.RunSteps(100000); Check(m.Fault is null && m.Cpu.Halted, m.Fault ?? "POST did not finish."); return m;
     }
+    /// <summary>Executes the real guest ROM service and checks its return to the test sentinel.</summary>
     private static void Bios(PcMachine m, ushort ax)
     {
         m.Cpu.SetSegment(Segment.Cs, 0); m.Cpu.Eip = 0x1000; m.Memory.WriteByte(0x1000, 0xf4);
         m.Cpu.SetRegister(Register.Ax, ax); m.Cpu.EnterRealModeInterrupt(0x10); m.RunSteps(100000);
         Check(m.Fault is null && m.Cpu.Halted, m.Fault ?? "INT10 did not return.");
     }
+    /// <summary>Invokes the real guest pixel BIOS operation at the requested coordinates.</summary>
     private static void Pixel(PcMachine m, int x, int y, ushort ax)
     {
         m.Cpu.SetRegister(Register.Cx, (uint)x); m.Cpu.SetRegister(Register.Dx, (uint)y); Bios(m, ax);
     }
+    /// <summary>Registers the named vga regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         test("VGA aperture decode keeps display holes separate from RAM", () =>

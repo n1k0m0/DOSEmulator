@@ -27,6 +27,7 @@ namespace SharpPixels.Shaders
         private string _fragmentShaderSource;
         private bool _disposedValue = false;
 
+        /// <summary>OpenGL program handle owned by this compiled shader instance.</summary>
         public int Handle
         {
             private set;

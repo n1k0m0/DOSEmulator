@@ -1,11 +1,15 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using static ProtectedModeTests;
 
 internal static class LockAlignmentTests
 {
+    /// <summary>Fails the regression when its required invariant is false, preserving the supplied diagnostic context.</summary>
     private static void Check(bool value, string detail = "LOCK/alignment invariant failed")
     { if (!value) throw new Exception(detail); }
+    /// <summary>Builds explicit locked or unlocked memory-opcode bytes with the requested width and address.</summary>
     private static byte[] Mem(byte opcode, int group = 0, int width = 4, bool locked = true, uint address = 0x30000, byte? extended = null, byte[]? immediate = null)
     {
         var bytes = new List<byte>();
@@ -16,10 +20,14 @@ internal static class LockAlignmentTests
         if (immediate is not null) bytes.AddRange(immediate);
         return bytes.ToArray();
     }
+    /// <summary>Returns the bit mask for the supported byte, word or doubleword access width.</summary>
     private static uint Mask(int width) => width == 4 ? uint.MaxValue : width == 2 ? 65535u : 255u;
+    /// <summary>Reads the fixture's actual result for comparison with independently specified expected data.</summary>
     private static uint Read(MemoryBus m, int width, uint a = 0x30000) => width == 4 ? m.ReadDword(a) : width == 2 ? m.ReadWord(a) : m.ReadByte(a);
+    /// <summary>Writes explicit private-fixture input data without modifying original user media.</summary>
     private static void Write(MemoryBus m, int width, uint value, uint a = 0x30000)
     { if (width == 4) m.WriteDword(a, value); else if (width == 2) m.WriteWord(a, (ushort)value); else m.WriteByte(a, (byte)value); }
+    /// <summary>Builds a controlled user-ring fixture with explicit paging and alignment-check controls.</summary>
     private static (X86Cpu Cpu, MemoryBus Memory) User(byte[] code, bool am = true, bool ac = true, int ring = 3, bool paging = true)
     {
         var (c, m) = paging ? PagingTests.Create(code) : ProtectedModeTests.Rig(code);
@@ -37,6 +45,7 @@ internal static class LockAlignmentTests
         else { c.Eflags = flags; c.Eip = 0x2000; }
         return (c, m);
     }
+    /// <summary>Validates the real user-mode exception frame and its restart address.</summary>
     private static uint UserFault(X86Cpu c, MemoryBus m, byte vector, uint? error = 0, uint ip = 0x2000)
     {
         byte? entered = null; c.InterruptEntered += v => entered = v;
@@ -53,16 +62,21 @@ internal static class LockAlignmentTests
     private sealed class Device : IMemoryDevice
     {
         public int Reads, Writes;
+        /// <summary>Returns a controlled mapped-device byte and records the test observation/fault hook.</summary>
         public byte ReadByte(uint offset) { Reads++; return 0x55; }
+        /// <summary>Applies the controlled mapped-device write and records its test observation/fault hook.</summary>
         public void WriteByte(uint offset, byte value) { Writes++; Check(value == 0x55); }
     }
     private sealed class Port : IIoPortDevice
     {
         public int Reads, Writes;
+        /// <summary>Reads the fixture's actual result for comparison with independently specified expected data.</summary>
         public uint Read(ushort port, int width) { Reads++; return 0x11223344; }
+        /// <summary>Writes explicit private-fixture input data without modifying original user media.</summary>
         public void Write(ushort port, uint value, int width) { Writes++; }
     }
 
+    /// <summary>Registers the named lock alignment regression cases with the common runner.</summary>
     public static void AddTo(Action<string, Action> test)
     {
         foreach (int width in new[] { 1, 2, 4 }) foreach (int op in Enumerable.Range(0, 7)) foreach (bool immediate in new[] { false, true })

@@ -1,3 +1,5 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
 ; Separate reference only. Same 160-byte ABI; never called by the emulator.
 bits 64
     sub rsp,520
