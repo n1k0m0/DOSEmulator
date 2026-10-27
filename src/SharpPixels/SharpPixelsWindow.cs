@@ -507,6 +507,11 @@ namespace SharpPixels
         public uint KeyPressInterval { get; set; } = 50;
 
         /// <summary>
+        /// Defines how long a physical key must stay held before its first repeated callback; the initial key-down remains immediate.
+        /// </summary>
+        public uint KeyPressInitialDelay { get; set; } = 500;
+
+        /// <summary>
         /// Runs the SharpPixels window loop without OpenTK's Windows core-affinity
         /// pinning, which can hurt unfocused windows after they lose the foreground
         /// scheduler boost.
@@ -815,7 +820,7 @@ namespace SharpPixels
             }
 
             // Host repeat uses only the monotonic stopwatch and discards every missed interval after a stall.
-            if (_keyRepeatClock.TryTake(_drawingStopwatch.ElapsedMilliseconds, KeyPressInterval,
+            if (_keyRepeatClock.TryTake(_drawingStopwatch.ElapsedMilliseconds, KeyPressInitialDelay, KeyPressInterval,
                 KeyRepeatsEnabled && keysPressed.Count != 0))
             {
                 var modifiers = modifiersPressed;
@@ -825,7 +830,7 @@ namespace SharpPixels
                     foreach (Key key in repeatedKeys)
                         if (KeyRepeatsEnabled && keysPressed.Contains(key)) OnUserKeyPress(new KeyEventArgs(key, modifiers));
                 }
-                finally { _keyRepeatClock.Restart(_drawingStopwatch.ElapsedMilliseconds); }
+                finally { _keyRepeatClock.CompleteRepeat(_drawingStopwatch.ElapsedMilliseconds); }
             }
             _fpsCounter++;
 

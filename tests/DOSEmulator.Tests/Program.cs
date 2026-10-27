@@ -282,6 +282,7 @@ MemoryDecodeTests.AddTo(Test);
 Audit2CpuTests.AddTo(Test);
 Audit2StateMediaTests.AddTo(Test);
 Audit2InputTests.AddTo(Test);
+KeyRepeatDelayTests.AddTo(Test);
 Audit2PerformanceTests.AddTo(Test);
 FxHostPcTests.AddTo(Test);
 P54cTests.AddTo(Test);

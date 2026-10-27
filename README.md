@@ -1,5 +1,7 @@
 # DOSE – DosEmulator
 
+**Kurze Tastendrücke korrigiert:** [500 ms bis zum ersten Repeat](docs/KEYBOARD-REPEAT.md), danach 50 ms Folgeabstand. **9819 Regressionen**; kontrollierte MS-DOS-/FreeDOS-Eingaben geprüft, bestehende VM-/Snapshot-DLLs unverändert.
+
 **Zweiter Audit korrigiert:** [STI-/ENTER-, Import-, IPC-/COW- und Eingabegrenzen](docs/AUDIT2-FIXES-2026-10-27.md), **9792 bestandene Regressionen**, 0 Warnungen/Fehler. Echte DOS-/Audio-/x87-/Doom- und volle Snapshotfortsetzung geprüft. Größere Performancevorschläge und native Bedienabnahmen bleiben getrennt offen.
 
 **M4-Fortschritt: [82437FX-A2-Hostcontroller mit PAM und DRAM-Dekodierung](docs/hardware/430FX-HOST.md)**, 9125 bestandene Regressionen. Das eigene Host-Validierungsprofil besitzt P54C/100 MHz/32 MiB, echte DOS-/EMM386-/DOS4GW-Fortsetzungen und volle lokale Snapshots. PIIX, das vollständige historische 430FX-Board und Windows 95 bleiben offen. Das bisherige [DOSE-AT-/P54C-Profil](docs/hardware/P54C-PC.md) bleibt erhalten; Standard und alte PCs bleiben 486.

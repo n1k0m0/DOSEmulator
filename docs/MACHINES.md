@@ -1,5 +1,9 @@
 # Festplatten und gespeicherte PCs
 
+## Kurze Tastendrücke beim Batchstart
+
+Die [Repeatkorrektur](KEYBOARD-REPEAT.md) wartet vor der ersten Wiederholung 500 ms; der erste Tastendruck wird sofort geliefert. Erst längeres Halten wiederholt mit 50 ms Abstand. Damit erzeugt der geprüfte 120-ms-Druck im MS-DOS-/FreeDOS-Prompt genau ein Zeichen statt drei. `run-doom2.cmd` verwendet denselben aktualisierten Starter. Eine laufende Instanz verwendet ihre bereits geladenen Dateien; die Korrektur gilt beim neuen Start. Die persönliche Doom-Sitzung und Spielstände werden dafür nicht geändert.
+
 ## Aktuelle Medien- und Eingabekorrekturen
 
 Der [zweite Auditfolgebuild](AUDIT2-FIXES-2026-10-27.md) kann beschreibbare Disketten A/B zwischen den Slots einer neu geladenen eigenen PC-Definition tauschen: das exakte bestehende Basis-/COW-Paar wird über beide alten Slots wiederverwendet. Vollständige Vorbereitung und Rollback erhalten bei Fehlern die laufende Maschine und Journale. Falsche Ganzzahl-IPC-Payloads liefern kontrollierte Fehlerantworten, nachfolgende Requests bleiben nutzbar. Gehaltene Eingaben nach einem vollständigen Import tragen den vom UI bestätigten Generationstoken; alte Eingaben werden abgewiesen. Der monotone Wiederholungspfad holt lange Hostpausen nicht als Eingabeschwall nach. Native Windows-/Maus-/Repeat-Bedienabnahme bleibt getrennt offen.
