@@ -1,5 +1,13 @@
 # Festplatten und gespeicherte PCs
 
+## Zusätzliches PIIX-IDE-Validierungsprofil
+
+`profiles/dose-430fx-piix-ide-dev-v1.json` wählt die [eigene IDE-/Busmaster-Platine](hardware/PIIX-IDE.md): P54C B5 subset/100 MHz/32 MiB, 82437FX A2 und 82371FB A1 an 00:07.0/1. Factory, Ownerwechsel, CLI/Hardwaremenü und volle Snapshots verwenden feste Peers. DOSEBios programmiert DRBs, BMIBA=C000h, beide IDETIM.DE und MIRQ0→IRQ15, schaltet IOSE an und lässt BME für den Gast aus. Alte Profile bleiben unverändert eingegrenzt. Die acht DOS-/EMM386-Läufe mit je zwei Fortsetzungen auf Build 10755 belegen diesen Teilumfang; Resetdomänen/CF9/INIT und vollständiger Windows-PC bleiben offen.
+
+## Zusätzliches PIIX-IRQ-Validierungsprofil
+
+`profiles/dose-430fx-piix-irq-dev-v1.json` wählt die [eigene PIRQ-/ELCR-Platine](hardware/PIIX-IRQ.md) mit festem P54C B5/100 MHz/32 MiB, 82437FX A2 und begrenzter ursprünglicher PIIX-Funktion0 an `00:07.0`. CLI `--profile` und gespeicherte PC-Definitionen konstruieren das vollständige Tupel; CPU/RAM bleiben im Menü fest. Acht neue DOS-/EMM386-Starts mit voller Fortsetzung sind auf dem 10141er-Build geprüft. Alte Profile erhalten diese Komponente nicht. Die zwei bestehenden ATA-Kanäle sind weiter die bisherigen DOSE-Controller; dies ist kein PIIX-IDE-, CF9-/INIT- oder vollständiger historischer Windows-PC-Nachweis.
+
 ## Kurze Tastendrücke beim Batchstart
 
 Die [Repeatkorrektur](KEYBOARD-REPEAT.md) wartet vor der ersten Wiederholung 500 ms; der erste Tastendruck wird sofort geliefert. Erst längeres Halten wiederholt mit 50 ms Abstand. Damit erzeugt der geprüfte 120-ms-Druck im MS-DOS-/FreeDOS-Prompt genau ein Zeichen statt drei. `run-doom2.cmd` verwendet denselben aktualisierten Starter. Eine laufende Instanz verwendet ihre bereits geladenen Dateien; die Korrektur gilt beim neuen Start. Die persönliche Doom-Sitzung und Spielstände werden dafür nicht geändert.
@@ -85,3 +93,9 @@ Die Auswahl verbindet keinen Drucker. Headless `--parallel-sink` schlieÃŸt aus
 Bei gewÃ¤hlter SB16 schaltet `midiInterface=ct1740-mpu401-uart-development` beziehungsweise MIDI im HardwaremenÃ¼ ihren MPU-UART ein. Der separate Ressourcenwert `midiBasePort=768|816` bedeutet 300h/330h; IRQ und Mixer82-Bit 2 gehÃ¶ren zur Soundkarte. Alte PCs bleiben bei `none`. Der RÃ¼ckwechsel zu einer anderen Soundkarte deaktiviert die MPU-Auswahl. Die BLASTER-Anzeige ergÃ¤nzt den passenden P-Wert; Benutzer-Startdateien bleiben unverÃ¤ndert.
 
 Auswahl und Port werden gespeichert, laufende Frames und Ã¤uÃŸere Daten beim Kaltladen verworfen. `SendMidiInput`/Szenarien liefern nur vollstÃ¤ndige Ã¤uÃŸere Bytes; Headless `--midi-output <neue.bin>` speichert tatsÃ¤chlich gesendete Bytes. Es entsteht kein Ton, Host-MIDI-Endpunkt oder Intelligent Mode. [Konkreter Zeit-/Puffer-/IRQ-Vertrag und DOS-Nachweise](hardware/MIDI-MPU401.md). Der [vollstÃ¤ndige lokale Snapshot](SNAPSHOTS.md) erhÃ¤lt dagegen laufende Frames, Queues, Generationen und passende Medien.
+
+## Zusätzliches ATAPI-PIO-Entwicklungsprofil
+
+`profiles/dose-430fx-piix-s3-atapi-dev-v1.json` installiert den [benannten SFF-8020i-PIO-Teilumfang](hardware/ATAPI-CDROM.md) auf dem festen S3/430FX/PIIX-Board. `atapiSlot` reserviert 0..3, mitgeliefert 2/Secondary Master. Die installierte Lade darf leer bleiben. Ein gespeicherter PC fügt `opticalDiscs: [{ "slot": 2, "imagePath": "D:/Privat/Install.iso" }]` seiner vorhandenen Definition hinzu. HDDs dürfen den reservierten Platz nicht doppelt belegen; ein impliziter Demo-HDD0-Fallback wird bei CD0 unterdrückt.
+
+CLI: `--profile profiles/dose-430fx-piix-s3-atapi-dev-v1.json --cdrom <eigene.iso>`. Das Medienmenü bietet OPTICAL DRIVE und MOUNT/REMOVE ISO mit ausdrücklichem Neustart an. IPC `SetOpticalDisc {path}` beziehungsweise ohne Pfad bereitet denselben kalten Ownerwechsel vor; fehlerhafte ISO-/Konfigurationsvorbereitung lässt den bisherigen PC nutzbar. Eine ISO bleibt stets schreibgeschützt, ohne COW oder physisches Hostlaufwerk. Gastseitiges virtuelles START/STOP/Eject/Lock bleibt davon getrennt. Kein nativer Menübediennachweis, kein DOS-CD-Treiber-/MSCDEX- oder Win95-Abnahmeersatz.

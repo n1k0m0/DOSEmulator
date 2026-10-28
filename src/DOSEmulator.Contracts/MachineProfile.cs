@@ -16,8 +16,48 @@ public sealed record MachineProfile
     public const int FxHostCpuHz = 100_000_000;
     /// <summary>Fixed installed capacity validated with the host-controller firmware and snapshot graph.</summary>
     public const int FxHostRamMiB = 32;
-    /// <summary>Whether this tuple selects the explicit 82437FX-host validation board.</summary>
-    public bool IsFxHost => Id == FxHostProfileId && Cpu == P54cCpuId;
+    /// <summary>Own 430FX/PIRQ validation board; this identifier excludes IDE, reset and full PIIX acceptance.</summary>
+    public const string PiixIrqProfileId = "dose-430fx-piix-irq-dev-v1";
+    /// <summary>Own PIIX IDE/PCI busmaster validation board; full chipset reset and Windows acceptance remain separate.</summary>
+    public const string PiixIdeProfileId = "dose-430fx-piix-ide-dev-v1";
+    /// <summary>Own CF9/INIT/reset-domain board; complete chipset and Windows acceptance remain separate.</summary>
+    public const string PiixResetProfileId = "dose-430fx-piix-reset-dev-v1";
+    /// <summary>Own reset-capable 430FX board with a fixed, limited original Trio64 PCI adapter.</summary>
+    public const string S3Trio64ProfileId = "dose-430fx-piix-s3-dev-v1";
+    /// <summary>Explicit original 86C764 PCI adapter with two MiB; acceleration and complete Windows support remain separate.</summary>
+    public const string S3Trio64VideoId = "s3-trio64-86c764-pci-2m-development";
+    /// <summary>Own fixed S3/PIIX board with one separately identified SFF-8020i PIO CD-ROM target.</summary>
+    public const string AtapiProfileId = "dose-430fx-piix-s3-atapi-dev-v1";
+    /// <summary>Original 1995 twelve-byte packet/PIO subset, without DMA, overlap or CD audio synthesis.</summary>
+    public const string AtapiCdRomId = "sff8020i-rev25-pio-development";
+    /// <summary>Separate own PCI firmware board, retaining the prior ATAPI profile and its ROM bytes.</summary>
+    public const string PciBiosProfileId = "dose-430fx-piix-s3-atapi-pcibios-dev-v1";
+    /// <summary>Own Windows95 development candidate with the optional S3 firmware services; installation acceptance remains separate.</summary>
+    public const string Windows95ProfileId = "dose-430fx-piix-s3-win95-dev-v1";
+    /// <summary>Separate own development candidate at a fixed nominal 133 MHz, without historical cycle calibration.</summary>
+    public const string Windows95Profile133Id = "dose-430fx-piix-s3-win95-133-dev-v1";
+    /// <summary>Nominal owner/TSC rate reserved for the separate 133 MHz development identifier.</summary>
+    public const int Windows95Cpu133Hz = 133_000_000;
+    /// <summary>Whether this explicitly identified candidate selects the new S3-VBE firmware while retaining all fixed chipset peers.</summary>
+    public bool IsWindows95Board => (Id is Windows95ProfileId or Windows95Profile133Id) && Cpu == P54cCpuId;
+    /// <summary>Whether this fixed board exposes the own PCI BIOS and BIOS32 firmware interfaces.</summary>
+    public bool IsPciBiosBoard => (Id == PciBiosProfileId || IsWindows95Board) && Cpu == P54cCpuId;
+    /// <summary>Whether this is the explicitly validated packet-device board tuple.</summary>
+    public bool IsAtapiBoard => (Id == AtapiProfileId || IsPciBiosBoard) && Cpu == P54cCpuId;
+    /// <summary>Whether one installed packet target is selected, independently from inserted media.</summary>
+    public bool IsAtapi => OpticalDrive == AtapiCdRomId;
+    /// <summary>Whether this is a separately validated board containing the fixed Trio64 tuple.</summary>
+    public bool IsS3Trio64Board => (Id == S3Trio64ProfileId || IsAtapiBoard) && Cpu == P54cCpuId;
+    /// <summary>Whether the profile explicitly selects the original two-MiB Trio64 PCI adapter.</summary>
+    public bool IsTrio64 => VideoCard == S3Trio64VideoId;
+    /// <summary>Whether the board explicitly wires CF9 to the P54C and the reviewed PCI/ISA reset domains.</summary>
+    public bool IsPiixReset => (Id == PiixResetProfileId || IsS3Trio64Board) && Cpu == P54cCpuId;
+    /// <summary>Whether this tuple constructs both original PIIX functions and DMA-capable ATA channels.</summary>
+    public bool IsPiixIde => (Id == PiixIdeProfileId || IsPiixReset) && Cpu == P54cCpuId;
+    /// <summary>Whether this tuple contains the explicitly capable PIC/PIRQ bridge, including the separate IDE board.</summary>
+    public bool IsPiixIrq => (Id == PiixIrqProfileId || IsPiixIde) && Cpu == P54cCpuId;
+    /// <summary>Whether the board contains the fixed 82437FX host controller.</summary>
+    public bool IsFxHost => (Id == FxHostProfileId || IsPiixIrq) && Cpu == P54cCpuId;
     /// <summary>Whether the profile selects one matching board and the limited P54C CPU implementation.</summary>
     public bool IsP54c => (Id == P54cProfileId || IsFxHost) && Cpu == P54cCpuId;
     /// <summary>Selects a complete supported CPU/platform/clock tuple for a later validated cold power cycle, preserving user names and devices.</summary>
@@ -25,7 +65,9 @@ public sealed record MachineProfile
     {
         if (IsFxHost)
         {
-            if (!useP54c) throw new InvalidOperationException("The 430FX-host board has a fixed P54C/100-MHz/32-MiB tuple.");
+            if (!useP54c) throw new InvalidOperationException(IsWindows95Board
+                ? "The Windows95 development board retains its fixed P54C, nominal clock and 32 MiB tuple."
+                : "The 430FX-host board has a fixed P54C/100-MHz/32-MiB tuple.");
             return this;
         }
         return this with
@@ -75,6 +117,10 @@ public sealed record MachineProfile
     public string MidiInterface { get; init; } = "none";
     /// <summary>Jumper-selected MIDI data/status pair, independent from the DSP/mixer base.</summary>
     public int MidiBasePort { get; init; } = 0x330;
+    /// <summary>Installed optical drive model, distinct from an empty or loaded tray.</summary>
+    public string OpticalDrive { get; init; } = "none";
+    /// <summary>One of the four physical IDE positions reserved for the installed packet target.</summary>
+    public int AtapiSlot { get; init; } = 2;
     private string _videoCard = DOSEIdentity.VgaModel;
     /// <summary>Canonical adapter ID; older saved PCs normalize the former reference-VGA spelling while loading.</summary>
     public string VideoCard
@@ -97,10 +143,16 @@ public sealed record MachineProfile
     {
         if (SchemaVersion != 1 || !(Id == "virtual486-dev-v1" && Cpu == "i486dx-development" || IsP54c))
             throw new ArgumentException("Use a matching implemented DOSE platform and CPU model.");
-        if (CpuHz != (IsFxHost ? FxHostCpuHz : IsP54c ? P54cCpuHz : 33_000_000))
+        int expectedHz = IsWindows95Board && Id == Windows95Profile133Id ? Windows95Cpu133Hz :
+            IsFxHost ? FxHostCpuHz : IsP54c ? P54cCpuHz : 33_000_000;
+        if (CpuHz != expectedHz)
             throw new ArgumentException("The selected development CPU requires its fixed nominal virtual clock.");
         if (IsFxHost ? RamMiB != FxHostRamMiB : RamMiB is not (4 or 8 or 16))
             throw new ArgumentException("Use 32 MiB for the 430FX-host board, or 4/8/16 MiB for an existing AT board.");
+        if (IsAtapi != IsAtapiBoard || OpticalDrive is not ("none" or AtapiCdRomId) || AtapiSlot is < 0 or > 3 || !IsAtapi && AtapiSlot != 2)
+            throw new ArgumentException("The packet CD-ROM requires its fixed S3/PIIX board and one valid IDE slot.");
+        if (IsTrio64 != IsS3Trio64Board)
+            throw new ArgumentException("The original Trio64 adapter requires its fixed 430FX/PIIX/S3 board tuple.");
     }
 
     /// <summary>Rejects unsupported hardware identifiers, sizes and conflicting DOSE platform resource selections.</summary>
@@ -140,7 +192,7 @@ public sealed record MachineProfile
             throw new ArgumentException("MPU-UART requires the CT1740 card and a 300h/330h jumper selection.");
         if (ParallelPort != "none" && SoundBlasterIrq == 7 && (IsSb16 || SoundCard is "sb2-dsp-development" or "sb2-opl2-development"))
             throw new ArgumentException("The IBM LPT adapter reserves IRQ7; select a different sound-card IRQ before enabling it.");
-        if (VideoCard is not ("dose-vga-development" or "et4000ax-isa-1m-development")) throw new ArgumentException("Unknown development video card.");
+        if (VideoCard is not ("dose-vga-development" or "et4000ax-isa-1m-development" or S3Trio64VideoId)) throw new ArgumentException("Unknown development video card.");
     }
 }
 
@@ -153,10 +205,19 @@ public sealed record MachineStatus(
     ulong VirtualNanoseconds, string Position, string? Fault, string MediaName, string DebugOutput,
     bool DiskWritable = false, MachineProfile? Configuration = null,
     string FloppyAMedia = "Empty", string FloppyBMedia = "Empty", MachineResetStatus? Reset = null,
-    IReadOnlyList<HardDiskStatus>? HardDisks = null);
+    IReadOnlyList<HardDiskStatus>? HardDisks = null)
+{
+    /// <summary>Configured read-only optical basis, independent from the drive's guest-controlled tray state.</summary>
+    public OpticalDiscStatus? OpticalDisc { get; init; }
+}
+
+/// <summary>Installed packet target and protected ISO capacity for UI/IPC; no mutable device is exposed.</summary>
+public sealed record OpticalDiscStatus(int Slot, string? Name, long Bytes);
 
 public sealed record HostSettings
 {
+    /// <summary>Explicit host local calendar input at startup, restore and resume; deterministic headless runs remain opt-in.</summary>
+    public bool SynchronizeClock { get; init; } = true;
     /// <summary>Persisted format version; unsupported versions are rejected before adopting the configuration.</summary>
     public int SchemaVersion { get; init; } = 1;
     /// <summary>Host presentation filter; it does not modify the guest's video registers or VRAM.</summary>

@@ -218,26 +218,29 @@ public sealed partial class X86Cpu
         return (contributoryFirst && contributorySecond) || (first == 14 && (contributorySecond || second == 14));
     }
 
-    /// <summary>Attempts architectural fault delivery, escalating to double fault and CPU shutdown when necessary.</summary>
-    private void DeliverFault(CpuFaultException initial)
+    /// <summary>Adapts existing thrown faults to the same value-based architectural delivery path.</summary>
+    private void DeliverFault(CpuFaultException initial) => DeliverFault(initial.Vector, initial.ErrorCode, initial.Trap);
+
+    /// <summary>Delivers fault values without allocating a host exception, preserving escalation and CPU shutdown.</summary>
+    private void DeliverFault(byte vector, uint? errorCode, bool trap)
     {
-        CpuFaultException current = initial;
         // A failing benign delivery may become contributory, then #DF, then shutdown.
         for (int attempts = 0; attempts < 4; attempts++)
         {
             ControlCheckpoint checkpoint = SaveControl();
             try
             {
-                uint? error = current.ErrorCode ?? (current.Vector is 8 or 10 or 11 or 12 or 13 or 14 or 17 ? 0u : null);
-                DispatchInterrupt(current.Vector, false, error, true, current.Trap);
+                uint? error = errorCode ?? (vector is 8 or 10 or 11 or 12 or 13 or 14 or 17 ? 0u : null);
+                DispatchInterrupt(vector, false, error, true, trap);
                 return;
             }
             catch (CpuFaultException next)
             {
                 RestoreControl(checkpoint);
                 if (!ProtectedMode) throw Unsupported("Nested real-mode exception delivery is not implemented yet.");
-                if (current.Vector == 8) { TripleFaulted = true; Halted = true; return; }
-                current = DoubleFault(current.Vector, next.Vector) ? new(8, 0) : next;
+                if (vector == 8) { TripleFaulted = true; Halted = true; return; }
+                if (DoubleFault(vector, next.Vector)) { vector = 8; errorCode = 0; trap = false; }
+                else { vector = next.Vector; errorCode = next.ErrorCode; trap = next.Trap; }
             }
         }
         throw Unsupported("Exception-delivery chain exceeded the implemented bound.");

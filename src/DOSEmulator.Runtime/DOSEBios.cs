@@ -23,20 +23,21 @@ public static partial class DOSEBios
     /// <summary>Chooses only the explicit board firmware variant while retaining the public legacy ROM builder ABI.</summary>
     internal static byte[] CreateBiosForBoard(bool fxHost, int ramMiB, IReadOnlyList<IReadOnlyBlockDevice?> disks,
         FloppyGeometry? floppyA, FloppyGeometry? floppyB, bool bootFloppy, bool ps2Mouse, bool et4000, bool gameport, bool serial, bool parallel,
-        ushort midiPort, byte midiIrq)
+        ushort midiPort, byte midiIrq, bool piixIde = false, bool piixReset = false, bool trio64 = false, bool pciBios = false, bool trioVbe = false)
         => CreateBiosCore(ramMiB, disks.Select(d => d?.SectorCount ?? 0).ToArray(), disks.Select(d => d is IWritableBlockDevice).ToArray(),
-            floppyA, floppyB, bootFloppy, ps2Mouse, et4000, gameport, serial, parallel, midiPort, midiIrq, fxHost);
+            floppyA, floppyB, bootFloppy, ps2Mouse, et4000, gameport, serial, parallel, midiPort, midiIrq, fxHost, piixIde, piixReset, trio64, pciBios, trioVbe);
 
     /// <summary>Patches immutable ROM configuration, including translated CHS geometry for disks larger than 504 MiB.</summary>
     private static byte[] CreateBiosCore(int ramMiB, long[] capacities, bool[] writableDrives,
-        FloppyGeometry? floppyA, FloppyGeometry? floppyB, bool bootFloppy, bool ps2Mouse, bool et4000, bool gameport, bool serial, bool parallel, ushort midiPort, byte midiIrq, bool fxHost = false)
+        FloppyGeometry? floppyA, FloppyGeometry? floppyB, bool bootFloppy, bool ps2Mouse, bool et4000, bool gameport, bool serial, bool parallel, ushort midiPort, byte midiIrq, bool fxHost = false, bool piixIde = false, bool piixReset = false, bool trio64 = false, bool pciBios = false, bool trioVbe = false)
     {
+        if (trioVbe && (!trio64 || !pciBios)) throw new ArgumentException("The own Trio64 VBE ROM requires its constructor-bound PCI-BIOS/S3 board.");
         if (midiPort != 0 && (midiPort is not (0x300 or 0x330) || midiIrq is not (5 or 7 or 9 or 10)))
             throw new ArgumentException("Unsupported CT1740 MIDI inventory resources.");
         long sectors = capacities.FirstOrDefault(c => c > 0);
         int first = Array.FindIndex(capacities, c => c > 0);
         bool writable = first >= 0 && writableDrives[first];
-        using var compressed = new MemoryStream(Convert.FromBase64String(fxHost ? FxHostCompressedImage : CompressedImage));
+        using var compressed = new MemoryStream(Convert.FromBase64String(trioVbe ? Windows95CompressedImage : pciBios ? PciBiosCompressedImage : trio64 ? Trio64CompressedImage : piixReset ? PiixResetCompressedImage : piixIde ? PiixIdeCompressedImage : fxHost ? FxHostCompressedImage : CompressedImage));
         using var gzip = new GZipStream(compressed, CompressionMode.Decompress);
         byte[] rom = new byte[65536]; gzip.ReadExactly(rom);
         System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(rom.AsSpan(0xe000), (ushort)Math.Min(0xfc00, (ramMiB - 1) * 1024));
@@ -98,6 +99,60 @@ public static partial class DOSEBios
             " | P54C / FXhost | Original firmware - 64 KiB ROM"u8);
         ReplaceInventory(rom, "Configured CPU: 486DX / AT development profile"u8,
             "Configured CPU: P54C B5 / 430FX host subset"u8);
+    }
+
+    /// <summary>Names the separate PIIX IRQ board without claiming IDE, chipset reset or Windows integration.</summary>
+    internal static void ConfigurePiixIrqInventory(byte[] rom)
+    {
+        ReplaceInventory(rom, "  |  486 / AT   |   Original firmware - 64 KiB ROM"u8,
+            " | FX/PIIX IRQ | Original firmware - 64 KiB ROM"u8);
+        ReplaceInventory(rom, "Configured CPU: 486DX / AT development profile"u8,
+            "Configured CPU: P54C B5 / FX + PIIX IRQ"u8);
+    }
+
+    /// <summary>Identifies only the separate packet-device board, without advertising a BIOS CD boot or original driver service.</summary>
+    internal static void ConfigureAtapiInventory(byte[] rom)
+    {
+        ReplaceInventory(rom, "  |  486 / AT   |   Original firmware - 64 KiB ROM"u8,
+            " | FX/PIIX/S3/CD | Original firmware - 64 KiB ROM"u8);
+        ReplaceInventory(rom, "Configured CPU: 486DX / AT development profile"u8,
+            "Configured CPU: P54C B5 / FX/PIIX/S3/ATAPI"u8);
+    }
+
+    /// <summary>Identifies only the separate PCI-firmware board without advertising Windows or complete chipset conformance.</summary>
+    internal static void ConfigurePciBiosInventory(byte[] rom)
+    {
+        ReplaceInventory(rom, "  |  486 / AT   |   Original firmware - 64 KiB ROM"u8,
+            " | PCI BIOS CD | Original firmware - 64 KiB ROM"u8);
+        ReplaceInventory(rom, "Configured CPU: 486DX / AT development profile"u8,
+            "Configured CPU: P54C B5 / PCI BIOS subset"u8);
+    }
+
+    /// <summary>Names the separate original-Trio64 PCI subset board without claiming acceleration or Windows acceptance.</summary>
+    internal static void ConfigureTrio64Inventory(byte[] rom)
+    {
+        ReplaceInventory(rom, "  |  486 / AT   |   Original firmware - 64 KiB ROM"u8,
+            " | FX/PIIX/S3 | Original firmware - 64 KiB ROM"u8);
+        ReplaceInventory(rom, "Configured CPU: 486DX / AT development profile"u8,
+            "Configured CPU: P54C B5 / FX + PIIX + S3"u8);
+    }
+
+    /// <summary>Names the own reset-domain board without claiming complete chipset or Windows acceptance.</summary>
+    internal static void ConfigurePiixResetInventory(byte[] rom)
+    {
+        ReplaceInventory(rom, "  |  486 / AT   |   Original firmware - 64 KiB ROM"u8,
+            " | FX/PIIX RST | Original firmware - 64 KiB ROM"u8);
+        ReplaceInventory(rom, "Configured CPU: 486DX / AT development profile"u8,
+            "Configured CPU: P54C B5 / FX + PIIX reset"u8);
+    }
+
+    /// <summary>Names the separate IDE/busmaster board without claiming chipset reset or Windows acceptance.</summary>
+    internal static void ConfigurePiixIdeInventory(byte[] rom)
+    {
+        ReplaceInventory(rom, "  |  486 / AT   |   Original firmware - 64 KiB ROM"u8,
+            " | FX/PIIX IDE | Original firmware - 64 KiB ROM"u8);
+        ReplaceInventory(rom, "Configured CPU: 486DX / AT development profile"u8,
+            "Configured CPU: P54C B5 / FX + PIIX IDE"u8);
     }
 
     /// <summary>Replaces one exact own inventory string within its original capacity, retaining all ROM pointers and terminators.</summary>

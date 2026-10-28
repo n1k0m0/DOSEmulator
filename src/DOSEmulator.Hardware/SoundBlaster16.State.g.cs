@@ -16,6 +16,7 @@ public sealed partial class SoundBlaster16 : IScheduledStateObject
         var w = new StateWriter("DOSEmulator.Hardware.SoundBlaster16");
         w.Value("_responses", _responses.ToArray());
         w.Value("_parameters", _parameters);
+        w.Value("_xbus05Control", _xbus05Control);
         w.Value("_command", _command);
         w.Value("_mixerIndex", _mixerIndex);
         w.Value("_interruptSources", _interruptSources);
@@ -88,6 +89,7 @@ public sealed partial class SoundBlaster16 : IScheduledStateObject
         var r = new StateReader(state, "DOSEmulator.Hardware.SoundBlaster16");
         _responses.Clear(); foreach (var item in r.Sequence<byte>("_responses")) _responses.Enqueue(item);
         r.Array("_parameters", _parameters);
+        _xbus05Control = r.Value<byte>("_xbus05Control");
         _command = r.Value<byte>("_command");
         _mixerIndex = r.Value<byte>("_mixerIndex");
         _interruptSources = r.Value<byte>("_interruptSources");

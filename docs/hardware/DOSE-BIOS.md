@@ -1,5 +1,11 @@
 # DOSEBios: IdentitÃ¤t, POST und Reviewkorrekturen
 
+Die zusätzliche sechste [PCI-BIOS-/BIOS32-ROMvariante](PCI-BIOS.md) ist auf ihrem festen eigenen Profil mit11819 Regressionen und echten DOS-/Original-EMM386-/FAR-Aufrufen integriert. INT1A/B1, FE6E und BIOS32 greifen auf die wirklichen PCI-Ressourcen zu. Alle fünf bisherigen ROM-Bytestrome bleiben unverändert. PnP/APM, vollständige Firmwarekonformität und Windows 95 bleiben offen.
+
+## Eigene PIIX-IDE-Variante vom 27. Oktober 2026
+
+Nur `dose-430fx-piix-ide-dev-v1` erhält zusätzlich zum eigenen 430FX-DRB-POST wirkliche PCI-OUTs: Fn1-BMIBA=C001h, IDETIM=80008000h, Fn0-MBIRQ0=0Fh und Fn1-Command=0003h; danach CF8=0. Somit sind PIO-Gates geöffnet, der Gast muss PCI-Master BME selbst freigeben. Originale Default- und reine FX-Host-ROMbytes bleiben gegenüber10141 exakt gleich; öffentlicher BIOS-ABI bleibt erhalten. [IDE-Vertrag und Gastnachweis](PIIX-IDE.md), Build 10755. Keine fertige PCI-BIOS-/Windows-Firmware-, CF9-/INIT- oder historische Gesamtplatinenzusage.
+
 ## Eigene 430FX-Hostvariante vom 27. Oktober 2026
 
 Das [Host-Validierungsprofil](430FX-HOST.md) erhält eine getrennt assemblierte eigene `DOSE_430FX_HOST`-Variante. Vor Vektoren/BDA/POST führt der Gast tatsächliche CF8h-/CFCh-OUTs aus, programmiert alle fünf DRBs auf 08h und damit 32 MiB und deaktiviert das Konfigurationslatch wieder. Die Inventur nennt P54C B5 / 430FX host subset. Der bisherige 65536-Byte-Default-ROM-Bytestrom bleibt bytegleich (SHA256 `353CFA9B957CF6433F8F2B92EFA1BD33F90CDE2FA1C3BC4D63D60AA87A56FC67`); öffentliche BIOS-Builder bleiben ABI-kompatibel. Dies ist keine PIIX-/PCI-BIOS-/historische Boardfirmware-/Windows-Abnahme.

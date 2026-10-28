@@ -28,6 +28,7 @@ public sealed partial class Pit8254 : IScheduledStateObject
         w.Value("_unsupportedProgramming", _unsupportedProgramming);
         w.Value("_statusLatch", _statusLatch);
         w.Value("InterruptPulses", InterruptPulses);
+        w.Value("_resetOutputLow", _resetOutputLow);
         return w.Finish();
     }
 
@@ -49,6 +50,7 @@ public sealed partial class Pit8254 : IScheduledStateObject
         _unsupportedProgramming = r.Value<bool>("_unsupportedProgramming");
         _statusLatch = r.Value<byte?>("_statusLatch");
         InterruptPulses = r.Value<long>("InterruptPulses");
+        _resetOutputLow = r.Value<bool>("_resetOutputLow");
         r.Finish();
     }
 

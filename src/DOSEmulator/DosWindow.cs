@@ -39,6 +39,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
     // Held until the NEXT UI update: SharpPixels uploads after OnUserUpdate returns.
     private LatestBufferExchange<VgaFrameBuffer>.ReadLease? _displayFrame;
     private MachineStatus? _status;
+    private double _realtimePercent = double.NaN;
+    private string _guestCalendar = "";
     private string[] _items = [];
     private string _page = "";
     private int _selected;
@@ -64,7 +66,12 @@ public sealed partial class DosWindow : SharpPixelsWindow
     private readonly GuestTestScenario? _scenario;
 
     /// <summary>Reports the instantiated board and nominal clock without presenting its validation subset as a finished historical PC.</summary>
-    private static string PlatformLabel(MachineProfile? profile) => profile?.IsFxHost == true
+    private static string PlatformLabel(MachineProfile? profile) => profile?.IsPciBiosBoard == true
+        ? "430FX / PIIX / S3 / PCI BIOS subset / P54C 100 MHz" : profile?.IsTrio64 == true
+        ? "430FX / PIIX / Trio64 subset / P54C 100 MHz" : profile?.IsPiixReset == true
+        ? "430FX / PIIX reset subset / P54C 100 MHz" : profile?.IsPiixIde == true
+        ? "430FX / PIIX IDE subset / P54C 100 MHz" : profile?.IsPiixIrq == true
+        ? "430FX / PIIX IRQ subset / P54C 100 MHz" : profile?.IsFxHost == true
         ? "430FX host / P54C B5 subset / 100 MHz"
         : profile?.IsP54c == true ? "DOSE AT / P54C B5 subset / 90 MHz" : "486 Development";
 
@@ -114,6 +121,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
             var hostClock = Stopwatch.StartNew();
             // A small audio lead absorbs callback/batch jitter; it does not change guest rates.
             var pacing = new RealtimePacer(audio.Available ? 40_000_000UL : 0);
+            var clockSync = new HostClockSynchronizer();
+            var speed = new RealtimeSpeedMeter();
             // Converts the monotonic host timestamp to nanoseconds using integer arithmetic.
             ulong HostNanoseconds() => (ulong)((UInt128)(ulong)hostClock.ElapsedTicks * 1_000_000_000 / (ulong)Stopwatch.Frequency);
             PcMachine? previousMachine = null;
@@ -131,9 +140,10 @@ public sealed partial class DosWindow : SharpPixelsWindow
                         {
                             if (previousMachine is not null) previousMachine.Audio.AudioReady -= audio.Write;
                             audio.Clear(); machine.Audio.AudioReady += audio.Write;
-                            pacing.Reset(machine.Scheduler.Now, HostNanoseconds()); previousMachine = machine;
+                            pacing.Reset(machine.Scheduler.Now, HostNanoseconds()); speed.Reset(); previousMachine = machine;
                         }
                         var levels = Volatile.Read(ref _settings);
+                        clockSync.Update(machine, levels.SynchronizeClock, DateTime.Now, HostNanoseconds());
                         machine.Speaker.Volume = levels.SpeakerVolume / 100.0;
                         if (machine.SoundBlaster is { } sb) sb.Volume = levels.DigitalVolume / 100.0;
                         if (machine.SoundBlaster16 is { } sb16) sb16.Volume = levels.DigitalVolume / 100.0;
@@ -148,6 +158,9 @@ public sealed partial class DosWindow : SharpPixelsWindow
                             delay = pacing.DelayMilliseconds(machine.Scheduler.Now, HostNanoseconds());
                         }
                         else { audio.Clear(); pacing.Reset(machine.Scheduler.Now, HostNanoseconds()); }
+                        speed.Observe(machine.Scheduler.Now, HostNanoseconds(), machine.Running && machine.Fault is null);
+                        Volatile.Write(ref _realtimePercent, speed.Percent ?? double.NaN);
+                        Volatile.Write(ref _guestCalendar, machine.Rtc.Calendar.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
                         Volatile.Write(ref _guestRepeatEnabled, machine.Running && machine.Fault is null && !machine.CpuResetHeld ? 1 : 0);
                         Volatile.Write(ref _status, machine.GetStatus());
                         _frames.TryPublish(machine, static (surface, owner) => owner.CaptureFrame(surface));
@@ -230,7 +243,9 @@ public sealed partial class DosWindow : SharpPixelsWindow
             DrawFilledRectangleWithAlpha(0, PixelsHeight - 61, PixelsWidth, 23, 35, 15, 20, 240);
             Text(15, PixelsHeight - 54, _notice.Length > 140 ? _notice[..140] : _notice, 1, Color.Salmon);
         }
-        Title = $"{DOSEIdentity.DisplayName} - {PlatformLabel(status?.Configuration)} | {status?.State} | {FPS} FPS";
+        double speedPercent = Volatile.Read(ref _realtimePercent);
+        string speedLabel = double.IsNaN(speedPercent) ? "SPEED --" : $"SPEED {speedPercent:0}%";
+        Title = $"{DOSEIdentity.DisplayName} - {PlatformLabel(status?.Configuration)} | {status?.State} | {speedLabel} | {FPS} FPS";
     }
 
     /// <summary>Renders the active keyboard-driven overlay and its published state without mutating guest hardware.</summary>
@@ -288,15 +303,22 @@ public sealed partial class DosWindow : SharpPixelsWindow
         var profile = status?.Configuration ?? new MachineProfile();
         _items = _page switch
         {
-        "MAIN MENU" => ["CONTINUE", "VIDEO SETTINGS", "MACHINE / HARDWARE", "MEDIA", "REMOTE PLAY / NETWORK", "AUDIO SETTINGS", "RESET / POWER", "SAVED MACHINES", "EXIT"],
+        "MAIN MENU" => ["CONTINUE", "VIDEO SETTINGS", "MACHINE / HARDWARE", "MEDIA", "REMOTE PLAY / NETWORK", "AUDIO SETTINGS", "RESET / POWER", "SAVED MACHINES", "TIME AND SPEED", "EXIT"],
+        "TIME AND SPEED" => [$"HOST CLOCK SYNC: {(_settings.SynchronizeClock ? "ON" : "OFF")}",
+            "HOST: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
+            "RTC:  " + Volatile.Read(ref _guestCalendar),
+            "REALTIME TARGET: 100% / LIVE SPEED IN WINDOW TITLE",
+            "RESTORE / RESUME: CURRENT HOST LOCAL TIME", "WINDOWS CLOCK SYNC REQUIRES DOSE TOOLS", "BACK"],
         "SAVED MACHINES" => ["SAVE THIS PC...", "LOAD PC... (COLD START)", "SAVE FULL SNAPSHOT...", "LOAD FULL SNAPSHOT...", "PC FILES COLD START / SNAPSHOTS RESUME", "BACK"],
+        "OPTICAL DRIVE" => [status?.OpticalDisc is { } cd ? $"IDE {cd.Slot}: {ShortName(cd.Name)} / {cd.Bytes / 1048576m:0.##} MIB" : "NO PACKET TARGET INSTALLED",
+            "MOUNT READ-ONLY ISO... (RESTART)", "REMOVE ISO (RESTART)", "BACK"],
         "HARD DISKS" => [HardDiskLabel(status, 0), HardDiskLabel(status, 1), HardDiskLabel(status, 2), HardDiskLabel(status, 3), "CREATE BLANK DISK IMAGE...", "BACK"],
         "IDE 0" or "IDE 1" or "IDE 2" or "IDE 3" => [HardDiskLabel(status, _page[^1] - '0'), "ATTACH READ-ONLY IMAGE... (RESTART)",
             "ATTACH WITH PRIVATE OVERLAY... (RESTART)", "DETACH DISK (RESTART)", "BACK"],
         "RESET / POWER" => ["SEND CTRL+ALT+DEL TO GUEST", "HARDWARE RESET / CPU, RAM RETAINED", "POWER CYCLE / RAM CLEARED", "BACK"],
         "VIDEO SETTINGS" => [$"FILTER          {_settings.Filter.ToUpperInvariant()}", $"UPSCALE         {_settings.Upscale.ToUpperInvariant()}",
             $"ASPECT          {(_settings.CorrectAspect ? "4:3" : "SOURCE PIXELS")}", $"VSYNC           {(_settings.VSync ? "ON" : "OFF")}", "BACK"],
-        "MACHINE / HARDWARE" => [profile.IsFxHost ? "CPU: 430FX HOST / P54C 100 MHZ (FIXED)" : profile.IsP54c ? "CPU: DOSE AT / P54C B5 SUBSET 90 MHZ (RESTART)" : "CPU: 486DX / 33 MHZ (RESTART)", $"RAM: {profile.RamMiB} MIB ({(profile.IsFxHost ? "FIXED HOST BOARD" : "CHANGE RESTARTS")})",
+        "MACHINE / HARDWARE" => [profile.IsTrio64 ? "CPU: FX/PIIX/S3 / P54C 100 MHZ (FIXED)" : profile.IsPiixReset ? "CPU: FX/PIIX RESET / P54C 100 MHZ (FIXED)" : profile.IsPiixIde ? "CPU: FX/PIIX IDE / P54C 100 MHZ (FIXED)" : profile.IsPiixIrq ? "CPU: FX/PIIX IRQ / P54C 100 MHZ (FIXED)" : profile.IsFxHost ? "CPU: 430FX HOST / P54C 100 MHZ (FIXED)" : profile.IsP54c ? "CPU: DOSE AT / P54C B5 SUBSET 90 MHZ (RESTART)" : "CPU: 486DX / 33 MHZ (RESTART)", $"RAM: {profile.RamMiB} MIB ({(profile.IsFxHost ? "FIXED HOST BOARD" : "CHANGE RESTARTS")})",
             $"FLOPPY A: {profile.FloppyDriveA.ToUpperInvariant()} (CHANGE RESTARTS)", $"FLOPPY B: {profile.FloppyDriveB.ToUpperInvariant()} (CHANGE RESTARTS)",
             $"BOOT: {profile.BootDevice.ToUpperInvariant()} (CHANGE RESTARTS)",
             profile.SoundCard switch { "adlib-opl2-development" => "SOUND: ADLIB OPL2 MELODIC DEV (RESTART)",
@@ -305,7 +327,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
                 "sb2-dsp-development" => $"SOUND: SB2 DSP A{profile.SoundBlasterBasePort:X3} I{profile.SoundBlasterIrq} D1 (RESTART)", _ => "SOUND: SPEAKER (CHANGE RESTARTS)" },
             "SOUND CARD RESOURCES...",
             $"MOUSE: {profile.Mouse.ToUpperInvariant()} (CHANGE RESTARTS)",
-            $"VIDEO: {(profile.IsEt4000 ? "ET4000AX 1M DEV" : "DOSE VGA")} (CHANGE RESTARTS)",
+            $"VIDEO: {(profile.IsTrio64 ? "S3 TRIO64 PCI 2M SUBSET (FIXED)" : profile.IsEt4000 ? "ET4000AX 1M DEV (CHANGE RESTARTS)" : "DOSE VGA (CHANGE RESTARTS)")}",
             $"GAMEPORT: {(profile.Gameport == "none" ? "NONE" : "IBM ANALOG / VIRTUAL INPUT")} (RESTART)",
             $"COM1: {(profile.SerialPort == "none" ? "NONE" : "PC16550D / VIRTUAL INPUT")} (RESTART)",
             $"LPT1: {(profile.ParallelPort == "none" ? "NONE" : "IBM PRINTER / VIRTUAL PINS")} (RESTART)",
@@ -323,7 +345,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
                 $"DOS: SET BLASTER={profile.GetBlasterEnvironment()}", "BACK"]
             : ["SELECT AN SB2 OR SB16 CARD IN HARDWARE FIRST", "BACK"],
         "MEDIA" => [status?.DiskWritable == true ? "IDE: WRITES TO PRIVATE OVERLAY" : "IDE: READ-ONLY", "OPEN RAW IDE IMAGE... (READ-ONLY)", "OPEN IDE + PRIVATE OVERLAY...",
-            $"FLOPPY A: {ShortName(status?.FloppyAMedia)}", $"FLOPPY B: {ShortName(status?.FloppyBMedia)}", "BOOT BUILT-IN TEST SECTOR", "HARD DISKS / CREATE IMAGE...", "BACK"],
+            $"FLOPPY A: {ShortName(status?.FloppyAMedia)}", $"FLOPPY B: {ShortName(status?.FloppyBMedia)}", "BOOT BUILT-IN TEST SECTOR", "HARD DISKS / CREATE IMAGE...", "OPTICAL DRIVE...", "BACK"],
         "FLOPPY A" or "FLOPPY B" => [$"DRIVE TYPE: {(_page == "FLOPPY A" ? profile.FloppyDriveA : profile.FloppyDriveB).ToUpperInvariant()}",
             "INSERT READ-ONLY IMAGE...", "INSERT + PRIVATE OVERLAY...", "EJECT MEDIUM", "BACK"],
         "AUDIO SETTINGS" => [_audio?.Available == true ? "OUTPUT: WINDOWS DEFAULT / 48 KHZ STEREO" : "OUTPUT: UNAVAILABLE",
@@ -339,7 +361,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
     /// <summary>Submits the requested operation through the component's normal command interface.</summary>
     private void Command(string command, object? payload = null)
     {
-        bool topology = command is "SetHardDisk" or "LoadMachineDefinition" or "LoadSnapshot" or "CommitConfigurationChange" or "PowerCycleReadOnlyDisk" or "PowerCycleOverlayDisk";
+        bool topology = command is "SetOpticalDisc" or "SetHardDisk" or "LoadMachineDefinition" or "LoadSnapshot" or "CommitConfigurationChange" or "PowerCycleReadOnlyDisk" or "PowerCycleOverlayDisk";
         if (topology) Interlocked.Increment(ref _machineOperationPending);
         _ = _session.Enqueue(IpcProtocol.CreateRequest(command, payload), Volatile.Read(ref _uiInputGeneration))
             .ContinueWith(task =>
@@ -367,8 +389,14 @@ public sealed partial class DosWindow : SharpPixelsWindow
                 case 5: OpenPage("AUDIO SETTINGS"); break;
                 case 6: OpenPage("RESET / POWER"); break;
                 case 7: OpenPage("SAVED MACHINES"); break;
-                case 8: Close(); break;
+                case 8: OpenPage("TIME AND SPEED"); break;
+                case 9: Close(); break;
             }
+        }
+        else if (_page == "TIME AND SPEED")
+        {
+            if (_selected == 0) { _settings = _settings with { SynchronizeClock = !_settings.SynchronizeClock }; SaveSettings(); }
+            else if (_selected == 6) OpenPage("MAIN MENU");
         }
         else if (_page == "RESET / POWER")
         {
@@ -430,7 +458,20 @@ public sealed partial class DosWindow : SharpPixelsWindow
             else if (_selected == 4) OpenPage("FLOPPY B");
             else if (_selected == 5) { Command("PowerCycleDemo"); CloseMenu(); }
             else if (_selected == 6) OpenPage("HARD DISKS");
-            else if (_selected == 7) OpenPage("MAIN MENU");
+            else if (_selected == 7) OpenPage("OPTICAL DRIVE");
+            else if (_selected == 8) OpenPage("MAIN MENU");
+        }
+        else if (_page == "OPTICAL DRIVE")
+        {
+            if (_selected == 3) OpenPage("MEDIA");
+            else if (Volatile.Read(ref _status)?.Configuration?.IsAtapi != true) _notice = "LOAD THE ATAPI BOARD PROFILE FIRST";
+            else if (_selected == 1)
+            {
+                using var image = new OpenFileDialog { Title = "Read-only cooked CD-ROM image (2048-byte blocks)", Filter = "Cooked ISO (*.iso)|*.iso" };
+                if (image.ShowDialog() != DialogResult.OK) return;
+                Command("SetOpticalDisc", new { path = Path.GetFullPath(image.FileName) }); CloseMenu();
+            }
+            else if (_selected == 2) { Command("SetOpticalDisc", new { }); CloseMenu(); }
         }
         else if (_page == "SAVED MACHINES")
         {
@@ -451,13 +492,13 @@ public sealed partial class DosWindow : SharpPixelsWindow
             }
             else if (_selected == 2)
             {
-                using var dialog = new SaveFileDialog { Title = "VollstÃ¤ndigen DOSE-Snapshot anlegen (neuer Ordner)", Filter = "DOSE Snapshot (*.dossav)|*.dossav",
+                using var dialog = new SaveFileDialog { Title = "VollstÃƒÂ¤ndigen DOSE-Snapshot anlegen (neuer Ordner)", Filter = "DOSE Snapshot (*.dossav)|*.dossav",
                     DefaultExt = "dossav", FileName = "Snapshot-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".dossav", InitialDirectory = Path.GetDirectoryName(_settingsPath) };
                 if (dialog.ShowDialog() == DialogResult.OK) { Command("CreateSnapshot", new { path = dialog.FileName }); _notice = "FULL SNAPSHOT SAVE REQUESTED"; }
             }
             else if (_selected == 3)
             {
-                using var source = new FolderBrowserDialog { Description = "DOSE-Snapshotordner (.dossav) wÃ¤hlen", UseDescriptionForTitle = true, ShowNewFolderButton = false };
+                using var source = new FolderBrowserDialog { Description = "DOSE-Snapshotordner (.dossav) wÃƒÂ¤hlen", UseDescriptionForTitle = true, ShowNewFolderButton = false };
                 if (source.ShowDialog() != DialogResult.OK) return;
                 string parent = Path.GetDirectoryName(source.SelectedPath)!;
                 string destination = Path.Combine(parent, "Resume-" + Guid.NewGuid().ToString("N") + ".dosebranch");
@@ -506,7 +547,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
                 }); break;
                 case 6: OpenPage("SOUND CARD RESOURCES"); break;
                 case 7: ChangeProfile(p => p with { Mouse = p.Mouse == "none" ? "ps2-two-button" : "none" }); break;
-                case 8: ChangeProfile(p => p with { VideoCard = p.IsEt4000 ? "dose-vga-development" : "et4000ax-isa-1m-development" }); break;
+                case 8: ChangeProfile(p => p.IsTrio64 ? p : p with { VideoCard = p.IsEt4000 ? "dose-vga-development" : "et4000ax-isa-1m-development" }); break;
                 case 9: ChangeProfile(p => p with { Gameport = p.Gameport == "none" ? "ibm-game-control-development" : "none" }); break;
                 case 10: ChangeProfile(p => p with { SerialPort = p.SerialPort == "none" ? "pc16550d-com1-development" : "none" }); break;
                 case 11: ChangeProfile(p => p with { ParallelPort = p.ParallelPort == "none" ? "ibm-printer-adapter-development" : "none" }); break;
@@ -591,6 +632,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
     /// <summary>Shows fixed controller slots and actual image capacity without confusing BIOS drive numbering with physical placement.</summary>
     private static string HardDiskLabel(MachineStatus? status, int slot)
     {
+        if (status?.OpticalDisc is { } cd && cd.Slot == slot) return $"{slot}: ATAPI CD-ROM / RESERVED / READ-ONLY ISO";
         var disk = status?.HardDisks?.FirstOrDefault(d => d.Slot == slot);
         string location = slot switch { 0 => "PRIMARY MASTER", 1 => "PRIMARY SLAVE", 2 => "SECONDARY MASTER", _ => "SECONDARY SLAVE" };
         return disk is null ? $"{slot}: {location} / EMPTY" : $"{slot}: {location} / {disk.Bytes / 1048576m:0.##} MIB / {(disk.Writable ? "OVERLAY" : "READ-ONLY")}";
@@ -616,7 +658,9 @@ public sealed partial class DosWindow : SharpPixelsWindow
     /// <summary>Selects a protected base and optional journal, then requests an atomic cold topology change on the emulation owner.</summary>
     private void AttachDiskImage(int slot, bool writable)
     {
-        using var image = new OpenFileDialog { Title = "Festplatte fÃ¼r IDE " + slot, Filter = "RAW-Festplatten (*.img;*.raw;*.ima)|*.img;*.raw;*.ima" };
+        if (Volatile.Read(ref _status)?.Configuration is { IsAtapi: true } p && p.AtapiSlot == slot)
+        { OpenPage("OPTICAL DRIVE"); return; }
+        using var image = new OpenFileDialog { Title = "Festplatte fÃƒÂ¼r IDE " + slot, Filter = "RAW-Festplatten (*.img;*.raw;*.ima)|*.img;*.raw;*.ima" };
         if (image.ShowDialog() != DialogResult.OK) return;
         string? overlayPath = null;
         if (writable)

@@ -30,9 +30,9 @@ public sealed partial class Pit8254 : IIoPortDevice
     /// <summary>Diagnostic indication that the guest selected programming outside the implemented reference contract.</summary>
     public bool UnsupportedProgramming => _unsupportedProgramming || SpeakerCounter.UnsupportedProgramming;
     /// <summary>Current reference output signal of Pit8254, in that component's native representation.</summary>
-    private bool Output => !_running || (_mode == 2
+    private bool Output => !_resetOutputLow && (!_running || (_mode == 2
         ? ((scheduler.Now - _start) * Frequency / 1_000_000_000) % _reload != _reload - 1
-        : ((scheduler.Now - _start) * Frequency / 1_000_000_000) % _reload < (_reload + 1) / 2);
+        : ((scheduler.Now - _start) * Frequency / 1_000_000_000) % _reload < (_reload + 1) / 2));
 
     /// <summary>Derives the visible PIT count from the reference channel's loaded count, mode and current tick.</summary>
     private ushort Current()
@@ -78,6 +78,7 @@ public sealed partial class Pit8254 : IIoPortDevice
             if (channel != 0) { _unsupportedProgramming = true; return; }
             byte access = (byte)((value >> 4) & 3);
             if (access == 0) { if (_latch is null) { _latch = Current(); _readHigh = false; } return; }
+            _resetOutputLow = false;
             _access = access; _writeHigh = _readHigh = false;
             _mode = (int)(value >> 1) & 7; if (_mode >= 6) _mode -= 4;
             _unsupportedProgramming = _mode is not (2 or 3) || (value & 1) != 0;
@@ -93,6 +94,7 @@ public sealed partial class Pit8254 : IIoPortDevice
             raw = (ushort)(_low | ((byte)value << 8)); _writeHigh = false;
         }
         else raw = _access == 1 ? (byte)value : (ushort)((byte)value << 8);
+        _resetOutputLow = false;
         _reload = raw == 0 ? 65536u : raw;
         if (_event != 0) scheduler.Cancel(_event);
         _remainder = 0; _start = scheduler.Now; _running = !_unsupportedProgramming;

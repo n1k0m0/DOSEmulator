@@ -1,6 +1,6 @@
 # Konzept: DOSE – DosEmulator
 
-**Umsetzungsstand 27. Oktober 2026:** M4 besitzt inzwischen einen geprüften [82437FX-A2-Hostteilumfang](hardware/430FX-HOST.md) mit P54C/100 MHz/32 MiB, realem PAM/DRAM und DOS-/voller Snapshotfortsetzung (9125 Regressionen). Das erfüllt einen Teil des unveränderten M4-Ziels. PIIX, 133-MHz-Variante, S3 Trio64, ATAPI, Firmware/Manager und die tatsächliche Win95-RTM-Abnahme bleiben offen; die nachfolgende Profilmatrix und alle M0–M8-Abnahmekriterien bleiben verbindlich.
+**Umsetzungsstand 27. Oktober 2026:** Aktuell 11563 Regressionen nach [erneuter Auditprüfung](AUDIT2-RECHECK-2026-10-27.md); eigene [P54C-/430FX-Host](hardware/430FX-HOST.md), [PIIX-IDE](hardware/PIIX-IDE.md), [Reset](hardware/PIIX-RESET.md), [S3-PCI/VGA/8bpp](hardware/S3-TRIO64.md) und [SFF-8020i-PIO](hardware/ATAPI-CDROM.md)-Vertikalen besitzen konkrete Teilnachweise mit DOS und voller Fortsetzung. Vollständige Chips, DOS-CD-Treiber/MSCDEX, 133 MHz, Firmware/Manager und tatsächliche Win95-RTM-Abnahme bleiben offen. Die nachfolgende Profilmatrix und sämtliche M0–M8-Zielkriterien bleiben unverändert verbindlich; maßgeblich ist [IMPLEMENTATION-STATUS.md](IMPLEMENTATION-STATUS.md).
 
 **Stand:** 24. Oktober 2026 · **Status:** Architekturentwurf 1 · **Zielplattform:** Windows x64, C#/.NET 10  
 **Programme:** `DOSEmulator.exe`, `DOSEmulatorManager.exe`, `DOSEmulator.Headless.exe`

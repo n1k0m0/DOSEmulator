@@ -22,7 +22,7 @@ public sealed partial class X86Cpu
         int w = Width;
         switch (opcode)
         {
-            case 0x63: AdjustRpl(); return true;
+            case 0x63: if (!AdjustRpl()) throw new CpuFaultException(6); return true;
             case 0x0f: ExecuteTwoByte(); return true;
             case >= 0xd8 and <= 0xdf: ExecuteX87(opcode); X87Instructions++; return true;
             case 0x27: case 0x2f: // DAA / DAS
@@ -273,6 +273,8 @@ public sealed partial class X86Cpu
             case 0x31: ReadTimeStampCounter(); return;
             case 0x32: TransferTimestampMsr(false); return;
             case 0xc7: CompareExchangeEightBytes(); return;
+            // Reserved on the 486/P54C: fault after both opcode bytes, without a later-generation UD0 operand fetch.
+            case 0xff: throw new CpuFaultException(6);
             default: throw Unsupported($"Two-byte opcode 0F {opcode:X2} is not implemented.");
         }
     }

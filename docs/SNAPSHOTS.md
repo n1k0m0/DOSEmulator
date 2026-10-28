@@ -1,4 +1,28 @@
-# VollstÃƒÂ¤ndige lokale DOSE-Snapshots
+# Vollständige lokale DOSE-Snapshots
+
+Ergänzender aktueller Nachweis: [Windows-Dateien, VFAT und CD-Lesen](WINDOWS95-STORAGE.md) besteht bei 100/133 MHz mit unveränderten V12-Modulen, vollständigen eigenen 262157-Byte-Dateien und je einem ganzen aktiven CD-Snapshot-Future. Der beobachtete CD-PIO läuft im V86-Modus; native CDFS/IOS ist damit weiterhin offen. Die folgenden historischen Installations-/Soundnachweise und die ursprüngliche RTM-/M4-Grenze bleiben erhalten.
+
+Der aktuelle [Windows-95-OEM-Baustein](WINDOWS95-INSTALLATION-WORK.md), Build 12589/V12, besitzt 46 Zustandstypen, 894 gepruefte Mitglieder und 40 unveraenderte Ereigniskoerper. Die neue strenge Fuenf-Modul-Identitaet umfasst den erweiterten S3-/Core-/SB16-Vertrag; ein wirklicher V11-CLI-Import scheitert vor Zweig mit bestehendem nichtnulligem CLR-Abbruch, ohne Migration. Lange aktive Wave-Fortsetzungen bei 100/133 MHz vergleichen je 18 ganze CPU-/32-MiB-RAM-/VRAM-/Geraete-/Schedulerzustaende und erreichen natuerliches DONE auf beiden Seiten. Der uebernommene CLI vergleicht 10001 Schritte gegen 10000 plus Speichern/Laden plus einen Schritt: ganze Zustandsdatei und RAM, CPU/Status, Bild und Medien sind gleich; vier gepruefte Capture-UUIDs bleiben getrennt. Diese sind echte installierte OEM-Windows-Fortsetzungen, keine weiteren Kaltstarts oder urspruengliche RTM-/M4-Gesamtabnahme. Die nachstehenden Zahlen behalten ihren historischen Buildbezug.
+
+Der spätere [PCI-BIOS-/BIOS32-Firmwarestand](hardware/PCI-BIOS.md) ergänzt 16 volle 32-MiB-Fortsetzungen in laufenden eigenen 16-/32-Bit-Services. Die neue Runtime/Contracts und Abhängigkeiten ändern die strenge Format1-Buildidentität, obwohl 46 Typen/874 Member/40 Callbackkörper erhalten bleiben. Ein echter 11642er-CLI-Import wird vor Zweig abgewiesen; neue installierte CLI-Fortsetzung besteht ohne POST. Alte Container werden nicht migriert. Ganze Original-VCPI-Tabellen und seine ROM-Aliasseite bleiben erhalten.
+
+Der neue [DOS-CD-Treiber-/MSCDEX-Nachweis](hardware/DOS-CDROM-DRIVER.md) ergänzt16volle32-MiB-Fortsetzungen auf unveränderten11563er-VM-Modulen, bei tatsächlich offener residenter SYS-Arbeit und originalem DOS-CDhandle. Format1 behält dieselbe Buildidentität; der Gasttreiber benötigt keinen neuen Komponententyp/Callback. Die beim Schnitt offene1510-Rückkehr und ihr ganzer2048-Byte-Block werden auf allen drei PCs separat beobachtet. Inventar46/874/40 unverändert. Die folgenden Runtime-/Geräteänderungen behalten ihre historischen Builds.
+
+## PIO-Importphasen nach erneuter Auditprüfung
+
+Der [11563er-Reviewfolgebuild](AUDIT2-RECHECK-2026-10-27.md) bindet PIO-DRQ und wartende PIO-Callbacks gemeinsam an tatsächliche Zähler, Flags, Buffer, Token, zukünftige Fristen und versiegelte Mediengrenzen. Fehler werden vor Medienöffnung und Ownerwechsel abgewiesen. Gültige terminale One-past- und IDENTIFY-Historien sowie spätere READ-IDNF bleiben erhalten. 46 Typen/874 Mitglieder/40 Ereignisse unverändert. Nur die Runtime unter den fünf VM-Modulen ändert sich; Format 1 lehnt alte 11529er-Container vor Zweig ab, ohne stille Migration.
+
+Aktuell ergänzt die erste [ursprüngliche Trio64-PCI-/VGA-/VRAM-Vertikale](hardware/S3-TRIO64.md), Build11312,45 Typen/824 Mitglieder/39 unveränderte Ereignisse. Acht neue volle32MiB-Fortsetzungen bei offenerDAC/ATC und aktiverPCM;43 semantische Container/86 direkte+Owner-Ablehnungen vor eigener Medienöffnung plus11 positive Kontrollen. Kanonische BAR-Bits, feste Decoderpeers und vollständiges gehaltenes S3-Resetbild sind gebunden. Format1 bleibt buildgebunden.
+
+Aktuell ergänzt der eigene CF9-/Resetprofilstand 11148 die gehaltenen Domänen samt Pending/AllAsserted/CpuOnly/ready-held:44 Typen/815 Mitglieder/39 Ereignisse. Zwei neue Releasecallbacks, ein explizit um Resetgeneration erweiterter UART-RX-Callback;36 der37 bisherigen Körper bleiben gleich. Format1 bleibt streng buildgebunden. [Resetvertrag und tatsächliche Fortsetzungen](hardware/PIIX-RESET.md).
+
+## PIIX-IDE-Fortsetzung vom 27. Oktober 2026
+
+Der [neue IDE-Teilumfang](hardware/PIIX-IDE.md) speichert echte PRDT-/Region-/Sektorcursors, Count0=65536, Gates/BAR, Flankenhistorie, MIRQ und fünf zusätzliche benannte Callbackarten. Import prüft tatsächliche Medienpräsenz/Writability/Kapazität vor Datenträgeröffnung, einschließlich bestehendem PIO-Commit. Busy-READ darf noch regulär IDNF liefern, terminale Writes dürfen One-past tragen. Nicht referenzierte lebende DMA-Callbacks und unmögliche Cursors werden abgewiesen, stornierte Historie bleibt erhalten. 43 Typen/798 Mitglieder/37 Ereignisse; die alten32 Callbackkörper unverändert. Acht neue DOS-/EMM386-Starts/16 volle 32 MiB-Fortsetzungen und 84 semantische Containerfälle sind auf 10755 geprüft. Format1 bleibt buildgebunden; alter 10141er-CLI-Import scheitert vor Zweiganlage. Folgende Abschnitte behalten ihren historischen Buildbezug.
+
+## PIIX-IRQ-Fortsetzung vom 27. Oktober 2026
+
+Das [separate IRQ-Profil](hardware/PIIX-IRQ.md) ergänzt gespeicherte PIRQ-Konfiguration, vier äußere PCI-Pins, verdrängte ISA-Pins, ELCR und die feste PIC-Levelcapability. Die übergreifenden Masken-/Pin-/IRR-/ISR-/Prioritäts-/Kaskadenbeziehungen werden vor Medienöffnung geprüft. Restaurieren lädt direkte Felder und erzeugt keine neuen Eingangsflanken. Acht neue volle 32-MiB-DOS-/EMM386-Fortsetzungen schneiden bei gehaltenem PIRQ, laufender PCM/x87/Dateiaktivität und offener Interruptbehandlung; die alte 486-Matrix bleibt getrennt. 10141 Regressionen, 41 Typen/770 Mitglieder/32 unveränderte Ereigniskörper. Format 1 ist weiterhin an den identischen VM-Build gebunden; alte 9792/9819-Container werden vor Zweiganlage abgewiesen. Die folgenden Abschnitte behalten ihren historischen Buildbezug.
 
 ## Zweite Auditfolge: Import- und Eingabegeneration
 
@@ -101,3 +125,9 @@ Der [8870er-Auditfolgebuild](AUDIT-FIXES-2026-10-27.md) behebt den gesondert gen
 
 
 Der [8942er-P54C-PC-Nachweis](hardware/P54C-PC.md) ergÃ¤nzt erstmals volle Produkt-PC-/Medienfortsetzungen des benannten 90-MHz-Teilmodells unter tatsÃ¤chlichem DOS/EMM386 und DOS4GW. Modell/Frequenz/RAM/Scheduler werden vor Branch-VerÃ¶ffentlichung gegen die bereits geschÃ¼tzte Medienprofildefinition geprÃ¼ft; die CPU besitzt nachweislich ihren eigenen Scheduler. GÃ¼ltige vollstÃ¤ndige TSC-Epochen bleiben Werte, unbekannte Quellen zusÃ¤tzliche Felder werden abgewiesen. ZwÃ¶lf neue tatsÃ¤chliche semantische Importablehnungen erhalten die bisherige Session. Alle sechs Medienpositionen sind am neuen Profil geprÃ¼ft. 38 Typen/751 Mitglieder/32 EreigniskÃ¶rper und Format 1 bleiben erhalten; ein echter eigener 8870er-CLI-Import wird ohne Zweiganlage abgewiesen. Positive DOS-RÃ¼ckkehr und begrenzte Original-EMM386-Monitorfortsetzungen werden im Nachweis getrennt gezÃ¤hlt.
+
+## ATAPI-PIO auf Build 11529
+
+Der [SFF-8020i-Teilumfang](hardware/ATAPI-CDROM.md) ergänzt genau ein festes Controllerkind und einen separat versiegelten 2048-Byte-ISO-Anker. Aktuell 46 Typen/874 Mitglieder/40 Ereignisse; alle 39 vorherigen Callbackkörper bleiben gleich. Tatsächliche volle Schnitte nach zehn CDB-Bytes und bei Data-In-Offset128, originale DOS-/EMM386-Zukunft und frühe Ablehnung von 55 beschädigten Containern/110 direkten und Owner-Versuchen sind separat nachgewiesen. 27 positive Phasen-/Medienkontrollen erhalten legitime leere READs, zukünftige Fehler und terminale Cursor.
+
+`HasDisc`, Blockzahl, IDE-Platz, Auswahl, Resetbild, CDB-/Daten-/Sense-/UA-Zustände und der eine zukünftige Phasecallback werden vor jeder Medienöffnung geprüft. Ein installiertes leeres Laufwerk bleibt ein Gerät. Die ISO wird nicht als HDD/COW ausgegeben. Format 1 ist weiter streng an die fünf tatsächlichen VM-Module gebunden; alte 11312er-Sicherungen werden nicht migriert. Vollständige ATAPI-/Originaltreiber-/MSCDEX-/Win95-Abnahme bleibt offen.

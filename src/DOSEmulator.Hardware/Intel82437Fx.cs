@@ -6,7 +6,7 @@ using DOSEmulator.Core;
 namespace DOSEmulator.Hardware;
 
 /// <summary>82437FX A2 host-controller subset with CPU DRAM top/hole decoding and PAM shadow storage.
-/// Cache/timing attributes are readable latches; SMM and PCI memory masters are not implemented.</summary>
+/// Cache/timing attributes are readable latches; PCI masters receive only explicitly accepted DRAM, without SMM or cache timing.</summary>
 public sealed partial class Intel82437Fx : IPciConfigurationFunction, IPciConfigurationAbortSink, IMemoryDevice
 {
     private readonly MemoryBus _memory;
@@ -34,8 +34,26 @@ public sealed partial class Intel82437Fx : IPciConfigurationFunction, IPciConfig
     public uint RamHoleStart => _memory.RamHoleStart;
     /// <summary>Current optional CPU DRAM hole length; zero disables the hole.</summary>
     public uint RamHoleLength => _memory.RamHoleLength;
-    /// <summary>MAE controls acceptance of future PCI masters; it does not gate the CPU's own RAM accesses.</summary>
+    /// <summary>MAE controls PCI-master DRAM acceptance; it does not gate the CPU's own RAM accesses.</summary>
     public bool MemoryAccessEnabled => (_config[4] & 2) != 0;
+
+    /// <summary>Accepts one complete PCI physical DRAM grant, including every PAM bank; rejection never reads ROM or contacts MMIO.</summary>
+    public bool TryGetPciMemorySpan(uint address, int length, bool write, out Span<byte> bytes)
+    {
+        bytes = default;
+        if (!MemoryAccessEnabled || length <= 0) return false;
+        ulong end = (ulong)address + (uint)length;
+        if (end > 0x1_0000_0000UL) return false;
+        uint pamStart = Math.Max(address, 0x000c0000u);
+        ulong pamEnd = Math.Min(end, 0x00100000UL);
+        byte required = write ? (byte)2 : (byte)1;
+        for (ulong at = pamStart; at < pamEnd;)
+        {
+            if ((Attributes((uint)at - 0x000c0000u) & required) == 0) return false;
+            at = at >= 0x000f0000UL ? 0x00100000UL : (at + 0x4000UL) & ~0x3fffUL;
+        }
+        return _memory.TryGetPhysicalRamSpan(address, length, this, out bytes);
+    }
 
     /// <summary>Checks the fixed memory peer and the exact DRB4/DRAMC decoding derived from this controller.</summary>
     public bool HasMemoryBinding(MemoryBus memory)

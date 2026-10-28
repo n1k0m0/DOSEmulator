@@ -1,5 +1,9 @@
 # 82437FX A2: begrenzter DOSE-Hostcontroller
 
+Aktueller zusätzlicher Teilumfang: [PIIX-Funktion1 mit realem IDE-/PCI-Busmasterpfad](PIIX-IDE.md), Build 10755, separates eigenes Profil und acht DOS-/EMM386-Starts/16 Fortsetzungen. Das reine Hostprofil und seine historische Abnahme bleiben erhalten. CF9/INIT/Resetdomänen und vollständige 430FX-/Windows-Plattform bleiben offen.
+
+Aktueller Folgeschritt: Das getrennte [PIIX-IRQ-Validierungsprofil](PIIX-IRQ.md) ergänzt auf Build 10141 eine ursprüngliche Fn0-/PIRQ-/ELCR-Vertikale mit acht DOS-/EMM386-Fortsetzungen. Das hier beschriebene reine Hostprofil und seine 9125er-Abnahme bleiben unverändert eingegrenzt. Fn1/IDE/CF9/INIT und die vollständige Plattform bleiben offen.
+
 Stand: 27. Oktober 2026. Der implementierte Produktpfad verbindet einen benannten 82437FX-A2-Hostcontroller mit dem bestehenden P54C-Teilmodell, echten CPU-Zugriffen auf PCI-Konfigurationsports, DRAM-Dekodierung und PAM-Shadow-RAM. Der geprüfte Release-Build besteht 9125/9125 Regressionen ohne Warnungen/Fehler. Daraus folgt keine Abnahme eines vollständigen 430FX-/PIIX-Boards oder von Windows 95; M4 bleibt offen.
 
 ## Primärvertrag und feste Plattform

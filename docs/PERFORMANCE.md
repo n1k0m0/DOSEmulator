@@ -1,5 +1,11 @@
 # Performance: gemessene Interpreter- und Geräteoptimierungen
 
+Der zusätzliche [Gemini-Abgleich](GEMINI-REVIEW-2026-10-27.md) bestätigt vorhandene RAM-/REP-/DMA-Spans und die synchronisierten Audiopuffer. Seine SIMD-/Dispatchfaktoren sind keine gemessenen Werte dieses Emulators. 801 gezielte Testausführungen und zwölf reine Puffer-Stressfälle sind Korrektheitsprüfungen, keine neue Hostzeit-/FPS-/Audioqualitätsmessung. Der 11563er-Produktcode bleibt unverändert.
+
+## Erneute Auditprüfung vom 27. Oktober 2026
+
+Der [11563er-Reviewfolgebuild](AUDIT2-RECHECK-2026-10-27.md) ergänzt zwei konkrete PIO-/Eingabekorrekturen und bestätigt die bisherigen Integer-/VGA-Optimierungen. Keine neue Hostzeitmessung oder Doom-FPS-Zusage. Größere Fetch-/Audio-/FM-/FSINCOS-/Hash-/Export-/JSON-Ansätze bleiben getrennte Profilaufgaben; der nächste Produktschritt bleibt DOS-CD-Treiber/MSCDEX und die Win95-Plattform.
+
 ## Zweite Auditfolge vom 27. Oktober 2026
 
 Der [zweite Auditfolgebuild](AUDIT2-FIXES-2026-10-27.md) ergänzt ausschließlich die exakt geprüfte Int64→Float80-Konversion und feinere VGA-/ET4000-Pixelinvalidierung. Drei ABBA-Blöcke mit tatsächlichen Produkt-DLLs sparen bei 500000 Integeraufrufen 31594592 Heapbytes und in der festen Probe im Median 97,09 Prozent Hostzeit. Bei je 1000 CPU-only-GC-/Capturezyklen einer 320×200-Szene entfallen 1000 zusätzliche Render (98,05/98,13 Prozent weniger Probehostzeit bei DOSE VGA/ET4000). Ganze Pixel, CPU-Lesewirkungen, spätere echte VRAM-Writes und normalisierte ganze VGA-Zustände stimmen; VGA-Allokationen bleiben gleich. Keine allgemeine x87-/FILD-/Spiel-FPS-, GL- oder Echtzeitzusage. Größere Fetch-/Audio-/FM-/FSINCOS-/Exportideen bleiben gesondert offen. Alle folgenden historischen Werte und Aussagen über damals unveränderte x87-Dateien behalten ihren damaligen Buildbezug.

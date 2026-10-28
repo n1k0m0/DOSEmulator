@@ -19,6 +19,7 @@ public sealed partial class RtcCmos : IStateObject
         w.Value("_index", _index);
         w.Value("_statusB", _statusB);
         w.Value("_batteryNanoseconds", _batteryNanoseconds);
+        w.Value("_calendarOriginNanoseconds", _calendarOriginNanoseconds);
         return w.Finish();
     }
 
@@ -27,10 +28,11 @@ public sealed partial class RtcCmos : IStateObject
     {
         var r = new StateReader(state, "DOSEmulator.Hardware.RtcCmos");
         r.Array("_nvram", _nvram);
-        r.Invariant("_epoch", _epoch);
+        _epoch = r.Value<DateTime>("_epoch");
         _index = r.Value<byte>("_index");
         _statusB = r.Value<byte>("_statusB");
         _batteryNanoseconds = r.Value<ulong>("_batteryNanoseconds");
+        _calendarOriginNanoseconds = r.Value<ulong>("_calendarOriginNanoseconds");
         r.Finish();
     }
 

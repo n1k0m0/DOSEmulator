@@ -12,10 +12,27 @@ try {
     Push-Location -LiteralPath $workspaceRoot
     $locationPushed = $true
     & (Join-Path $PSScriptRoot 'build-firmware.ps1')
+    python (Join-Path $PSScriptRoot 'build-cdrom-driver.py') --output (Join-Path $workspaceRoot 'artifacts/drivers/DOSECD.SYS')
+    if ($LASTEXITCODE -ne 0) { throw 'DOS CD-ROM driver assembly failed.' }
+    $timeToolsBuild = Join-Path $workspaceRoot ('artifacts/guest-tools/time-build-' + [Guid]::NewGuid().ToString('N'))
+    python (Join-Path $PSScriptRoot 'build-dose-time.py') --output $timeToolsBuild --nasm (Join-Path $workspaceRoot 'artifacts/tools/nasm-3.02/nasm-3.02/nasm.exe')
+    if ($LASTEXITCODE -ne 0) { throw 'Windows 95 time helper assembly failed.' }
+    python (Join-Path $PSScriptRoot 'create-dose-time-media.py') --build $timeToolsBuild --output (Join-Path $timeToolsBuild 'dose-tools-time.img')
+    if ($LASTEXITCODE -ne 0) { throw 'Windows 95 time tools data disk failed.' }
     $buildArguments = @('build','DOSEmulator.slnx','-c',$Configuration,'--ignore-failed-sources','-p:NuGetAudit=false','-p:UseSharedCompilation=false','-m:1','-nr:false','-v:minimal')
     if ($OutputRoot) { $buildArguments += ('-p:BaseOutputPath=' + (Get-DosBuildRoot -OutputRoot $OutputRoot).TrimEnd('\') + '\') }
     dotnet @buildArguments
     if ($LASTEXITCODE -ne 0) { throw "Build failed ($LASTEXITCODE)." }
+    if ($OutputRoot) {
+        $driverOutput = Join-Path (Get-DosBuildRoot -OutputRoot $OutputRoot) ($Configuration + '/drivers')
+        New-Item -ItemType Directory -Path $driverOutput -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $workspaceRoot 'artifacts/drivers/DOSECD.SYS') -Destination (Join-Path $driverOutput 'DOSECD.SYS') -Force
+        $timeToolsOutput = Join-Path (Get-DosBuildRoot -OutputRoot $OutputRoot) ($Configuration + '/guest-tools/windows95')
+        New-Item -ItemType Directory -Path $timeToolsOutput -Force | Out-Null
+        Copy-Item -LiteralPath (Join-Path $timeToolsBuild 'DOSETIME.EXE') -Destination (Join-Path $timeToolsOutput 'SETUP.EXE') -Force
+        Copy-Item -LiteralPath (Join-Path $timeToolsBuild 'dose-tools-time.img') -Destination (Join-Path $timeToolsOutput 'dose-tools-time.img') -Force
+        Copy-Item -LiteralPath (Join-Path $workspaceRoot 'guest-tools/windows95/README.txt') -Destination (Join-Path $timeToolsOutput 'README.txt') -Force
+    }
 } finally {
     if ($locationPushed) { Pop-Location }
     $env:MSBuildEnableWorkloadResolver = $previousWorkloadResolver

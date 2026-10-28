@@ -20,17 +20,17 @@ public sealed partial class DeviceScheduler
         }
         var state = new SchedulerState(Now, _sequence, _cycleRemainder, _cachedCycles, _cachedFrequency, _cycleWhole, _cycleFraction,
             _cancelled.Order().ToArray(), result.ToArray());
-        CheckState(state);
+        ValidateState(state);
         return state;
     }
 
     /// <summary>Uses the same clock/token/size limits before both publication and import of a scheduler snapshot.</summary>
-    private static void CheckState(SchedulerState state)
+    public static void ValidateState(SchedulerState state)
     {
-        if (state.Sequence < 0 || state.Events is null || state.Cancelled is null || state.Events.Length > StateEventLimit ||
+        if (state is null || state.Sequence < 0 || state.Events is null || state.Cancelled is null || state.Events.Length > StateEventLimit ||
             state.Cancelled.Length > StateEventLimit || state.CachedFrequency == 0 && state.Remainder != 0 ||
             state.CachedFrequency != 0 && state.Remainder >= state.CachedFrequency ||
-            state.Events.Any(v => v is null || v.Id <= 0 || v.Id > state.Sequence || v.Time < state.Now || v.Payload is null) ||
+            state.Events.Any(v => v is null || v.Id <= 0 || v.Id > state.Sequence || v.Time < state.Now || v.Owner is null || v.Operation is null || v.Payload is null) ||
             state.Events.Select(v => v.Id).Distinct().Count() != state.Events.Length ||
             state.Cancelled.Any(v => v < 0 || v > state.Sequence) || state.Cancelled.Distinct().Count() != state.Cancelled.Length)
             throw new InvalidDataException("Invalid scheduler clock/token/deadline state.");
@@ -42,7 +42,7 @@ public sealed partial class DeviceScheduler
     /// <summary>Validates and binds every event before replacing a newly created scheduler's constructor events.</summary>
     public void LoadState(SchedulerState state, IReadOnlyDictionary<string, IStateObject> owners)
     {
-        CheckState(state);
+        ValidateState(state);
         var restored = state.Events.Select(v =>
         {
             if (!owners.TryGetValue(v.Owner, out var owner) || owner is not IScheduledStateObject component)

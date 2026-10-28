@@ -366,6 +366,9 @@ public sealed partial class X86Cpu
         BeginDebugInstruction();
         byte opcode = 0;
         bool completed = false;
+        byte faultVector;
+        uint? faultErrorCode;
+        bool faultTrap;
         try
         {
             while (true)
@@ -384,9 +387,19 @@ public sealed partial class X86Cpu
             }
             if (protectedStart && (NeedsControlCheckpoint(opcode) || InstructionStarting is not null)) EnsureControlCheckpoint();
             InstructionStarting?.Invoke(_firstInstructionPhysical, opcode);
-            Execute(opcode);
+            if (opcode == 0x63)
+            {
+                ValidateLockOpcode(opcode);
+                if (!AdjustRpl())
+                {
+                    faultVector = 6; faultErrorCode = null; faultTrap = false;
+                    goto instructionFault;
+                }
+            }
+            else Execute(opcode);
             if (_lockedMemory) LockedMemoryInstructions++;
             completed = true;
+            goto instructionComplete;
         }
         catch (NumericErrorWaitException)
         {
@@ -399,17 +412,8 @@ public sealed partial class X86Cpu
         }
         catch (CpuFaultException fault)
         {
-            _debugDataActive = false;
-            ClearDebugDeferral();
-            if (!protectedStart) { Eip = start; Eflags = previousFlags; }
-            else if (previousTask == _taskSwitchEpoch)
-            {
-                previousRegisters.CopyTo(_registers);
-                if (_controlCheckpointSaved) RestoreControl(_controlCheckpoint);
-                else { Eip = start; Eflags = previousFlags; }
-            }
-            _checkpointProtected = false;
-            DeliverFault(fault);
+            faultVector = fault.Vector; faultErrorCode = fault.ErrorCode; faultTrap = fault.Trap;
+            goto instructionFault;
         }
         catch (UnsupportedInstructionException ex)
         {
@@ -418,6 +422,7 @@ public sealed partial class X86Cpu
             Eip = start;
             throw new UnsupportedInstructionException($"{Position} [{_firstInstructionPhysical:X8}] opcode {opcode:X2}: {ex.Message}");
         }
+    instructionComplete:
         Instructions++;
         if (protectedStart) ProtectedInstructions++;
         if (vmStart) Virtual8086Instructions++;
@@ -428,6 +433,24 @@ public sealed partial class X86Cpu
         if (completed) CompleteDebugInstruction(previousFlags, !protectedStart || previousTask == _taskSwitchEpoch, repeatContinues);
         if (completed && repeatContinues && Eip == start && opcode is 0xa4 or 0xa5 or 0xaa or 0xab) RememberRep(opcode);
         return 4;
+
+    instructionFault:
+        // Both decode results and thrown faults use the same restart boundary.
+        // Delivery stays outside the instruction try, so its own failures keep
+        // the existing escalation/unsupported-exception behavior.
+        _debugDataActive = false;
+        ClearDebugDeferral();
+        if (!protectedStart) { Eip = start; Eflags = previousFlags; }
+        else if (previousTask == _taskSwitchEpoch)
+        {
+            previousRegisters.CopyTo(_registers);
+            if (_controlCheckpointSaved) RestoreControl(_controlCheckpoint);
+            else { Eip = start; Eflags = previousFlags; }
+        }
+        _checkpointProtected = false;
+        DeliverFault(faultVector, faultErrorCode, faultTrap);
+
+        goto instructionComplete;
     }
 
     /// <summary>Dispatches a decoded primary opcode, including prefix validity and operand-width rules.</summary>

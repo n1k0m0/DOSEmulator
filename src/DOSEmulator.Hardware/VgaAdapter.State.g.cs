@@ -46,6 +46,29 @@ public sealed partial class VgaAdapter : IStateObject
         w.Value("_etSegmentEnabled", _etSegmentEnabled);
         w.Value("IsEt4000", IsEt4000);
         w.Value("BankSwitchWrites", BankSwitchWrites);
+        w.Value("_trioSetup", _trioSetup);
+        w.Value("_trioPos", _trioPos);
+        w.Value("_trioAdvanced", _trioAdvanced);
+        w.Value("IsTrio64", IsTrio64);
+        w.Value("_trioEngineWords", _trioEngineWords);
+        w.Value("_trioEngineColors", _trioEngineColors);
+        w.Value("_trioEngineActiveWords", _trioEngineActiveWords);
+        w.Value("_trioEngineActiveColors", _trioEngineActiveColors);
+        w.Value("_trioEngineActive", _trioEngineActive);
+        w.Value("_trioEngineBlocked", _trioEngineBlocked);
+        w.Value("_trioEnginePixelIndex", _trioEnginePixelIndex);
+        w.Value("_trioEngineInputData", _trioEngineInputData);
+        w.Value("_trioEnginePixelData", _trioEnginePixelData);
+        w.Value("_trioEngineInputBytes", _trioEngineInputBytes);
+        w.Value("_trioEnginePixelBytes", _trioEnginePixelBytes);
+        w.Value("_trioEngineReadAddress", _trioEngineReadAddress);
+        w.Value("_trioEngineReadLatch", _trioEngineReadLatch);
+        w.Value("_trioEngineReadValid", _trioEngineReadValid);
+        w.Value("_trioCursorForeground", _trioCursorForeground);
+        w.Value("_trioCursorBackground", _trioCursorBackground);
+        w.Value("_trioCursorColorIndex", _trioCursorColorIndex);
+        w.Value("_trioCursorOriginX", _trioCursorOriginX);
+        w.Value("_trioCursorOriginY", _trioCursorOriginY);
         return w.Finish();
     }
 
@@ -85,6 +108,31 @@ public sealed partial class VgaAdapter : IStateObject
         _etSegmentEnabled = r.Value<bool>("_etSegmentEnabled");
         r.Invariant("IsEt4000", IsEt4000);
         BankSwitchWrites = r.Value<long>("BankSwitchWrites");
+        _trioSetup = r.Value<byte>("_trioSetup");
+        _trioPos = r.Value<byte>("_trioPos");
+        _trioAdvanced = r.Value<ushort>("_trioAdvanced");
+        r.Invariant("IsTrio64", IsTrio64);
+        r.Array("_trioEngineWords", _trioEngineWords);
+        r.Array("_trioEngineColors", _trioEngineColors);
+        r.Array("_trioEngineActiveWords", _trioEngineActiveWords);
+        r.Array("_trioEngineActiveColors", _trioEngineActiveColors);
+        _trioEngineActive = r.Value<bool>("_trioEngineActive");
+        _trioEngineBlocked = r.Value<bool>("_trioEngineBlocked");
+        _trioEnginePixelIndex = r.Value<int>("_trioEnginePixelIndex");
+        _trioEngineInputData = r.Value<uint>("_trioEngineInputData");
+        _trioEnginePixelData = r.Value<uint>("_trioEnginePixelData");
+        _trioEngineInputBytes = r.Value<byte>("_trioEngineInputBytes");
+        _trioEnginePixelBytes = r.Value<byte>("_trioEnginePixelBytes");
+        _trioEngineReadAddress = r.Value<ushort>("_trioEngineReadAddress");
+        _trioEngineReadLatch = r.Value<ushort>("_trioEngineReadLatch");
+        _trioEngineReadValid = r.Value<bool>("_trioEngineReadValid");
+        r.Array("_trioCursorForeground", _trioCursorForeground);
+        r.Array("_trioCursorBackground", _trioCursorBackground);
+        _trioCursorColorIndex = r.Value<byte>("_trioCursorColorIndex");
+        _trioCursorOriginX = r.Value<ushort>("_trioCursorOriginX");
+        _trioCursorOriginY = r.Value<ushort>("_trioCursorOriginY");
+        ValidateTrio64EngineState(state, IsTrio64);
+        ValidateTrio64CursorState(state, IsTrio64);
         r.Finish();
     }
 

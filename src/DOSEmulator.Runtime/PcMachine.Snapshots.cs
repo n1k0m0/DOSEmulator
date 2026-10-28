@@ -63,9 +63,37 @@ public sealed partial class PcMachine
             : Cpu.Model != X86CpuModel.Intel486Dx || Cpu.HasTimeStampCounter || Cpu.TimestampFrequency != 0)
             throw new InvalidOperationException("The CPU must retain its selected model and owning PC clock.");
         if (Profile.IsFxHost
-            ? HostBridge is null || !HostBridge.HasMemoryBinding(Memory) || Pci is null || !Pci.HasOnlyFunction(0, 0, 0, HostBridge)
-            : HostBridge is not null || Pci is not null || Memory.DecodedRamBytes != Memory.Ram.Length || Memory.RamHoleLength != 0 || Memory.RamHoleStart != 0)
+            ? HostBridge is null || !HostBridge.HasMemoryBinding(Memory) || Pci is null ||
+                !(Profile.IsPiixIrq
+                    ? PiixIrq is not null && PiixIrq.SupportsMirq == Profile.IsPiixIde && PiixIrq.HasPicBinding(Pic) &&
+                      Pci.FunctionCount == (Profile.IsTrio64 ? 4 : Profile.IsPiixIde ? 3 : 2) && Pci.HasFunction(0, 0, 0, HostBridge) && Pci.HasFunction(0, 7, 0, PiixIrq)
+                    : PiixIrq is null && !Pic.SupportsLevelInputs && Pci.HasOnlyFunction(0, 0, 0, HostBridge))
+            : HostBridge is not null || Pci is not null || PiixIrq is not null || Pic.SupportsLevelInputs ||
+                Memory.DecodedRamBytes != Memory.Ram.Length || Memory.RamHoleLength != 0 || Memory.RamHoleStart != 0)
             throw new InvalidOperationException("The board must retain its fixed PCI peers and configured DRAM decoding.");
+        if (Ata.DmaAvailable != Profile.IsPiixIde || SecondaryAta.DmaAvailable != Profile.IsPiixIde ||
+            (Profile.IsPiixIde
+                ? PiixIde is null || HostBridge is null || PiixIrq is null || Pci is null || !Pci.HasFunction(0, 7, 1, PiixIde) ||
+                  !Ports.HasOnlyDynamicDecoder(PiixIde) || !PiixIde.HasBindings(Scheduler, HostBridge, Ata, SecondaryAta, Ports) ||
+                  ((PiixIrq.IsaLines & 0x4000) != 0) != Ata.InterruptAsserted || ((PiixIrq.MirqAssertions & 1) != 0) != SecondaryAta.InterruptAsserted
+                : PiixIde is not null || Ports.DynamicDecoderCount != 0))
+            throw new InvalidOperationException("The selected board must retain its fixed IDE, MIRQ, DMA and dynamic I/O peers.");
+        if (Profile.IsAtapi
+            ? Atapi is null || !Atapi.HasBindings(Scheduler, OpticalDisc) ||
+              !Ata.HasPacketBinding(Profile.AtapiSlot < 2 ? Atapi : null, Profile.AtapiSlot < 2 ? Profile.AtapiSlot & 1 : -1) ||
+              !SecondaryAta.HasPacketBinding(Profile.AtapiSlot >= 2 ? Atapi : null, Profile.AtapiSlot >= 2 ? Profile.AtapiSlot & 1 : -1)
+            : Atapi is not null || OpticalDisc is not null || !Ata.HasPacketBinding(null, -1) || !SecondaryAta.HasPacketBinding(null, -1))
+            throw new InvalidOperationException("The installed packet target must retain its fixed controller, clock and optical lease.");
+        if (Profile.IsPiixReset
+            ? PiixReset is null || Pci is null || !PiixReset.HasBindings(Scheduler, Pci, this)
+            : PiixReset is not null)
+            throw new InvalidOperationException("The board must retain its fixed CF9 reset owner and clock.");
+        if (Video.IsEt4000 != Profile.IsEt4000 || Video.IsTrio64 != Profile.IsTrio64 ||
+            (Profile.IsTrio64
+                ? S3 is null || Pci is null || !Pci.HasFunction(0, 3, 0, S3) ||
+                  !S3.HasBindings(Memory, Video) || !Memory.HasOnlyDynamicDecoder(S3)
+                : S3 is not null || Memory.DynamicDecoderCount != 0))
+            throw new InvalidOperationException("The board must retain its fixed video, PCI and physical memory decoder peers.");
         if (Memory.StateMappingCount != _factoryMemoryCount || Ports.StatePortCount != _factoryPortCount)
             throw new InvalidOperationException("Custom bus mappings are outside the product snapshot topology.");
         int inputs = 1 + (SoundBlaster is null ? 0 : 1) + (SoundBlaster16 is null ? 0 : 2) + (Opl is null ? 0 : 1) + (Opl3 is null ? 0 : 2);
@@ -96,7 +124,7 @@ public sealed partial class PcMachine
         Add("mouse", Mouse); Add("gameport", Gameport); Add("serial", Serial); Add("parallel", Parallel);
         Add("midi", Midi); Add("opl2", Opl); Add("opl3", Opl3); Add("fm-timing", FmIoTiming);
         Add("sb2", SoundBlaster); Add("sb16", SoundBlaster16);
-        Add("pci", Pci); Add("hostbridge", HostBridge);
+        Add("pci", Pci); Add("hostbridge", HostBridge); Add("piix-irq", PiixIrq); Add("piix-ide", PiixIde); Add("piix-reset", PiixReset); Add("s3", S3);
         return graph;
     }
 

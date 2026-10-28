@@ -220,7 +220,7 @@ public sealed partial class Fdc82077 : IIoPortDevice, IDisposable
         }
         if (_c >= geometry.Cylinders || _h >= geometry.Heads || _h != (_command[1] >> 2 & 1) || _r < 1 || _r > geometry.SectorsPerTrack)
         { Finish(4, 0); return false; }
-        if (data && (_command[5] != 2 || _eot < _r || _eot > geometry.SectorsPerTrack)) { Finish(4, 0); return false; }
+        if (data && (_command[5] != 2 || _eot < _r)) { Finish(4, 0); return false; }
         if (_write && _media[_drive] is not IWritableBlockDevice) { Finish(2, 0); return false; }
         if (data && ((_specify2 & 1) != 0 || (_dor & 8) == 0)) { Finish(0x10, 0); return false; }
         return true;

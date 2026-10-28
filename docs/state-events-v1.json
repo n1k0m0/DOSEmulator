@@ -346,11 +346,16 @@
           "lcr",
           "byte",
           "lcr"
+        ],
+        [
+          "generation",
+          "long",
+          "generation"
         ]
       ],
       "receiver": "scheduler",
       "delay": "Delay((ulong)HalfBits(lcr) * 8 * _divisor, ref _rxRemainder)",
-      "callback": "() =>\n        {\n            _rxEvent = 0; _rxBusy = false;\n            if (loop) ExternalCharactersIgnored++; else Receive((byte)(frame.Data & ((1 << (5 + (lcr & 3))) - 1)), frame.Errors);\n            StartReceive();\n        }",
+      "callback": "() =>\n        {\n            _rxEvent = 0; _rxBusy = false;\n            if (loop || generation != _receiveGeneration) ExternalCharactersIgnored++; else Receive((byte)(frame.Data & ((1 << (5 + (lcr & 3))) - 1)), frame.Errors);\n            StartReceive();\n        }",
       "start": 9645,
       "end": 9958
     },
@@ -472,6 +477,94 @@
       "callback": "() =>\n            { _ackHighEvent = 0; _ack = true; _busy = false; Pins(); }",
       "start": 4912,
       "end": 5024
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/AtaPioDrive.cs",
+      "owner": "DOSEmulator.Hardware.AtaPioDrive",
+      "operation": "dma-write-commit",
+      "arguments": [],
+      "receiver": "_scheduler",
+      "delay": "5_000",
+      "callback": "() =>\n            {\n                _event = 0;\n                try { ((IWritableBlockDevice)_disk!).WriteSector(_lba, _data); }\n                catch (IOException) { Abort(0x40); return; }\n                WrittenSectorCount++; _lba++; _remaining--; UpdateTaskAddress(); _offset = 0;\n                if (_remaining > 0) { Status = 0x58; DmaStateChanged?.Invoke(); }\n                else CompleteDma();\n            }",
+      "start": 11271,
+      "end": 11745
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/AtaPioDrive.cs",
+      "owner": "DOSEmulator.Hardware.AtaPioDrive",
+      "operation": "dma-read-ready",
+      "arguments": [],
+      "receiver": "_scheduler",
+      "delay": "5_000",
+      "callback": "() =>\n        {\n            _event = 0;\n            if (_disk is null || _lba < 0 || _lba >= _disk.SectorCount) { Abort(0x10); return; }\n            try { _disk.ReadSector(_lba, _data); }\n            catch (IOException) { Abort(0x40); return; }\n            Status = 0x58; DmaStateChanged?.Invoke();\n        }",
+      "start": 12350,
+      "end": 12715
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/AtaPioDrive.cs",
+      "owner": "DOSEmulator.Hardware.AtaPioDrive",
+      "operation": "dma-write-ready",
+      "arguments": [],
+      "receiver": "_scheduler",
+      "delay": "5_000",
+      "callback": "() =>\n        {\n            _event = 0; Status = 0x58; DmaStateChanged?.Invoke();\n        }",
+      "start": 12968,
+      "end": 13117
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Intel82371FbIde.cs",
+      "owner": "DOSEmulator.Hardware.Intel82371FbIde",
+      "operation": "primary-burst",
+      "arguments": [],
+      "receiver": "_scheduler",
+      "delay": "BurstDelayNanoseconds",
+      "callback": "() => { _events[0] = 0; TransferBurst(0); }",
+      "start": 14465,
+      "end": 14592
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Intel82371FbIde.cs",
+      "owner": "DOSEmulator.Hardware.Intel82371FbIde",
+      "operation": "secondary-burst",
+      "arguments": [],
+      "receiver": "_scheduler",
+      "delay": "BurstDelayNanoseconds",
+      "callback": "() => { _events[1] = 0; TransferBurst(1); }",
+      "start": 14620,
+      "end": 14749
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/PiixResetController.cs",
+      "owner": "DOSEmulator.Hardware.PiixResetController",
+      "operation": "release-pci-isa",
+      "arguments": [],
+      "receiver": "_clock",
+      "delay": "PciIsaHoldNanoseconds",
+      "callback": "() =>\n        { _pciEvent = 0; _phase = PiixResetPhase.CpuOnly; _owner.ReleasePiixPciIsaReset(); }",
+      "start": 4925,
+      "end": 5093
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/PiixResetController.cs",
+      "owner": "DOSEmulator.Hardware.PiixResetController",
+      "operation": "release-cpu-ready",
+      "arguments": [],
+      "receiver": "_clock",
+      "delay": "CpuHoldNanoseconds",
+      "callback": "() =>\n        { _cpuEvent = 0; _cpuReleaseReady = true; }",
+      "start": 5115,
+      "end": 5241
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/AtapiCdRom.cs",
+      "owner": "DOSEmulator.Hardware.AtapiCdRom",
+      "operation": "phase",
+      "arguments": [],
+      "receiver": "_scheduler",
+      "delay": "PhaseDelayNanoseconds",
+      "callback": "() =>\n        { _event = 0; _deadline = 0; AdvancePhase(); }",
+      "start": 12498,
+      "end": 12622
     }
   ]
 }

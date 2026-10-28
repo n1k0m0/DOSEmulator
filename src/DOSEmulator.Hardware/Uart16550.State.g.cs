@@ -52,6 +52,7 @@ public sealed partial class Uart16550 : IScheduledStateObject
         w.Value("RejectedTransmitWrites", RejectedTransmitWrites);
         w.Value("ExternalCharactersQueued", ExternalCharactersQueued);
         w.Value("ExternalCharactersIgnored", ExternalCharactersIgnored);
+        w.Value("_receiveGeneration", _receiveGeneration);
         return w.Finish();
     }
 
@@ -97,6 +98,7 @@ public sealed partial class Uart16550 : IScheduledStateObject
         RejectedTransmitWrites = r.Value<long>("RejectedTransmitWrites");
         ExternalCharactersQueued = r.Value<long>("ExternalCharactersQueued");
         ExternalCharactersIgnored = r.Value<long>("ExternalCharactersIgnored");
+        _receiveGeneration = r.Value<long>("_receiveGeneration");
         r.Finish();
     }
 
@@ -122,14 +124,15 @@ public sealed partial class Uart16550 : IScheduledStateObject
             }
             case "event1":
             {
-                if (payload.Length != 3) throw new InvalidDataException("Scheduled operation shape differs.");
+                if (payload.Length != 4) throw new InvalidDataException("Scheduled operation shape differs.");
                 (byte Data, byte Errors) frame = StateValues.Read<(byte Data, byte Errors)>(payload[0]);
                 bool loop = StateValues.Read<bool>(payload[1]);
                 byte lcr = StateValues.Read<byte>(payload[2]);
+                long generation = StateValues.Read<long>(payload[3]);
                 return () =>
                         {
                             _rxEvent = 0; _rxBusy = false;
-                            if (loop) ExternalCharactersIgnored++; else Receive((byte)(frame.Data & ((1 << (5 + (lcr & 3))) - 1)), frame.Errors);
+                            if (loop || generation != _receiveGeneration) ExternalCharactersIgnored++; else Receive((byte)(frame.Data & ((1 << (5 + (lcr & 3))) - 1)), frame.Errors);
                             StartReceive();
                         };
             }

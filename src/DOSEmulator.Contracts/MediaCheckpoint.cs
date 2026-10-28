@@ -11,4 +11,8 @@ public sealed record MediaCheckpoint(int SchemaVersion, string Kind, string Id, 
 
 /// <summary>Base content identity and optional sealed journal for one physical IDE or floppy slot.</summary>
 public sealed record MediaGeneration(string Device, int Slot, long Sectors, string BaseSha256,
-    string? JournalName, long JournalBytes, string? JournalSha256);
+    string? JournalName, long JournalBytes, string? JournalSha256)
+{
+    /// <summary>Bytes per sealed unit: legacy disk/floppy sectors are 512; cooked CD-ROM blocks are 2048.</summary>
+    public int SectorSize { get; init; } = 512;
+}

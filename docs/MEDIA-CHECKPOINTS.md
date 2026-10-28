@@ -67,3 +67,9 @@ Reproduktion des Medienteils: `scripts/test-media-checkpoint.ps1 -SkipBuild -Dis
 ## Nachfolgender vollständiger Snapshot
 
 Der inzwischen verfügbare [vollständige lokale Snapshot](SNAPSHOTS.md) ergänzt CPU, rohes x87, RAM, Geräte und Scheduler und erlaubt tatsächliche Fortsetzung. Die öffentlichen Medienbefehle dieses Dokuments bleiben unverändert reine Medienaktionen; `.dosemedia` enthält weiterhin keinen laufenden Hardwarezustand. Nur der volle `.dossav`-Container darf den bekannten unveränderlichen In-Memory-Testdatenträger als zusätzliche private RAW-Basis einschließen.
+
+## Gekochte ISO-Basen im ATAPI-Teilumfang 11529
+
+Ein [installiertes ATAPI-CD-ROM](hardware/ATAPI-CDROM.md) reserviert einen der vier IDE-Plätze. `opticalDiscs` beschreibt ausschließlich dessen schreibgeschützte ISO-Basis, getrennt von `hardDisks`. Die versiegelte Generation besitzt Art `cdrom`, Blockgröße 2048 und vollständigen Basishash und getrennte Blockzahl; es gibt keinen CD-Journalpfad. Höchstens vier IDE-Medien insgesamt und zwei Disketten bleiben möglich. Leere Lade und fehlendes physisches Laufwerk sind getrennt.
+
+Neue Metadaten schreiben `sectorSize` ausdrücklich; alte unterstützte HDD-/Diskettensätze ohne dieses Feld lesen sich weiterhin als 512. Ältere Programme können neue Metadaten ablehnen. Der Medienzweig öffnet und hasht die weiterhin unveränderliche ISO unter Leseschutz, kopiert sie nicht als 512-Byte-RAW und erzeugt keinen optischen COW. Ein Mediencheckpoint bleibt ein Kaltstartvertrag: guest-ejectete Lade-/Lock-/Sensezustände gehören erst zum vollständigen Hardware-Snapshot. Keine allgemeine portable Medien- oder Stromausfalltransaktionszusage.

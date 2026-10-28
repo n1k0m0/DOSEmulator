@@ -1,6 +1,12 @@
 # DOSE – DosEmulator
 
-**Kurze Tastendrücke korrigiert:** [500 ms bis zum ersten Repeat](docs/KEYBOARD-REPEAT.md), danach 50 ms Folgeabstand. **9819 Regressionen**; kontrollierte MS-DOS-/FreeDOS-Eingaben geprüft, bestehende VM-/Snapshot-DLLs unverändert.
+**Aktuell: [eigene PCI-BIOS-/BIOS32-Firmware](docs/hardware/PCI-BIOS.md)** — 11819 Regressionen,0 Warnungen/Fehler. Zusätzliches festes 100-MHz-/32-MiB-Profil, echte DOS-/Original-EMM386-/Konfigurations-/FAR-Aufrufe, acht Starts und 16 volle Fortsetzungen. Profil: [dose-430fx-piix-s3-atapi-pcibios-dev-v1.json](profiles/dose-430fx-piix-s3-atapi-pcibios-dev-v1.json). Windows 95, Originaltreiber, höhere S3-Modi, 133 MHz und M4–M8 bleiben offen.
+
+**M4: [ursprüngliche PIIX-IDE-Funktion mit echtem PCI-Busmaster-DMA](docs/hardware/PIIX-IDE.md)** — **10755 Regressionen**, 0 Warnungen/Fehler. Eigenes 100-MHz-/32-MiB-Profil, tatsächliche Ressourcen-/MIRQ-/PRD-Wirkungen, acht neue DOS-/EMM386-Starts und 16 volle Fortsetzungen; acht gezielte alte 486-Fortsetzungen getrennt. CF9/INIT/Resetdomänen, vollständige 430FX-/Windows-95-Plattform und M4–M8 bleiben offen.
+
+**Historischer 10141er-M4-Schritt: [PIIX-PIRQ/ELCR mit echter DOS-Fortsetzung](docs/hardware/PIIX-IRQ.md)** — **10141 Regressionen**, 0 Warnungen/Fehler. Eigenes zusätzliches P54C/100-MHz-/32-MiB-Profil, vier PCI-Pins, ISA-Auswahl und vollständige Snapshots: acht neue DOS-/EMM386-Fortsetzungen plus acht gezielte 486-Fortsetzungen. PIIX-IDE/Reset, vollständiges 430FX und Windows95 bleiben offen.
+
+**Historischer 9819er-Frontendfix für kurze Tastendrücke:** [500 ms bis zum ersten Repeat](docs/KEYBOARD-REPEAT.md), danach 50 ms Folgeabstand. **9819 Regressionen**; kontrollierte MS-DOS-/FreeDOS-Eingaben geprüft, bestehende VM-/Snapshot-DLLs unverändert.
 
 **Zweiter Audit korrigiert:** [STI-/ENTER-, Import-, IPC-/COW- und Eingabegrenzen](docs/AUDIT2-FIXES-2026-10-27.md), **9792 bestandene Regressionen**, 0 Warnungen/Fehler. Echte DOS-/Audio-/x87-/Doom- und volle Snapshotfortsetzung geprüft. Größere Performancevorschläge und native Bedienabnahmen bleiben getrennt offen.
 
@@ -52,7 +58,7 @@ Der PC Speaker erzeugt Ton über PIT-Kanal 2/Port 61h bis zur Windows-Audioausga
 
 ## Starten
 
-Voraussetzungen: Windows x64, **PowerShell 7.4 oder neuer** (`pwsh.exe`) und .NET SDK 10.0.401 oder kompatibler 10.0-Patchstand. Die CMD-Starter finden PowerShell über PATH, die normale Installation oder den Microsoft-Store-Alias. Ein direkter PS1-Aufruf benötigt ebenfalls PowerShell 7; bei einem älteren Host erscheint vor der Ausführung die erforderliche Mindestversion.
+Voraussetzungen: Windows x64, **PowerShell 7.4 oder neuer** (`pwsh.exe`) und .NET SDK 10.0.401 oder kompatibler 10.0-Patchstand. Der Quellbuild über `scripts/build.ps1` benötigt zusätzlich Python 3 und NASM 3.02 am konfigurierten Pfad `artifacts/tools/nasm-3.02/nasm-3.02/nasm.exe`, um den eigenen DOS-CD-ROM-Treiber zu erzeugen. Bereits gebaute Programme benötigen diese beiden Buildwerkzeuge nicht. Die CMD-Starter finden PowerShell über PATH, die normale Installation oder den Microsoft-Store-Alias. Ein direkter PS1-Aufruf benötigt ebenfalls PowerShell 7; bei einem älteren Host erscheint vor der Ausführung die erforderliche Mindestversion.
 
 - `run.cmd` startet nach dem Build den Emulator mit dem eigenen Testmedium.
 - **`run-doom2.cmd` öffnet den experimentellen manuellen Doom-II-Test** mit einer eigenen persistenten Kopie der bereits vorhandenen privaten DOS-/Doom-Abnahmemedien. Danach im DOS `doom2 -config doomtest.cfg -nosound` eingeben. [Anleitung und Grenzen](docs/DOOM2-TESTEN.md).
@@ -64,7 +70,7 @@ Voraussetzungen: Windows x64, **PowerShell 7.4 oder neuer** (`pwsh.exe`) und .NE
 - Filter, Upscaling, Seitenverhältnis und VSync wirken auf die Hostdarstellung.
 - Im Hardwaremenü: RAM, Diskettenlaufwerkstypen, Bootgerät und optionale Soundkarte ändern; diese Änderungen starten die Maschine neu. Verfügbar sind Speaker, AdLib-OPL2-Entwicklungspfad, SB2-DSP und SB2-DSP mit OPL2. **SOUND CARD RESOURCES** wählt 220h/240h und IRQ3/5/7/9 bei festem DMA1; Standard ist A220/I5/D1. FM verwendet 388h/389h und im Kombiprofil zusätzlich Basis+8/+9. Ein Laufwerkstypwechsel setzt dazu passende oder ausgeworfene Medien voraus.
 - Im Medienmenü: IDE-Image mit oder ohne Overlay öffnen; Disketten A:/B: an Controller-Ruhepunkten einlegen oder auswerfen. FreeDOS erkennt den Medienwechsel. IDE-Wechsel startet die Maschine neu.
-- Raw-IDE-Images lassen sich auch mit `--disk` oder Drag-and-drop öffnen. Schreibzugriffe benötigen `--overlay`; Disketten verwenden `--floppy-a`/`--floppy-b` mit optionalem `--floppy-a-overlay`/`--floppy-b-overlay`. CD-ROM/ATAPI ist noch offen.
+- Raw-IDE-Images lassen sich auch mit `--disk` oder Drag-and-drop öffnen. Schreibzugriffe benötigen `--overlay`; Disketten verwenden `--floppy-a`/`--floppy-b` mit optionalem `--floppy-a-overlay`/`--floppy-b-overlay`. Das eigene ATAPI-Profil unterstützt schreibgeschützte ISO-Dateien und den [festen DOS-CD-ROM-Treiber mit originalem MSCDEX](docs/hardware/DOS-CDROM-DRIVER.md); vollständiges ATAPI und Windows 95 bleiben offen.
 
 ```powershell
 .\scripts\run.ps1
@@ -147,7 +153,7 @@ M1 ist abgenommen. M2 besitzt die geprüfte MS-DOS-6.22-HDD-Installation, origin
 
 [Gerätegetaktetes 16-Bit-DMA5–7](docs/hardware/AT-DMA16.md) besitzt jetzt 133 neue Gerätefälle und acht eigene DOS-/EMM386-Kaltstarts mit unabhängigen Wort-/Zeit-/VDS-Oracles. 35 weitere FDC-/SB2-/ADPCM-/Aufnahmestarts erhalten den Bytepfad. Die Testquelle bleibt testexklusiv. Der darauf aufbauende [CT1740-/DSP-4.05-PCM-Kern mit CT1745](docs/hardware/SB16-CT1740-PCM.md) besitzt inzwischen 24 eigene MS-DOS-/FreeDOS-/EMM386-Kaltstarts: DMA8/DMA16, Stereo, virtuelle Aufnahme und getrennte IRQ-Latches. 226 neue Geräte-/Audio-/PIC-Fälle und insgesamt 87 aktuelle DOS-Gaststarts prüfen das Paket und bestehende Ton-/Laufwerkspfade. OPL3, vollständiger Mixer/Legacy-Satz und allgemeine Karten-/Spielkompatibilität bleiben offen; YMF262/OPL3 besitzt inzwischen die unten verlinkte eigene Folgeabnahme.
 
-Der private Ordner `Disks and CDs (DO NOT PUT INTO GITHUB)` sowie Betriebssystem-, Spiel- und ROM-Images sind in `.gitignore` ausgeschlossen. Originalmedien werden nicht verändert. Eigene BIOS-Firmware steht unter `firmware/dose-bios.asm` und den dort eingebundenen INC-Dateien; das reproduzierbar erzeugte C#-Image liegt bei. NASM 3.02 ist nur zum Neuübersetzen geänderter Firmwarequellen und der eigenen Gast-Testprogramme erforderlich.
+Der private Ordner `Disks and CDs (DO NOT PUT INTO GITHUB)` sowie Betriebssystem-, Spiel- und ROM-Images sind in `.gitignore` ausgeschlossen. Originalmedien werden nicht verändert. Eigene BIOS-Firmware steht unter `firmware/dose-bios.asm` und den dort eingebundenen INC-Dateien; das reproduzierbar erzeugte C#-Image liegt bei. NASM 3.02 wird beim regulären Quellbuild außerdem für den eigenen `DOSECD.SYS` benötigt, daneben zum Neuübersetzen geänderter BIOS- und Gast-Testquellen. Für Builds und Tests zuerst `scripts/build.ps1` ausführen; es erzeugt auch die vom Testprojekt eingebettete SYS-Ressource. Originales MSCDEX wird nicht mitgeliefert.
 
 [YMF262/OPL3 im CT1740-Profil](docs/hardware/OPL3.md) besitzt jetzt 18 Kanäle, sechs Vieroperator-Paare, acht Wellenformen, vier interne Ausgänge und CT1745-FM-Pegel. 16 eigene DOS-/FreeDOS-/EMM386-Kaltstarts und 24 erneute PCM-Starts prüfen 409 neue Gerätefälle auf dem gemeinsamen Build mit 4873 bestandenen Regressionen. Ein eigener GUI-DOS-Lauf bestätigt Bild und aktive Windows-Ausgabe; allgemeine Soundkarten-/Spielkompatibilität und unterlauffreie Echtzeit bleiben getrennt offen. Startprofil: [virtual486-sb16-dev-v1.json](profiles/virtual486-sb16-dev-v1.json). Die nachfolgende [ET4000AX-Vertikale](docs/hardware/ET4000AX.md) ist inzwischen gesondert geprüft.
 

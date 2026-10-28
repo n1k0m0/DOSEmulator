@@ -290,7 +290,11 @@ post_logo4: db '  +-------------+   Copyright 2026 Nils Kopal',0
 post_cpu: db 'Configured CPU: 486DX / AT development profile',0
 post_memory: db 'Memory: ',0
 post_memory_end: db ' KiB installed / 639 KiB conventional',0
+%ifdef DOSE_TRIO64
+post_vga: db 'Video: S3 Trio64 PCI / 2048 KiB subset',0
+%else
 post_vga: db 'Video: DOSE VGA',0
+%endif
 post_et4000: db 'Video: Tseng ET4000AX ISA / 1024 KiB',0
 post_disk: db 'IDE ',0
 post_primary: db 'h primary ',0

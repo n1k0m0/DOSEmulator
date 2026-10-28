@@ -16,6 +16,8 @@ public sealed partial class SoundBlaster16 : IIoPortDevice
     private readonly Action<int, bool> _irq;
     private readonly Queue<byte> _responses = new();
     private readonly byte[] _parameters = new byte[3];
+    /// <summary>Own opaque XBUS05 readback byte: power/PIIX ISA reset zero; DSP reset preserves it. No DMA/IRQ bit effects are claimed.</summary>
+    private byte _xbus05Control;
     private byte _command, _mixerIndex, _interruptSources;
     private int _received, _expected, _blockLength, _legacyLength = 65536, _activeRate, _rateRemainder;
     private bool _ready, _resetHigh, _busy, _auto, _exitAuto, _recording, _signed, _stereo, _word, _rightNext, _halfPending;
@@ -196,8 +198,8 @@ public sealed partial class SoundBlaster16 : IIoPortDevice
         _expected = value switch
         {
             >= 0xb0 and <= 0xcf => 3,
-            0x41 or 0x42 or 0x14 or 0x24 or 0x48 => 2,
-            0x10 or 0x40 or 0x38 => 1,
+            0x05 or 0x0e or 0x41 or 0x42 or 0x14 or 0x24 or 0x48 => 2,
+            0x04 or 0x0f or 0x10 or 0x40 or 0x38 => 1,
             _ => 0
         };
         if (_expected == 0) Execute();
@@ -214,7 +216,23 @@ public sealed partial class SoundBlaster16 : IIoPortDevice
         }
         switch (_command)
         {
+            // The explicitly unpopulated external ASP targets80..83 read as pull-ups and discard complete writes.
+            case 0x03: Reply(0xff); break;
+            case 0x04: case 0x05: break;
+            case 0x0e:
+                if (_parameters[0] == 5) _xbus05Control = _parameters[1];
+                else if (_parameters[0] is < 0x80 or > 0x83) { UnsupportedCommands++; LastUnsupportedCommand = _command; }
+                break;
+            case 0x0f:
+                if (_parameters[0] == 5) Reply(_xbus05Control);
+                else if (_parameters[0] is >= 0x80 and <= 0x83) Reply(0xff);
+                else { UnsupportedCommands++; LastUnsupportedCommand = _command; }
+                break;
             case 0xe1: Reply(4); Reply(5); break;
+            case 0xe3:
+                // Fixed original CT1741 DSP4.05 notice, including the host-readable terminating NUL.
+                foreach (byte value in "COPYRIGHT (C) CREATIVE TECHNOLOGY LTD, 1992.\0"u8) Reply(value);
+                break;
             case 0xf2: RequestInterrupt(false, true); break;
             case 0xf3: RequestInterrupt(true, true); break;
             case 0x41: case 0x42:

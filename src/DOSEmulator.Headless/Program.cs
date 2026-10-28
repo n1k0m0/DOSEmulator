@@ -28,6 +28,7 @@ try
     Console.WriteLine("COM1: serialPort=pc16550d-com1-development enables the virtual National PC16550D at 3F8h/IRQ4. Scenario serial:{data:[0..255],errors:PE/FE/BI,cts,dsr,ri,dcd} queues complete timed frames and pin changes. --serial-echo explicitly connects a framed virtual echo peer with CTS/DSR/DCD asserted; --serial-io-trace <new.jsonl> observes ports, TX frames, E9 and real PIC IRQ4 acknowledgements. No host COM device or network is opened.");
     Console.WriteLine("LPT1: parallelPort=ibm-printer-adapter-development enables the IBM 6361507 adapter at 378h/IRQ7 with original aliases. --parallel-sink explicitly attaches a nominal virtual raw-byte peer; --parallel-output <new.bin> captures its accepted bytes, --parallel-io-trace <new.jsonl> observes actual IO/pins/bytes/PIC IRQ7. Scenario parallel:{busyHigh,ackHigh,paperEndHigh,selectedHigh,errorHigh} drives unconnected external lines. No host printer, EPP, ECP or bidirectional mode is opened.");
         Console.WriteLine("MIDI: midiInterface=ct1740-mpu401-uart-development explicitly enables the CT1740 MPU UART at midiBasePort=768|816 (300h|330h), sharing its DSP IRQ and mixer82 bit2. --midi-output <new.bin> captures complete outgoing 31.25-kbaud bytes; --midi-io-trace <new.jsonl> observes real ports/frames/IRQ. Scenario midi:{data:[0..255]} or SendMidiInput queues outer full frames. No host MIDI, synthesizer, Intelligent Mode or raw electrical accuracy is implied.");
+        Console.WriteLine("ATAPI: --profile profiles/dose-430fx-piix-s3-atapi-dev-v1.json [--cdrom <read-only cooked.iso>] installs one SFF-8020i 1995 PIO CD-ROM target at the profile's reserved IDE slot. Empty tray is valid. ISO blocks are 2048 bytes; no COW, host optical device, DMA, overlap or CD audio playback. Saved PCs preserve opticalDiscs separately from hardDisks. Native original CD-driver/MSCDEX and Windows acceptance remain separate.");
         Console.WriteLine("Full snapshots: --save-snapshot <new.dossav> seals CPU/raw FPU/RAM/devices/scheduler and all media at the final owner boundary; --load-snapshot <existing.dossav> --snapshot-branch <new.dosebranch> resumes on independent journals. Requires the identical VM build and unchanged protected base images. No host devices or already emitted output queues are saved.");
         Console.WriteLine("Media checkpoints: --capture-media <new.dosemedia> captures all file-backed media after the run at one owner-thread boundary. --branch-media <checkpoint.dosemedia> --output <new.dosebranch> checks dependencies and creates independent writable journals plus branch.dospc.json for a cold start. CPU/RAM/devices/scheduler are not saved; this is not a running-state snapshot. Originals and existing targets are never overwritten.");
         Console.WriteLine("ADC diagnostics: --adc-test-signal midpoint|ramp chooses a deterministic virtual input (default unconnected midpoint). --adc-trace <new.jsonl> logs actual conversions and DMA results. No host microphone is opened.");
@@ -392,7 +393,15 @@ try
     var status = machine.GetStatus();
     var frame = machine.CaptureFrame();
     string hash = Convert.ToHexString(SHA256.HashData(System.Runtime.InteropServices.MemoryMarshal.AsBytes(frame.ArgbPixels.AsSpan())));
-    string cpuLimitation = machine.Profile.IsFxHost
+    string cpuLimitation = machine.Profile.IsTrio64
+        ? "DOSE 430FX/PIIX reset board with original S3 86C764 PCI VGA/bank/LFB/8bpp subset, P54C B5 at nominal 100 MHz with 32 MiB. Acceleration, full S3 and Windows 95 acceptance remain pending. "
+        : machine.Profile.IsPiixReset
+        ? "DOSE 82437FX / original-PIIX IDE/busmaster and CF9/INIT reset-domain subset, P54C B5 at nominal 100 MHz with 32 MiB. Own pulse timing and external ISA wiring; complete historical chipset/Windows 95 acceptance remain pending. "
+        : machine.Profile.IsPiixIde
+        ? "DOSE 82437FX / original-PIIX IDE/busmaster subset, P54C B5 at nominal 100 MHz with 32 MiB. Chipset reset/CF9/INIT and complete historical 430FX/Windows 95 acceptance remain pending. "
+        : machine.Profile.IsPiixIrq
+        ? "DOSE 82437FX / original-PIIX IRQ subset, P54C B5 at nominal 100 MHz with 32 MiB. PIIX IDE/reset and complete historical 430FX/Windows 95 acceptance remain pending. "
+        : machine.Profile.IsFxHost
         ? "DOSE 82437FX host subset / P54C B5 at nominal 100 MHz with 32 MiB. PIIX and complete historical 430FX/Windows 95 platform acceptance remain pending. "
         : machine.Profile.IsP54c
         ? "DOSE AT / P54C B5 subset at nominal 90 MHz. Own validation platform; no 430FX or Windows 95 platform acceptance. The following documented 486 reference coverage is not a universal CPU/device compatibility claim. "
@@ -424,7 +433,7 @@ try
         video = new { model = machine.Profile.VideoCard, machine.Video.VideoMemoryBytes, machine.Video.SegmentSelect,
             machine.Video.ExtendedRegistersUnlocked, machine.Video.SegmentRegisterEnabled, machine.Video.BankSwitchWrites,
             vbe = machine.Profile.IsEt4000, vbeInterface = machine.Profile.IsEt4000 ? "1.2-format banked subset 00/01/02/03/05" : null,
-            fullVbeConformance = false, linearFramebuffer = false, highColor = false, fullChip = false },
+            fullVbeConformance = false, linearFramebuffer = machine.Profile.IsTrio64, highColor = false, fullChip = false },
         gameport = machine.Gameport is { } gameport ? new { model = AnalogGameport.ProfileId, gameport.Input,
             gameport.ReadCount, gameport.TriggerCount, gameport.InputUpdates, gameport.ConversionStarted, gameport.TriggerTime,
             nominalTiming = "24200 + 11 * resistanceOhms nanoseconds; sampled at trigger", hostGamepad = false, midi = false, biosAh84 = true } : null,
@@ -450,7 +459,7 @@ try
             serialDevice.ExternalCharactersQueued, serialDevice.ExternalCharactersIgnored, serialDevice.PhysicalModem,
             virtualEcho = serialEcho, hostSerialPort = false, fullChip = false } : null,
         graphicsMode = machine.Video.GraphicsMode, indexed256 = machine.Video.Indexed256, hardwareResetCount = machine.HardwareResetCount, ataSectorsRead = machine.Ata.ReadSectorCount + machine.SecondaryAta.ReadSectorCount,
-        ataSectorsWritten = machine.Ata.WrittenSectorCount + machine.SecondaryAta.WrittenSectorCount, diskWritable = machine.GetStatus().HardDisks?.Any(d => d.Writable) == true,
+        opticalDisc = machine.GetStatus().OpticalDisc, ataSectorsWritten = machine.Ata.WrittenSectorCount + machine.SecondaryAta.WrittenSectorCount, diskWritable = machine.GetStatus().HardDisks?.Any(d => d.Writable) == true,
         floppySectorsRead = machine.Floppy.ReadSectorCount, floppySectorsWritten = machine.Floppy.WrittenSectorCount,
         mediaSwapApplied,
         audio = new { sampleRate = 48000, channels = 2, generatedFrames = machine.Audio.GeneratedFrames,

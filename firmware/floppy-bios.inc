@@ -2,8 +2,9 @@
 ; Copyright 2026 Nils Kopal
 ; Original PC/AT floppy BIOS services, Apache-2.0.
 ; All transfers pass through FDC ports and DMA2; one bounce sector uses reserved EBDA.
-; The polling transfer path also has a real IRQ6 completion handler. A V86
-; monitor may unmask IRQ6 even though the reference POST leaves it masked.
+; The polling transfer path also has a real IRQ6 completion handler.
+; Windows-board POST unmasks IRQ6 for an installed drive; older POST variants
+; retain their polling-path mask, which a V86 monitor may later change.
 irq_floppy:
     push ax
     push ds

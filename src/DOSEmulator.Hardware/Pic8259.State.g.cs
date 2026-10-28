@@ -14,6 +14,7 @@ public sealed partial class Pic8259 : IStateObject
     public StateBlock SaveState()
     {
         var w = new StateWriter("DOSEmulator.Hardware.Pic8259");
+        w.Value("_supportsLevelInputs", _supportsLevelInputs);
         w.Value("_pendingMaster", _pendingMaster);
         return w.Finish();
     }
@@ -22,6 +23,7 @@ public sealed partial class Pic8259 : IStateObject
     public void LoadState(StateBlock state)
     {
         var r = new StateReader(state, "DOSEmulator.Hardware.Pic8259");
+        r.Invariant("_supportsLevelInputs", _supportsLevelInputs);
         _pendingMaster = r.Value<int>("_pendingMaster");
         r.Finish();
     }
@@ -48,6 +50,7 @@ public sealed partial class Pic8259 : IStateObject
             w.Value("Irr", Irr);
             w.Value("Isr", Isr);
             w.Value("Lines", Lines);
+            w.Value("LevelMask", LevelMask);
             w.Value("InitStep", InitStep);
             w.Value("NeedsIcw4", NeedsIcw4);
             w.Value("Single", Single);
@@ -65,6 +68,7 @@ public sealed partial class Pic8259 : IStateObject
             Irr = r.Value<byte>("Irr");
             Isr = r.Value<byte>("Isr");
             Lines = r.Value<byte>("Lines");
+            LevelMask = r.Value<byte>("LevelMask");
             InitStep = r.Value<int>("InitStep");
             NeedsIcw4 = r.Value<bool>("NeedsIcw4");
             Single = r.Value<bool>("Single");

@@ -17,7 +17,11 @@ public sealed partial class VgaAdapter
     private byte ReadPort(ushort port)
     {
         if (port is 0x3b4 or 0x3d4) return ActiveCrtc(port) ? _crtcIndex : (byte)255;
-        if (port is 0x3b5 or 0x3d5) return ActiveCrtc(port) && ReadableCrtc(_crtcIndex) ? _crtc[_crtcIndex] : (byte)255;
+        if (port is 0x3b5 or 0x3d5)
+        {
+            if (!ActiveCrtc(port) || !ReadableCrtc(_crtcIndex)) return 255;
+            return IsTrio64 ? ReadTrioCrtcValue(_crtcIndex) : _crtc[_crtcIndex];
+        }
         if (IsEt4000 && port is 0x3b8 or 0x3d8) return ActiveCrtc(port) ? (byte)((_modeControl & 0x3f) | ((_hercules & 2) << 5)) : (byte)255;
         if (IsEt4000 && port == 0x3cd) return _etSegmentEnabled ? _segmentSelect : (byte)255;
         if (port is 0x3ba or 0x3da)
@@ -35,9 +39,9 @@ public sealed partial class VgaAdapter
             case 0x3c0: return (byte)(_attrIndex | (_displayEnabled ? 0x20 : 0));
             case 0x3c1: return _attrIndex < _attr.Length ? _attr[_attrIndex] : (byte)255;
             case 0x3c2: return 0x10;
-            case 0x3c3: return 1;
+            case 0x3c3: return IsTrio64 ? (byte)255 : (byte)1;
             case 0x3c4: return _seqIndex;
-            case 0x3c5: return _seqIndex < _seq.Length ? _seq[_seqIndex] : (byte)255;
+            case 0x3c5: return IsTrio64 ? ReadTrioSequencer() : _seqIndex < _seq.Length ? _seq[_seqIndex] : (byte)255;
             case 0x3c6: return _pelMask;
             case 0x3c7: return _dacState;
             case 0x3c8: return _writeIndex;
@@ -65,10 +69,12 @@ public sealed partial class VgaAdapter
             if (_etSegmentEnabled) { _segmentSelect = value; BankSwitchWrites++; }
             return;
         }
-        if (port is 0x3b4 or 0x3d4) { if (ActiveCrtc(port)) _crtcIndex = (byte)(value & (IsEt4000 ? 63 : 31)); return; }
+        if (port is 0x3b4 or 0x3d4) { if (ActiveCrtc(port)) _crtcIndex = (byte)(value & (IsTrio64 ? 255 : IsEt4000 ? 63 : 31)); return; }
         if (port is 0x3b5 or 0x3d5)
         {
-            if (!ActiveCrtc(port) || !WritableCrtc(_crtcIndex)) return;
+            if (!ActiveCrtc(port)) return;
+            if (IsTrio64) { WriteTrioCrtc(_crtcIndex, value); return; }
+            if (!WritableCrtc(_crtcIndex)) return;
             byte previous = _crtc[_crtcIndex];
             if ((_crtc[0x11] & 128) != 0 && _crtcIndex < 8)
             { if (_crtcIndex == 7) _crtc[7] = (byte)((_crtc[7] & ~16) | (value & 16)); }
@@ -78,6 +84,7 @@ public sealed partial class VgaAdapter
             if (_crtc[_crtcIndex] != previous) { _pixelRevision++; UpdateMode(); }
             return;
         }
+        if (IsTrio64 && (port is >= 0x3c6 and <= 0x3c9) && (_crtc[0x33] & 0x10) != 0) return;
         switch (port)
         {
             case 0x3c0:
@@ -87,12 +94,16 @@ public sealed partial class VgaAdapter
                     if (_displayEnabled != enabled) _pixelRevision++;
                     _attrIndex = (byte)(value & 31); _displayEnabled = enabled;
                 }
-                else if (_attrIndex < _attr.Length && (_attrIndex != 0x16 || _etKey) && _attr[_attrIndex] != value)
+                else if (_attrIndex < _attr.Length && (_attrIndex != 0x16 || _etKey) &&
+                    !(IsTrio64 && (_crtc[0x33] & 0x40) != 0 && (_attrIndex < 16 || _attrIndex == 0x11)) && _attr[_attrIndex] != value)
                 { _attr[_attrIndex] = value; _pixelRevision++; UpdateMode(); }
                 _attributeData = !_attributeData; break;
-            case 0x3c2: if (_misc != value) _pixelRevision++; _misc = value; break;
-            case 0x3c4: _seqIndex = (byte)(value & 7); break;
+            case 0x3c2:
+                if (IsTrio64) value &= 0xef;
+                if (_misc != value) _pixelRevision++; _misc = value; break;
+            case 0x3c4: _seqIndex = (byte)(value & (IsTrio64 ? 31 : 7)); break;
             case 0x3c5:
+                if (IsTrio64) { WriteTrioSequencer(value); break; }
                 if (_seqIndex < _seq.Length && (_seqIndex < 5 || _etKey && _seqIndex is 6 or 7))
                 {
                     if (_seq[_seqIndex] != value) _pixelRevision++;

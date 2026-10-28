@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "dose-430fx-piix-reset-dev-v1",
+  "name": "DOSE 430FX / PIIX reset busmaster subset validation",
+  "cpu": "p54c-b5-subset-development",
+  "cpuHz": 100000000,
+  "ramMiB": 32,
+  "floppyDriveA": "none",
+  "floppyDriveB": "none",
+  "bootDevice": "ide",
+  "soundCard": "sb16-ct1740-dsp405-development",
+  "soundBlasterBasePort": 544,
+  "soundBlasterIrq": 5,
+  "soundBlasterDmaChannel": 1,
+  "soundBlasterDma16Channel": 5,
+  "videoCard": "dose-vga-development"
+}

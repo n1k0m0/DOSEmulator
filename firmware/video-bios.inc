@@ -34,6 +34,9 @@ set_video_mode:
     cmp bl,0x13
     jne .done
 .supported:
+%ifdef DOSE_TRIO64
+    call trio64_vga_reset
+%endif
     cmp byte [cs:et4000_present],0
     je .standard_adapter
     call et4000_vga_reset

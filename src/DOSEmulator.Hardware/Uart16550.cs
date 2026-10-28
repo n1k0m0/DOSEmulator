@@ -58,7 +58,7 @@ public sealed partial class Uart16550(DeviceScheduler scheduler, Action<bool> in
     public long RejectedTransmitWrites { get; private set; }
     /// <summary>Number of explicitly supplied external framed characters.</summary>
     public long ExternalCharactersQueued { get; private set; }
-    /// <summary>Number of external frames discarded while local loopback disconnects the receiver pin.</summary>
+    /// <summary>Number of external frames discarded by local loopback or an intervening own-board hard reset.</summary>
     public long ExternalCharactersIgnored { get; private set; }
     /// <summary>Physical logical modem inputs before local loopback substitution.</summary>
     public byte PhysicalModem => _physicalModem;
@@ -144,14 +144,14 @@ public sealed partial class Uart16550(DeviceScheduler scheduler, Action<bool> in
     private void StartReceive()
     {
         if (_rxBusy || _wire.Count == 0 || _divisor == 0) return;
-        var frame = _wire.Dequeue(); bool loop = (_mcr & 16) != 0; byte lcr = _lcr;
+        var frame = _wire.Dequeue(); bool loop = (_mcr & 16) != 0; byte lcr = _lcr; long generation = _receiveGeneration;
         _rxBusy = true;
         _rxEvent = scheduler.ScheduleAfter(Delay((ulong)HalfBits(lcr) * 8 * _divisor, ref _rxRemainder), () =>
         {
             _rxEvent = 0; _rxBusy = false;
-            if (loop) ExternalCharactersIgnored++; else Receive((byte)(frame.Data & ((1 << (5 + (lcr & 3))) - 1)), frame.Errors);
+            if (loop || generation != _receiveGeneration) ExternalCharactersIgnored++; else Receive((byte)(frame.Data & ((1 << (5 + (lcr & 3))) - 1)), frame.Errors);
             StartReceive();
-        }, this, "event1", () => StateValues.Pack(frame, loop, lcr));
+        }, this, "event1", () => StateValues.Pack(frame, loop, lcr, generation));
     }
     /// <summary>Start an idle transmitter at the reference board's next nominal bit boundary.</summary>
     private void KickTransmit()

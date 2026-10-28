@@ -131,6 +131,17 @@ public sealed class MachineSession : IDisposable
                 ReplaceMachine(replacement); Machine.Running = true;
                 result = Machine.GetStatus(); break;
             }
+            case "SetOpticalDisc":
+            {
+                if (!Machine.Profile.IsAtapi) throw new ArgumentException("No installed packet target.");
+                string? image = request.Payload.TryGetProperty("path", out var property) ? property.GetString() : null;
+                if (image is not null && string.IsNullOrWhiteSpace(image)) throw new ArgumentException("A cooked ISO path is required.");
+                var definition = Machine.CaptureDefinition(_definitionName, _definitionId) with
+                { OpticalDiscs = image is null ? [] : [new(Machine.Profile.AtapiSlot, image)] };
+                var replacement = MachineFactory.FromDefinition(definition, Machine);
+                ReplaceMachine(replacement); Machine.Running = true;
+                result = Machine.GetStatus(); break;
+            }
             case "CreateSnapshot":
             {
                 string path = request.Payload.GetProperty("path").GetString() ?? throw new ArgumentException("Missing new snapshot directory.");
@@ -174,10 +185,24 @@ public sealed class MachineSession : IDisposable
                     parallelPort = true, parallelModel = ParallelPrinterPort.ProfileId, parallelBiosFunctions = new[] { 0, 1, 2 }, hostPrinter = false,
                     et4000AxBanked256 = true, et4000VideoMemoryBytes = 1048576, et4000LegacyModes = new[] { 0x2e, 0x30, 0x38 },
                     vbe = true, vbeFunctions = new[] { 0, 1, 2, 3, 5 }, fullVbeConformance = false,
+                    trio64Pci = true, trio64Model = MachineProfile.S3Trio64VideoId, trio64VideoMemoryBytes = 2097152,
+                    trio64Linear8bpp = true, trio64Acceleration = true, trio64Acceleration2dSubset = true,
+                    trio64AccelerationScope = "Synchronous line, rectangle, BitBLT, PatBLT and CPU-image subset; no FIFO/bus-time calibration",
+                    trio64HighColor = true, trio64PixelFormats = new[] { "indexed8", "RGB555", "RGB565", "BGRx32" },
+                    trio64HardwareCursor = true, trio64HardwareCursorPolicy = "86C764: 64x64, left storage, Windows/X11, enhanced scanout",
+                    trio64Active = Machine.Profile.IsTrio64, trio64FullChip = false,
+                    trio64Vbe12Subset = true, trio64VbeVersion = 0x0102, trio64VbeOwnFirmware = true,
+                    trio64VbeBanked = true, trio64VbeFunctions = new[] { 0, 1, 2, 3, 5 }, trio64VbeLfbInterface = false,
+                    trio64VbeActive = Machine.Profile.IsWindows95Board,
+                    windows95CandidateProfiles = new[] { MachineProfile.Windows95ProfileId, MachineProfile.Windows95Profile133Id },
+                    atapiPio = true, atapiModel = MachineProfile.AtapiCdRomId, atapiBlockBytes = 2048,
+                    atapiDma = false, atapiAudioPlayback = false, hostOpticalDrive = false,
+                    pciBios21Subset = true, bios32ServiceDirectory = true, pciBiosProfile = MachineProfile.PciBiosProfileId,
+                    pciBiosActive = Machine.Profile.IsPciBiosBoard, pciSpecialCycles = false, fullPciBiosConformance = false,
                     et4000FullChip = false, ideChannels = 2, ideSlots = 4, machineDefinitions = true, blankDiskImages = true, mediaCheckpoints = true, runningStateSnapshots = true,
                     biosVgaTextScanlines = true, msDos622Cp850Text = true, guestCpuHotReset = true,
                     resetScope = "CPU only; RAM, devices, virtual time and attached media retained",
-                    commands = new[] { "CreateSnapshot", "LoadSnapshot", "CreateMediaCheckpoint", "CreateMediaBranch", "GetMachineDefinition", "SaveMachineDefinition", "LoadMachineDefinition", "SetHardDisk", "Ping", "GetStatus", "GetCapabilities", "Pause", "Resume", "HardwareReset", "SendCtrlAltDel", "PowerCycleCurrent", "PowerCycleDemo", "PowerCycleReadOnlyDisk", "PowerCycleOverlayDisk", "InsertFloppy", "EjectFloppy", "PrepareConfigurationChange", "CommitConfigurationChange", "SendScanCode", "SendMouseInput", "SetGameportInput", "SendSerialInput", "SetParallelInput", "SendMidiInput" } }; break;
+                    commands = new[] { "CreateSnapshot", "LoadSnapshot", "CreateMediaCheckpoint", "CreateMediaBranch", "GetMachineDefinition", "SaveMachineDefinition", "LoadMachineDefinition", "SetHardDisk", "SetOpticalDisc", "Ping", "GetStatus", "GetCapabilities", "Pause", "Resume", "HardwareReset", "SendCtrlAltDel", "PowerCycleCurrent", "PowerCycleDemo", "PowerCycleReadOnlyDisk", "PowerCycleOverlayDisk", "InsertFloppy", "EjectFloppy", "PrepareConfigurationChange", "CommitConfigurationChange", "SendScanCode", "SendMouseInput", "SetGameportInput", "SendSerialInput", "SetParallelInput", "SendMidiInput" } }; break;
             case "Pause": Machine.Running = false; result = Machine.GetStatus(); break;
             case "Resume": Machine.Running = true; result = Machine.GetStatus(); break;
             case "HardwareReset": Machine.HardwareReset(); result = Machine.GetStatus(); break;

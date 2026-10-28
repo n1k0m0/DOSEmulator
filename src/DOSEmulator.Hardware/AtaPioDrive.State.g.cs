@@ -28,6 +28,9 @@ internal sealed partial class AtaPioDrive : IScheduledStateObject
         w.Value("Status", Status);
         w.Value("ReadSectorCount", ReadSectorCount);
         w.Value("WrittenSectorCount", WrittenSectorCount);
+        w.Value("_dmaAvailable", _dmaAvailable);
+        w.Value("_dmaDirection", _dmaDirection);
+        w.Value("_dmaSelected", _dmaSelected);
         return w.Finish();
     }
 
@@ -49,6 +52,9 @@ internal sealed partial class AtaPioDrive : IScheduledStateObject
         Status = r.Value<byte>("Status");
         ReadSectorCount = r.Value<long>("ReadSectorCount");
         WrittenSectorCount = r.Value<long>("WrittenSectorCount");
+        r.Invariant("_dmaAvailable", _dmaAvailable);
+        _dmaDirection = r.Value<AtaDmaDirection>("_dmaDirection");
+        _dmaSelected = r.Value<bool>("_dmaSelected");
         r.Finish();
     }
 
@@ -98,6 +104,39 @@ internal sealed partial class AtaPioDrive : IScheduledStateObject
                             try { _disk.ReadSector(_lba, _data); }
                             catch (IOException) { Abort(0x40); return; }
                             Status = 0x58; PendingInterrupt = true;
+                        };
+            }
+            case "dma-write-commit":
+            {
+                if (payload.Length != 0) throw new InvalidDataException("Scheduled operation shape differs.");
+                return () =>
+                            {
+                                _event = 0;
+                                try { ((IWritableBlockDevice)_disk!).WriteSector(_lba, _data); }
+                                catch (IOException) { Abort(0x40); return; }
+                                WrittenSectorCount++; _lba++; _remaining--; UpdateTaskAddress(); _offset = 0;
+                                if (_remaining > 0) { Status = 0x58; DmaStateChanged?.Invoke(); }
+                                else CompleteDma();
+                            };
+            }
+            case "dma-read-ready":
+            {
+                if (payload.Length != 0) throw new InvalidDataException("Scheduled operation shape differs.");
+                return () =>
+                        {
+                            _event = 0;
+                            if (_disk is null || _lba < 0 || _lba >= _disk.SectorCount) { Abort(0x10); return; }
+                            try { _disk.ReadSector(_lba, _data); }
+                            catch (IOException) { Abort(0x40); return; }
+                            Status = 0x58; DmaStateChanged?.Invoke();
+                        };
+            }
+            case "dma-write-ready":
+            {
+                if (payload.Length != 0) throw new InvalidDataException("Scheduled operation shape differs.");
+                return () =>
+                        {
+                            _event = 0; Status = 0x58; DmaStateChanged?.Invoke();
                         };
             }
             default: throw new InvalidDataException("Unknown scheduled operation.");

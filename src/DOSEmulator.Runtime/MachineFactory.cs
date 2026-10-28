@@ -12,6 +12,13 @@ public static class MachineFactory
     public static PcMachine FromImages(MachineProfile profile, string? ideImage = null, string? ideOverlay = null,
         string? floppyA = null, string? floppyAOverlay = null, string? floppyB = null, string? floppyBOverlay = null, string? bootDevice = null,
         string? disk1 = null, string? overlay1 = null, string? disk2 = null, string? overlay2 = null, string? disk3 = null, string? overlay3 = null)
+        => FromImagesWithOptical(profile, null, ideImage, ideOverlay, floppyA, floppyAOverlay, floppyB, floppyBOverlay,
+            bootDevice, disk1, overlay1, disk2, overlay2, disk3, overlay3);
+
+    /// <summary>Preserves the legacy image API while explicitly binding one cooked ISO to the installed packet target.</summary>
+    public static PcMachine FromImagesWithOptical(MachineProfile profile, string? iso, string? ideImage = null, string? ideOverlay = null,
+        string? floppyA = null, string? floppyAOverlay = null, string? floppyB = null, string? floppyBOverlay = null, string? bootDevice = null,
+        string? disk1 = null, string? overlay1 = null, string? disk2 = null, string? overlay2 = null, string? disk3 = null, string? overlay3 = null)
     {
         var hard = new List<DiskAttachment>(); var floppy = new List<DiskAttachment>();
         // Adds one explicit image/overlay binding and rejects an orphan journal before opening any media.
@@ -25,7 +32,8 @@ public static class MachineFactory
         if (bootDevice is not null) profile = profile with { BootDevice = bootDevice };
         else if (hard.Count == 0 && floppyA is not null) profile = profile with { BootDevice = "floppy-a" };
         var definition = new MachineDefinition { Name = profile.Name, Hardware = profile, HardDisks = hard.ToArray(), Floppies = floppy.ToArray(),
-            BuiltInTestDisk = hard.Count == 0 && floppy.Count == 0 };
+            BuiltInTestDisk = hard.Count == 0 && floppy.Count == 0 && (!profile.IsAtapi || profile.AtapiSlot != 0),
+            OpticalDiscs = iso is null ? [] : [new(profile.AtapiSlot, iso)] };
         return FromDefinition(definition, inferFloppyTypes: true);
     }
 
@@ -49,6 +57,7 @@ public static class MachineFactory
         definition = MachineDefinitionStore.Resolve(definition, Environment.CurrentDirectory);
         profile = definition.Hardware with { Name = definition.Name };
         IReadOnlyBlockDevice?[] disks = new IReadOnlyBlockDevice?[4], floppies = new IReadOnlyBlockDevice?[2];
+        IReadOnlyOpticalDisc? optical = null;
         try
         {
             foreach (var item in definition.HardDisks)
@@ -66,7 +75,10 @@ public static class MachineFactory
                 floppies[item.Slot] = oldSlot >= 0 ? previous!.Floppy.ReopenMedia(oldSlot) : Open(item, null);
             }
             if (definition.BuiltInTestDisk) disks[0] = new MemoryDisk(DevelopmentFirmware.CreateDemoDisk(), "Built-in test sector (not DOS)");
-            var machine = PcMachine.CreateWithDisks(profile, disks, floppies[0], floppies[1]);
+            if (definition.OpticalDiscs.SingleOrDefault() is { } cd)
+                optical = previous?.OpticalDisc is IFileBackedOpticalDisc old && MachineDefinitionStore.Same(cd.ImagePath, old.ImagePath)
+                    ? previous.OpticalDisc.Reopen() : new ReadOnlyIsoImage(cd.ImagePath);
+            var machine = PcMachine.CreateWithOpticalDiscs(profile, disks, optical, floppies[0], floppies[1]);
             machine.SetDefinitionIdentity(definition.Id, definition.Name);
             previous?.Rtc.CarryBatteryStateTo(machine.Rtc);
             return machine;
@@ -74,6 +86,7 @@ public static class MachineFactory
         catch
         {
             foreach (var media in disks.Concat(floppies)) media?.Dispose();
+            optical?.Dispose();
             throw;
         }
     }

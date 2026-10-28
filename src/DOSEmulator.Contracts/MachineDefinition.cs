@@ -15,6 +15,8 @@ public sealed record MachineDefinition
     public MachineProfile Hardware { get; init; } = new();
     /// <summary>Fixed physical IDE-slot bindings; an omitted slot has no attached disk.</summary>
     public DiskAttachment[] HardDisks { get; init; } = [];
+    /// <summary>Read-only cooked ISO bindings for the explicitly installed packet target; an empty array means an empty tray.</summary>
+    public OpticalAttachment[] OpticalDiscs { get; init; } = [];
     /// <summary>Removable media bindings for the two configured floppy-drive positions.</summary>
     public DiskAttachment[] Floppies { get; init; } = [];
     /// <summary>Whether this PC explicitly uses the original project boot-sector fixture instead of an installed OS image.</summary>
@@ -27,6 +29,11 @@ public sealed record MachineDefinition
         if (string.IsNullOrWhiteSpace(Name) || Name.Length > 128) throw new ArgumentException("Machine name must contain 1..128 characters.");
         ArgumentNullException.ThrowIfNull(Hardware); Hardware.Validate();
         ValidateSlots(HardDisks, 4); ValidateSlots(Floppies, 2);
+        ArgumentNullException.ThrowIfNull(OpticalDiscs);
+        if (OpticalDiscs.Length > 1 || OpticalDiscs.Any(m => m is null || !Hardware.IsAtapi ||
+            m.Slot != Hardware.AtapiSlot || string.IsNullOrWhiteSpace(m.ImagePath)) ||
+            Hardware.IsAtapi && (HardDisks.Any(m => m.Slot == Hardware.AtapiSlot) || BuiltInTestDisk && Hardware.AtapiSlot == 0))
+            throw new ArgumentException("An installed packet target reserves its IDE position and accepts at most one cooked ISO.");
         if (BuiltInTestDisk && HardDisks.Length != 0) throw new ArgumentException("The built-in test disk cannot replace an attached hard disk.");
     }
 
@@ -42,6 +49,9 @@ public sealed record MachineDefinition
 
 /// <summary>A raw base image and an optional private sector journal at a fixed controller slot.</summary>
 public sealed record DiskAttachment(int Slot, string ImagePath, string? OverlayPath = null);
+
+/// <summary>A protected cooked ISO at the installed packet-device position; optical writes and COW journals are unsupported.</summary>
+public sealed record OpticalAttachment(int Slot, string ImagePath);
 
 /// <summary>Guest-visible IDE slot and capacity, suitable for UI/IPC without exposing mutable devices.</summary>
 public sealed record HardDiskStatus(int Slot, string Name, long Bytes, bool Writable);

@@ -47,6 +47,11 @@ public sealed partial class PciConfigurationBus : IIoPortDevice
         target is not null && (uint)device <= 31 && (uint)function <= 7 && _functions.Count == 1 &&
         _functions.TryGetValue((ushort)((bus << 8) | (device << 3) | function), out var actual) && ReferenceEquals(actual, target);
 
+    /// <summary>Checks one fixed BDF and peer identity while a board separately checks the complete function count.</summary>
+    public bool HasFunction(byte bus, int device, int function, IPciConfigurationFunction target) =>
+        target is not null && (uint)device <= 31 && (uint)function <= 7 &&
+        _functions.TryGetValue((ushort)((bus << 8) | (device << 3) | function), out var actual) && ReferenceEquals(actual, target);
+
     /// <summary>Resets only the configuration address latch; individual function reset is a chipset owner's separate operation.</summary>
     public void ResetAddress() => _address = 0;
 

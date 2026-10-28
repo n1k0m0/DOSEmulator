@@ -24,6 +24,7 @@ public sealed partial class VgaAdapter
     /// <summary>Combines the active ET4000 read/write bank with the memory addressing mode's per-plane offset.</summary>
     private int BankAddress(int address, bool write)
     {
+        if (IsTrio64) return address + (TrioBank << 14);
         if (!IsEt4000) return address & 65535;
         int bank = write ? _segmentSelect & 15 : _segmentSelect >> 4;
         // Tseng Data Book 1990, table 4.3-4: PL starts at MD16 in LG1,
@@ -38,7 +39,7 @@ public sealed partial class VgaAdapter
     /// <summary>Checks CRTC register availability and the model's protected-write mask.</summary>
     private bool WritableCrtc(byte index) => index < 25 || ExtendedCrtc(index) && (_etKey || index is 0x33 or 0x35);
     /// <summary>Checks whether the selected CRTC register is implemented and readable in the active adapter model.</summary>
-    private bool ReadableCrtc(byte index) => index < 25 || ExtendedCrtc(index);
+    private bool ReadableCrtc(byte index) => IsTrio64 ? ReadableTrioCrtc(index) : index < 25 || ExtendedCrtc(index);
     /// <summary>Processes the ET4000 key ports without allowing an inactive mono/color decoder to revive a stale unlock.</summary>
     private void WriteEtKey(ushort port, byte value)
     {

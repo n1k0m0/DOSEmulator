@@ -1,5 +1,7 @@
 # Zweiter Audit: konkrete Korrekturen vom 27. Oktober 2026
 
+Erneute Prüfung auf dem 11529er-ATAPI-Ausgangsstand: N1–N6 bleiben bestätigt. Zwei zusätzliche PIO-/Eingaberandfälle sind im [11563er-Folgepaket](AUDIT2-RECHECK-2026-10-27.md) korrigiert; die folgenden Zahlen gelten weiterhin dem historischen 9792er-Build.
+
 Der parallele Chat „Emulator-Funktionen zusammenfassen“ hat den zweiten Audit auf eingefrorenen 8942er-Dateien erstellt. Sein privater Bericht `artifacts/audit2-2026-10-27-60daa5ae/report.html` bleibt unverändert. Die Umsetzung beginnt auf dem geprüften 9125er-Hostcontrollerstand. Drei Agenten bearbeiteten getrennte CPU-, Zustands-/Medien- und Eingabebereiche; Gegenreviews und gemeinsame Abschlussprüfung erfolgten anschließend. Keine konkurrierende Änderung durch den beim Einstieg und Abschluss ruhenden Auditchat.
 
 **9792/9792 Regressionen, 667 neue Fälle, regulärer Release-Build ohne Warnungen/Fehler.** 64 Kandidaten-/zweiten regulären Release-Dateien bytegleich. Der vollständige 9125er-Starter und seine 797 Quellen sind privat archiviert. Der neue private Gesamtnachweis wird über `artifacts/tests/audit2-fixes-release-path.txt` erreicht. Historische Abnahmen behalten ihre Buildidentität; M4–M8 bleiben offen.

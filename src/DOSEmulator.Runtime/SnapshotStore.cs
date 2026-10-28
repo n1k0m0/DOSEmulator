@@ -28,6 +28,7 @@ public static class SnapshotStore
         ArgumentNullException.ThrowIfNull(machine); machine.RequireSnapshotBoundary();
         string target = NewDirectory(directory, ".dossav");
         var state = machine.CaptureHardwareState(); SnapshotValidation.Check(state);
+        if (machine.Profile.IsPiixReset) SnapshotValidation.CheckProfile(state, machine.Profile, machine.Memory.Ram.Length);
         var runtime = RuntimeIdentity();
         string staging = Path.Combine(Path.GetDirectoryName(target)!, "." + Path.GetFileName(target) + "." + Guid.NewGuid().ToString("N") + ".tmp");
         Directory.CreateDirectory(staging);
@@ -74,8 +75,9 @@ public static class SnapshotStore
         stateFile.Position = 0; var state = Read<HardwareState>(stateFile, 67108864);
         if (state.Scheduler is null || state.Scheduler.Now != manifest.VirtualNanoseconds) throw new InvalidDataException("Snapshot clocks differ.");
         SnapshotValidation.Check(state);
-        var sealedDefinition = MediaCheckpointStore.ReadSnapshotDefinition(mediaFile, Path.Combine(source, "media.dosemedia"));
+        var (sealedDefinition, sealedMedia) = MediaCheckpointStore.ReadSnapshotMetadata(mediaFile, Path.Combine(source, "media.dosemedia"));
         SnapshotValidation.CheckProfile(state, sealedDefinition.Hardware, manifest.RamBytes);
+        SnapshotValidation.CheckIdeMedia(state, sealedDefinition, sealedMedia);
         PcMachine? machine = null; bool published = false;
         try
         {

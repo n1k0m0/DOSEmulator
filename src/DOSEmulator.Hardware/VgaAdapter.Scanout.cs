@@ -49,10 +49,41 @@ public sealed partial class VgaAdapter
         }
         return buffer.Frame = new(++_frame, _generation, now, width, height, buffer.Pixels);
     }
+    /// <summary>Reads original-Trio64 indexed or LUT-bypassed direct color from the same interleaved VRAM bytes.</summary>
+    private uint ReadTrioScanoutColor(int address, int colorBits)
+    {
+        uint low = ReadTrioRaw(address);
+        if (colorBits == 8) return _rgb[low & _pelMask];
+        uint value = low | ((uint)ReadTrioRaw(address + 1) << 8);
+        if (colorBits == 24) return 0xff000000u | ((uint)ReadTrioRaw(address + 2) << 16) | value;
+        uint red = (value >> (colorBits == 15 ? 10 : 11)) & 31;
+        uint green = (value >> 5) & (colorBits == 15 ? 31u : 63u);
+        uint blue = value & 31;
+        // Expand each source component to the host surface; DAC palette and PEL mask apply only to indexed modes.
+        red = (red << 3) | (red >> 2); blue = (blue << 3) | (blue >> 2);
+        green = colorBits == 15 ? (green << 3) | (green >> 2) : (green << 2) | (green >> 4);
+        return 0xff000000u | (red << 16) | (green << 8) | blue;
+    }
     /// <summary>Renders the current guest text/graphics state into a complete caller-owned pixel surface.</summary>
     private void Render(ulong now, int width, int height, uint[] pixels)
     {
-        if (!_displayEnabled || (_seq[1] & 32) != 0 || (_seq[0] & 3) != 3) Array.Fill(pixels, 0xff000000u);
+        if (!_displayEnabled || (_seq[1] & 32) != 0 || !IsTrio64 && (_seq[0] & 3) != 3 || IsTrio64 && (_seq[0x18] & 0x20) != 0) Array.Fill(pixels, 0xff000000u);
+        else if (TrioEnhanced)
+        {
+            // DB014-B table 11-2: enhanced DWORD scanout pitch is offset * 8 bytes; start units are DWORDs.
+            int colorBits = TrioEnhancedColorBits;
+            if (colorBits == 0 || (_crtc[0x42] & 0x20) != 0)
+                Array.Fill(pixels, 0xff000000u);
+            else
+            {
+                // Original Trio64 mode13 uses B,G,R,padding storage; the Trio32-only packed24 mode is not selected here.
+                int bytesPerPixel = colorBits == 8 ? 1 : colorBits == 24 ? 4 : 2;
+                for (int y = 0; y < height; y++)
+                    for (int x = 0; x < width; x++)
+                        pixels[y * width + x] = ReadTrioScanoutColor(TrioDisplayStart * 4 + y * TrioOffset * 8 + x * bytesPerPixel, colorBits);
+                RenderTrioCursor(width,height,pixels,colorBits);
+            }
+        }
         else if (GraphicsMode)
         {
             int pan = _attr[0x13] & 15;

@@ -1,5 +1,7 @@
 # DOSE AT mit P54C-B5-Teilmodell
 
+Zusätzlich besitzt das eigene Resetprofil 11148 getrennte P54C-INIT-/CPURST-APIs mit historischer Integer-/roher x87-/TSC-Trennung und echten ursprünglichen DOS-/EMM386-Rückwegen. Bestehender Reset-/AT-Profilumfang bleibt erhalten. [CF9-/Resetvertrag](PIIX-RESET.md); keine vollständige P54C-/430FX-/Windowsabnahme.
+
 Stand: 27. Oktober 2026. **8942/8942 Regressionen, normaler Release-Build mit 0 Warnungen/Fehlern.** Das benannte P54C-Teilmodell ist jetzt durchgängig in einen eigenen DOSE-AT-PC integriert: Profil, CLI, Hardwaremenü, Factory, Ownerwechsel, DOSEBios-Inventur und vollständige lokale Snapshots. Dieses Profil ist kein historisches 430FX-Board und keine Windows-95-Abnahme; M4 bleibt offen.
 
 ## Auswählbarer Umfang

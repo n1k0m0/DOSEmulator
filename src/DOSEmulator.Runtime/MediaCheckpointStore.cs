@@ -31,6 +31,8 @@ public static class MediaCheckpointStore
             .Where(v => v.Disk is not null).ToArray();
         if (bindings.Any(v => v.Disk is not (CopyOnWriteDisk or ReadOnlyRawDisk) && !(includeMemory && v.Disk is MemoryDisk)))
             throw new InvalidOperationException("Media checkpoints require file-backed RAW media; memory/custom devices are not supported.");
+        if (machine.OpticalDisc is not null and not ReadOnlyIsoImage)
+            throw new InvalidOperationException("Media checkpoints require the known protected cooked ISO implementation.");
         MachineDefinition definition = machine.CaptureDefinition();
         ulong now = machine.Scheduler.Now;
         MediaCheckpoint? checkpoint = null;
@@ -72,10 +74,19 @@ public static class MediaCheckpointStore
                 ImagePath = Path.GetRelativePath(target, item.ImagePath),
                 OverlayPath = item.OverlayPath is null ? null : JournalName(device, item.Slot)
             };
+            if (machine.OpticalDisc is ReadOnlyIsoImage optical)
+            {
+                using var input = OpenProtected(optical.ImagePath);
+                if (input.Length != checked(optical.BlockCount * IReadOnlyOpticalDisc.BlockSize))
+                    throw new InvalidDataException("Optical capacity changed during capture.");
+                rows.Add(new("cdrom", machine.Profile.AtapiSlot, optical.BlockCount, Hash(input), null, 0, null)
+                    { SectorSize = IReadOnlyOpticalDisc.BlockSize });
+            }
             var portable = definition with
             {
                 HardDisks = definition.HardDisks.Select(v => Relative(v, "ide")).ToArray(),
-                Floppies = definition.Floppies.Select(v => Relative(v, "floppy")).ToArray()
+                Floppies = definition.Floppies.Select(v => Relative(v, "floppy")).ToArray(),
+                OpticalDiscs = definition.OpticalDiscs.Select(v => v with { ImagePath = Path.GetRelativePath(target, v.ImagePath) }).ToArray()
             };
             checkpoint = new(1, Kind, Guid.NewGuid().ToString("N"), now, portable, rows.ToArray());
             WriteDocument(Path.Combine(staging, Manifest), checkpoint);
@@ -106,7 +117,7 @@ public static class MediaCheckpointStore
                 {
                     basis = OpenProtected(attachment.ImagePath); locked.Add(basis); bases.Add(attachment.ImagePath, basis);
                 }
-                if (basis.Length / 512 != row.Sectors || basis.Length % 512 != 0 || Hash(basis) != row.BaseSha256)
+                if (basis.Length / row.SectorSize != row.Sectors || basis.Length % row.SectorSize != 0 || Hash(basis) != row.BaseSha256)
                     throw new InvalidDataException("Checkpoint base image identity or capacity differs.");
                 if (row.JournalName is not null)
                 {
@@ -137,7 +148,8 @@ public static class MediaCheckpointStore
                 branch = definition with
                 {
                     HardDisks = definition.HardDisks.Select(Relative).ToArray(),
-                    Floppies = definition.Floppies.Select(Relative).ToArray()
+                    Floppies = definition.Floppies.Select(Relative).ToArray(),
+                    OpticalDiscs = definition.OpticalDiscs.Select(v => v with { ImagePath = Path.GetRelativePath(target, v.ImagePath) }).ToArray()
                 };
                 WriteDocument(Path.Combine(staging, "branch.dospc.json"), branch);
             });
@@ -148,7 +160,14 @@ public static class MediaCheckpointStore
 
     /// <summary>Reads the already protected metadata for full-state/profile checks without creating a media branch.</summary>
     internal static MachineDefinition ReadSnapshotDefinition(FileStream manifest, string directory) =>
-        Validate(ReadCheckpoint(manifest), directory);
+        ReadSnapshotMetadata(manifest, directory).Definition;
+
+    /// <summary>Returns validated fixed-slot capacity/writability metadata without opening any disk or publishing a branch.</summary>
+    internal static (MachineDefinition Definition, MediaGeneration[] Media) ReadSnapshotMetadata(FileStream manifest, string directory)
+    {
+        var checkpoint = ReadCheckpoint(manifest);
+        return (Validate(checkpoint, directory), checkpoint.Media);
+    }
 
     /// <summary>Uses the same bounded, strict metadata decoder for full-state preflight and media branching.</summary>
     private static MediaCheckpoint ReadCheckpoint(FileStream manifest)
@@ -167,7 +186,7 @@ public static class MediaCheckpointStore
             checkpoint.Machine is null || checkpoint.Machine.BuiltInTestDisk || checkpoint.Media is null || checkpoint.Media.Length > 6)
             throw new InvalidDataException("Unsupported or incomplete media-only checkpoint.");
         var definition = MachineDefinitionStore.Resolve(checkpoint.Machine, directory);
-        int count = definition.HardDisks.Length + definition.Floppies.Length;
+        int count = definition.HardDisks.Length + definition.Floppies.Length + definition.OpticalDiscs.Length;
         if (checkpoint.Media.Length != count || checkpoint.Media.Any(v => v is null) ||
             checkpoint.Media.Select(v => (v.Device, v.Slot)).Distinct().Count() != count)
             throw new InvalidDataException("Checkpoint media slots differ from its PC definition.");
@@ -175,7 +194,8 @@ public static class MediaCheckpointStore
         {
             var attachment = Attachments(definition, row.Device).SingleOrDefault(v => v.Slot == row.Slot)
                 ?? throw new InvalidDataException("Unexpected checkpoint media slot.");
-            if (row.Sectors <= 0 || row.Sectors > RawDiskImage.MaximumBytes / 512 || !IsHash(row.BaseSha256))
+            if (row.SectorSize != (row.Device == "cdrom" ? IReadOnlyOpticalDisc.BlockSize : 512) ||
+                row.Sectors <= 0 || row.Sectors > (row.Device == "cdrom" ? 0x1_0000_0000L : RawDiskImage.MaximumBytes / 512) || !IsHash(row.BaseSha256))
                 throw new InvalidDataException("Invalid checkpoint base identity or capacity.");
             if (row.Device == "floppy")
             {
@@ -200,6 +220,7 @@ public static class MediaCheckpointStore
     private static DiskAttachment[] Attachments(MachineDefinition definition, string device) => device switch
     {
         "ide" => definition.HardDisks, "floppy" => definition.Floppies,
+        "cdrom" => definition.OpticalDiscs.Select(v => new DiskAttachment(v.Slot, v.ImagePath)).ToArray(),
         _ => throw new InvalidDataException("Unknown checkpoint media bus.")
     };
 

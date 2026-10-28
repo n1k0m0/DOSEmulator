@@ -52,10 +52,17 @@
           "type": "bool",
           "mode": "value",
           "reason": null
+        },
+        {
+          "name": "_dynamicDecoders",
+          "type": "List<IMemoryDecoder>",
+          "mode": "excluded",
+          "reason": "fixed peer registry; identities and complete no-RAM resource policy checked separately"
         }
       ],
       "sourceFiles": [
-        "src/DOSEmulator.Core/MemoryBus.cs"
+        "src/DOSEmulator.Core/MemoryBus.cs",
+        "src/DOSEmulator.Core/MemoryBus.Dynamic.cs"
       ],
       "primaryParameters": [],
       "afterLoad": [
@@ -888,6 +895,36 @@
           "type": "bool",
           "mode": "value",
           "reason": null
+        },
+        {
+          "name": "_dmaAvailable",
+          "type": "bool",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "_dmaDriveIndex",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_atapi",
+          "type": "AtapiCdRom?",
+          "mode": "children",
+          "reason": "sole fixed installed packet peer"
+        },
+        {
+          "name": "_packetIndex",
+          "type": "int",
+          "mode": "invariant",
+          "reason": "fixed packet master/slave identity"
+        },
+        {
+          "name": "_shadowAtapiSlave",
+          "type": "bool",
+          "mode": "invariant",
+          "reason": "fixed master-only ATAPI shadow policy from actual sealed HDD topology"
         }
       ],
       "sourceFiles": [
@@ -992,6 +1029,24 @@
         {
           "name": "WrittenSectorCount",
           "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dmaAvailable",
+          "type": "bool",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "_dmaDirection",
+          "type": "AtaDmaDirection",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dmaSelected",
+          "type": "bool",
           "mode": "value",
           "reason": null
         }
@@ -2921,6 +2976,12 @@
           "reason": null
         },
         {
+          "name": "_supportsLevelInputs",
+          "type": "bool",
+          "mode": "invariant",
+          "reason": "constructor-fixed board capability, checked before media branching"
+        },
+        {
           "name": "_pendingMaster",
           "type": "int",
           "mode": "value",
@@ -2962,6 +3023,12 @@
         },
         {
           "name": "Lines",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "LevelMask",
           "type": "byte",
           "mode": "value",
           "reason": null
@@ -3111,6 +3178,12 @@
         {
           "name": "InterruptPulses",
           "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_resetOutputLow",
+          "type": "bool",
           "mode": "value",
           "reason": null
         }
@@ -3387,7 +3460,7 @@
         {
           "name": "_epoch",
           "type": "DateTime",
-          "mode": "invariant",
+          "mode": "value",
           "reason": null
         },
         {
@@ -3404,6 +3477,12 @@
         },
         {
           "name": "_batteryNanoseconds",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_calendarOriginNanoseconds",
           "type": "ulong",
           "mode": "value",
           "reason": null
@@ -3480,6 +3559,12 @@
           "name": "_parameters",
           "type": "byte[]",
           "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_xbus05Control",
+          "type": "byte",
+          "mode": "value",
           "reason": null
         },
         {
@@ -4486,6 +4571,12 @@
           "type": "long",
           "mode": "value",
           "reason": null
+        },
+        {
+          "name": "_receiveGeneration",
+          "type": "long",
+          "mode": "value",
+          "reason": null
         }
       ],
       "sourceFiles": [
@@ -4705,13 +4796,158 @@
           "type": "long",
           "mode": "value",
           "reason": null
+        },
+        {
+          "name": "_trioSetup",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trioPos",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trioAdvanced",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "IsTrio64",
+          "type": "bool",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "_trioEngineWords",
+          "type": "ushort[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_trioEngineColors",
+          "type": "uint[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_trioEngineActiveWords",
+          "type": "ushort[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_trioEngineActiveColors",
+          "type": "uint[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_trioEngineActive",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trioEngineBlocked",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trioEnginePixelIndex",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trioEngineInputData",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trioEnginePixelData",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trioEngineInputBytes",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trioEnginePixelBytes",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trioEngineReadAddress",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trioEngineReadLatch",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trioEngineReadValid",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trioCursorForeground",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_trioCursorBackground",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_trioCursorColorIndex",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trioCursorOriginX",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trioCursorOriginY",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
         }
       ],
       "sourceFiles": [
         "src/DOSEmulator.Hardware/VgaAdapter.Et4000.cs",
-        "src/DOSEmulator.Hardware/VgaAdapter.cs"
+        "src/DOSEmulator.Hardware/VgaAdapter.cs",
+        "src/DOSEmulator.Hardware/VgaAdapter.Trio64.cs",
+        "src/DOSEmulator.Hardware/VgaAdapter.Trio64.Engine.cs",
+        "src/DOSEmulator.Hardware/VgaAdapter.Trio64.Cursor.cs"
       ],
-      "primaryParameters": []
+      "primaryParameters": [],
+      "afterLoad": [
+        "ValidateTrio64EngineState(state, IsTrio64);",
+        "ValidateTrio64CursorState(state, IsTrio64);"
+      ]
     },
     "DOSEmulator.Runtime.PcMachine": {
       "namespace": "DOSEmulator.Runtime",
@@ -5046,6 +5282,42 @@
           "type": "PciConfigurationBus?",
           "mode": "excluded",
           "reason": "root graph, fixed function registry checked before capture"
+        },
+        {
+          "name": "PiixIrq",
+          "type": "Intel82371FbIrq?",
+          "mode": "excluded",
+          "reason": "root graph, exact PCI/PIC peers and pin selection checked before capture and branch"
+        },
+        {
+          "name": "PiixIde",
+          "type": "Intel82371FbIde?",
+          "mode": "excluded",
+          "reason": "fixed factory peer/registry checked by PcMachine; no recursive graph capture"
+        },
+        {
+          "name": "PiixReset",
+          "type": "PiixResetController?",
+          "mode": "excluded",
+          "reason": "fixed board peer, separately owned in the state graph"
+        },
+        {
+          "name": "S3",
+          "type": "S3Trio64?",
+          "mode": "excluded",
+          "reason": "fixed video/PCI/physical-decoder peer separately owned and checked in product graph"
+        },
+        {
+          "name": "Atapi",
+          "type": "AtapiCdRom?",
+          "mode": "excluded",
+          "reason": "shared fixed controller child, validated by reference identity"
+        },
+        {
+          "name": "OpticalDisc",
+          "type": "IReadOnlyOpticalDisc?",
+          "mode": "excluded",
+          "reason": "owned protected optical lease, sealed separately with 2048-byte capacity"
         }
       ],
       "sourceFiles": [
@@ -5113,6 +5385,616 @@
       "primaryParameters": [],
       "afterLoad": [
         "ValidateState();"
+      ]
+    },
+    "DOSEmulator.Hardware.Intel82371FbIrq": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Intel82371FbIrq",
+      "fields": [
+        {
+          "name": "_pic",
+          "type": "Pic8259",
+          "mode": "excluded",
+          "reason": "fixed shared PIC peer, routed pins and ELCR checked before capture and branch"
+        },
+        {
+          "name": "_config",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_elcr",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_isaLines",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pirqAssertions",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_supportsMirq",
+          "type": "bool",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "_mirqAssertions",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Intel82371FbIrq.cs"
+      ],
+      "primaryParameters": [],
+      "afterLoad": [
+        "ValidateState();"
+      ]
+    },
+    "DOSEmulator.Hardware.Intel82371FbIde": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Intel82371FbIde",
+      "fields": [
+        {
+          "name": "_scheduler",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "fixed factory peer/registry checked by PcMachine; no recursive graph capture"
+        },
+        {
+          "name": "_host",
+          "type": "Intel82437Fx",
+          "mode": "excluded",
+          "reason": "fixed factory peer/registry checked by PcMachine; no recursive graph capture"
+        },
+        {
+          "name": "_primary",
+          "type": "AtaPioController",
+          "mode": "excluded",
+          "reason": "fixed factory peer/registry checked by PcMachine; no recursive graph capture"
+        },
+        {
+          "name": "_secondary",
+          "type": "AtaPioController",
+          "mode": "excluded",
+          "reason": "fixed factory peer/registry checked by PcMachine; no recursive graph capture"
+        },
+        {
+          "name": "_ports",
+          "type": "IoPortBus",
+          "mode": "excluded",
+          "reason": "fixed factory peer/registry checked by PcMachine; no recursive graph capture"
+        },
+        {
+          "name": "_config",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_events",
+          "type": "long[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_channels",
+          "type": "Channel[]",
+          "mode": "children",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Intel82371FbIde.cs"
+      ],
+      "primaryParameters": [],
+      "afterLoad": [
+        "ValidateState();"
+      ]
+    },
+    "DOSEmulator.Hardware.Intel82371FbIde.Channel": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Intel82371FbIde.Channel",
+      "fields": [
+        {
+          "name": "Command",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Status",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Prdt",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "DescriptorAddress",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RegionAddress",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RegionLength",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "RegionOffset",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "DescriptorIndex",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Loaded",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Eot",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "IrqHigh",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "BytesTransferred",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Intel82371FbIde.cs"
+      ],
+      "primaryParameters": [],
+      "afterLoad": []
+    },
+    "DOSEmulator.Hardware.PiixResetController": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "PiixResetController",
+      "fields": [
+        {
+          "name": "_clock",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "fixed owner/clock/PCI identity checked before capture"
+        },
+        {
+          "name": "_pci",
+          "type": "PciConfigurationBus",
+          "mode": "excluded",
+          "reason": "fixed owner/clock/PCI identity checked before capture"
+        },
+        {
+          "name": "_owner",
+          "type": "IPiixResetOwner",
+          "mode": "excluded",
+          "reason": "fixed owner/clock/PCI identity checked before capture"
+        },
+        {
+          "name": "_control",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pending",
+          "type": "PiixResetRequest",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_phase",
+          "type": "PiixResetPhase",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pciEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_cpuEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_cpuReleaseReady",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_assertedAt",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pciReleaseAt",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_cpuReleaseAt",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "SoftEdges",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "HardEdges",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/PiixResetController.cs"
+      ],
+      "primaryParameters": [],
+      "afterLoad": []
+    },
+    "DOSEmulator.Hardware.S3Trio64": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "S3Trio64",
+      "fields": [
+        {
+          "name": "_memory",
+          "type": "MemoryBus",
+          "mode": "excluded",
+          "reason": "fixed factory physical resource peer checked before capture"
+        },
+        {
+          "name": "_video",
+          "type": "VgaAdapter",
+          "mode": "excluded",
+          "reason": "fixed canonical VGA/VRAM peer separately owned in product graph"
+        },
+        {
+          "name": "_config",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/S3Trio64.cs"
+      ],
+      "primaryParameters": [],
+      "afterLoad": [
+        "AfterStateRestore();"
+      ]
+    },
+    "DOSEmulator.Hardware.AtapiCdRom": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "AtapiCdRom",
+      "fields": [
+        {
+          "name": "_scheduler",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "fixed owner scheduler, reference identity and phase tokens checked before import"
+        },
+        {
+          "name": "_disc",
+          "type": "IReadOnlyOpticalDisc?",
+          "mode": "excluded",
+          "reason": "fixed protected 2048-byte optical basis, sealed kind/capacity and lease identity checked separately"
+        },
+        {
+          "name": "_task",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_packet",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_data",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_features",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_control",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_phase",
+          "type": "AtapiPhase",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_packetOffset",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_payloadLength",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_payloadOffset",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_phaseLength",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_offset",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_byteLimit",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_readLba",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_remainingBlocks",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_readCommand",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_identify",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pendingInterrupt",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_selected",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_hardwareResetHeld",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_srstActive",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_srstPreserved",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_trayOpen",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_preventRemoval",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_started",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_unitAttention",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_uaAsc",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_senseKey",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_senseAsc",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_senseAscq",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_clearSenseOnCompletion",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_clearUaOnCompletion",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_shadowAbort",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_event",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_deadline",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "HasDisc",
+          "type": "bool",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "DiscBlocks",
+          "type": "long",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "DeviceNumber",
+          "type": "int",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "Status",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "Generation",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "CommandsReceived",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "PacketsCompleted",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "ReadBlockCount",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "DataBytesRead",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/AtapiCdRom.cs",
+        "src/DOSEmulator.Hardware/AtapiCdRom.Commands.cs",
+        "src/DOSEmulator.Hardware/AtapiCdRom.Validation.cs"
+      ],
+      "primaryParameters": [],
+      "afterLoad": [
+        "AfterStateRestore();"
       ]
     }
   }

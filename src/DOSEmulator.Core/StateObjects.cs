@@ -40,6 +40,9 @@ public static class StateValues
     public static JsonElement[] Pack<T, U>(T a, U b) => [JsonSerializer.SerializeToElement(a, Json), JsonSerializer.SerializeToElement(b, Json)];
     /// <summary>Encodes three typed event arguments only at capture time.</summary>
     public static JsonElement[] Pack<T, U, V>(T a, U b, V c) => [JsonSerializer.SerializeToElement(a, Json), JsonSerializer.SerializeToElement(b, Json), JsonSerializer.SerializeToElement(c, Json)];
+    /// <summary>Encodes a receive descriptor and its reset generation only when a snapshot is captured.</summary>
+    public static JsonElement[] Pack<T, U, V, W>(T a, U b, V c, W d) =>
+        [JsonSerializer.SerializeToElement(a, Json), JsonSerializer.SerializeToElement(b, Json), JsonSerializer.SerializeToElement(c, Json), JsonSerializer.SerializeToElement(d, Json)];
     /// <summary>Encodes a complete UART shifter descriptor only at capture time.</summary>
     public static JsonElement[] Pack<T, U, V, W, X, Y>(T a, U b, V c, W d, X e, Y f) =>
         [JsonSerializer.SerializeToElement(a, Json), JsonSerializer.SerializeToElement(b, Json), JsonSerializer.SerializeToElement(c, Json),

@@ -1179,6 +1179,8 @@ namespace SharpPixels
         /// <param name="e">Event arguments.</param>
         private void SharpPixels_KeyDown(KeyboardKeyEventArgs e)
         {
+            // Native repeats cannot revive a hold retired by a guest/focus/menu context change.
+            if (e.IsRepeat) return;
             Key key = ConvertKey(e.Key);
             if(key != Key.Unknown && !keysPressed.Contains(key))
             {

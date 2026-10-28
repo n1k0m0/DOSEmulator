@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "dose-430fx-piix-s3-win95-133-dev-v1",
+  "name": "DOSE Windows95 development candidate / 133MHz",
+  "cpu": "p54c-b5-subset-development",
+  "cpuHz": 133000000,
+  "ramMiB": 32,
+  "floppyDriveA": "none",
+  "floppyDriveB": "none",
+  "bootDevice": "ide",
+  "soundCard": "sb16-ct1740-dsp405-development",
+  "soundBlasterBasePort": 544,
+  "soundBlasterIrq": 5,
+  "soundBlasterDmaChannel": 1,
+  "soundBlasterDma16Channel": 5,
+  "videoCard": "s3-trio64-86c764-pci-2m-development",
+  "opticalDrive": "sff8020i-rev25-pio-development",
+  "atapiSlot": 2
+}

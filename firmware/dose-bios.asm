@@ -55,6 +55,76 @@ start:
     mov es,ax
     mov ss,ax
     mov sp,0x7c00
+%ifdef DOSE_PIIX_RESET
+    ; Own early warm policy: CMOS shutdown 0Ah and BDA 1234h jointly authorize
+    ; a guest-provided far vector. No POST, DRB programming or hidden DOS context
+    ; restoration precedes this jump. Clear the one-shot cookies before transfer.
+    in al,0x70
+    mov bl,al
+    and al,0x80
+    or al,0x0f
+    out 0x70,al
+    in al,0x71
+    cmp al,0x0a
+    jne .reset_cold
+    cmp word [0x472],0x1234
+    jne .reset_cold
+    xor al,al
+    out 0x71,al
+    mov word [0x472],0
+    mov al,bl
+    out 0x70,al
+    jmp far [0x467]
+.reset_cold:
+    mov al,bl
+    out 0x70,al
+%endif
+%ifdef DOSE_TRIO64
+    ; Assign the own PCI resource and enable VGA target decoding through real PCI OUTs.
+    mov dx,0xcf8
+    mov eax,0x80001810
+    out dx,eax
+    mov dx,0xcfc
+    mov eax,0xe0000000
+    out dx,eax
+    mov dx,0xcf8
+    mov eax,0x80001804
+    out dx,eax
+    mov dx,0xcfc
+    mov ax,3
+    out dx,ax
+    ; Perform the original setup/POS wake sequence before addressing ordinary VGA ports.
+    mov dx,0x46e8
+    mov al,0x10
+    out dx,al
+    mov dx,0x0102
+    mov al,1
+    out dx,al
+    mov dx,0x46e8
+    mov al,8
+    out dx,al
+    mov dx,0x4ae8
+    xor ax,ax
+    out dx,ax
+    ; Keep standard legacy VGA active for POST; the guest explicitly enables its later linear window.
+    mov dx,0x3c2
+    mov al,0x67
+    out dx,al
+    mov dx,0x3d4
+    mov ax,0x4838
+    out dx,ax
+    mov ax,0xa539
+    out dx,ax
+    mov ax,0x0058
+    out dx,ax
+    mov ax,0x0039
+    out dx,ax
+    mov ax,0x0038
+    out dx,ax
+    mov dx,0xcf8
+    xor eax,eax
+    out dx,eax
+%endif
 %ifdef DOSE_430FX_HOST
     ; Initialize every DRB boundary to the explicit single 32-MiB logical RAM extent.
     ; This executes before the BIOS advertises or accesses extended RAM.
@@ -70,6 +140,36 @@ start:
     mov dx,0xcfc
     mov al,8
     out dx,al
+    mov dx,0xcf8
+    xor eax,eax
+    out dx,eax
+%endif
+%ifdef DOSE_PIIX_IDE
+    ; Assign the own board's actual BM I/O resource before enabling target decode.
+    mov dx,0xcf8
+    mov eax,0x80003920
+    out dx,eax
+    mov dx,0xcfc
+    mov eax,0x0000c001
+    out dx,eax
+    mov dx,0xcf8
+    mov eax,0x80003940
+    out dx,eax
+    mov dx,0xcfc
+    mov eax,0x80008000
+    out dx,eax
+    mov dx,0xcf8
+    mov eax,0x80003870
+    out dx,eax
+    mov dx,0xcfc
+    mov al,0x0f
+    out dx,al
+    mov dx,0xcf8
+    mov eax,0x80003904
+    out dx,eax
+    mov dx,0xcfc
+    mov ax,3
+    out dx,ax
     mov dx,0xcf8
     xor eax,eax
     out dx,eax
@@ -179,9 +279,44 @@ start:
     out 0x21,al
     out 0xa1,al
     mov al,0xfc
+%ifdef DOSE_TRIO64_VBE
+    ; Original VPICD inherits the POST mask; an installed FDC has IVT0Eh wired.
+    ; Release only IRQ6 for this Windows board, preserving the prior flags/IF.
+    pushf
+    cmp byte [cs:floppy_count],0
+    je .pic_floppy_mask_ready
+    and al,0xbf
+.pic_floppy_mask_ready:
+    popf
+%endif
     out 0x21,al
     mov al,0xff
     out 0xa1,al
+%ifdef DOSE_TRIO64_VBE
+    ; Own Windows-board POST allocation: INTA -> PIRQA -> dedicated IRQ11.
+    ; S3 DB014-B 19-5 assigns PCI3C to POST; Intel290550-002 requires ELCR level.
+    ; Preserve unrelated ELCR bits, route bytes and the existing PIC masks.
+    mov dx,0x4d1
+    in al,dx
+    or al,8
+    out dx,al
+    mov dx,0xcf8
+    mov eax,0x80003860
+    out dx,eax
+    mov dx,0xcfc
+    mov al,0x0b
+    out dx,al
+    mov dx,0xcf8
+    mov eax,0x8000183c
+    out dx,eax
+    mov dx,0xcfc
+    mov al,0x0b
+    out dx,al
+    ; Retain the previous cold POST CONFIG_ADDRESS end value, not a CF9 lane write.
+    mov dx,0xcf8
+    xor eax,eax
+    out dx,eax
+%endif
     mov al,0x36
     out 0x43,al
     xor al,al
@@ -839,7 +974,11 @@ int_video:
     call video_pixel
     jmp .done
 .palette:
+%ifdef DOSE_TRIO64_VBE
+    call tvbe_attribute_palette
+%else
     call video_palette
+%endif
     jmp .done
 .shape:
     mov cx,rCX
@@ -1012,7 +1151,14 @@ int_video:
     leave_service
 
 %include "video-bios.inc"
+%ifdef DOSE_TRIO64
+%include "trio64-bios.inc"
+%endif
+%ifdef DOSE_TRIO64_VBE
+%include "video-trio64-vbe-bios.inc"
+%else
 %include "video-vbe-bios.inc"
+%endif
 %include "video-font-bios.inc"
 %include "speaker-bios.inc"
 %include "serial-bios.inc"
@@ -1254,6 +1400,10 @@ int_keyboard:
 
 ; Implements reference timer/RTC BIOS services using the live tick counter and RTC ports.
 int_time:
+%ifdef DOSE_PCI_BIOS
+    cmp ah,0b1h
+    je pci_bios_int1a
+%endif
     enter_service
     and rFLAGS,0xfffe
     cmp rAH,0
@@ -1397,6 +1547,10 @@ int_system:
 %include "mouse-bios.inc"
 %include "memory-bios.inc"
 %include "post-bios.inc"
+%ifdef DOSE_PCI_BIOS
+%include "pci-bios.inc"
+bits 16
+%endif
 
 disk_error: db 13,10,'BOOT ERROR: no readable boot sector on selected device.',13,10,0
 signature_error: db 13,10,'BOOT ERROR: sector has no 55 AA signature.',13,10,0
@@ -1451,6 +1605,11 @@ disk_tables: times 32 db 0
 times 0xe100-($-$$) db 0xff
 vga_planar_palette: times 768 db 0
 vga_indexed_palette: times 768 db 0
+%ifdef DOSE_PCI_BIOS
+; Industry-standard simulated INT1A entry, physical 000FFE6Eh, for this variant only.
+times 0xfe6e-($-$$) db 0xff
+    jmp int_time
+%endif
 times 0xfff0-($-$$) db 0xff
     jmp 0xf000:0
 times 0xfff5-($-$$) db 0xff

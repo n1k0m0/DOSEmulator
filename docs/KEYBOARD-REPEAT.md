@@ -1,5 +1,7 @@
 # Tastatur: kurze Tastendrücke und Wiederholungsbeginn
 
+Ergänzung 27. Oktober 2026: Der [11563er-Reviewfolgebuild](AUDIT2-RECHECK-2026-10-27.md) verwirft native `IsRepeat=true`-KeyDowns vor der Heldset-Verarbeitung. Nach Import-/Fokus-/Menükontextwechsel können sie dadurch keinen verworfenen Hold wieder als frischen Down aufnehmen. Sechs tatsächliche verwaltete Handlerkontrollen ohne Fenster; eigener 500-/50-ms-Timer unverändert. Native Windows-/Maus-/GL-Abnahme bleibt offen. Der folgende ursprüngliche Fehlernachweis bleibt dem 9819er-Frontend zugeordnet.
+
 Stand 27. Oktober 2026. Ein Benutzer meldete mehrere Zeichen pro kurzem Tastendruck nach dem Start über `run-doom2.cmd`, bereits im DOS-Prompt und im Spiel. Die Batchdatei verwendet den gemeinsamen GUI-Starter. Persönliche Doom-Sitzung, Konfiguration und Spiel-COW wurden für die Prüfung nicht geöffnet.
 
 Der bisherige lokale Repeat-Timer begann schon nach 50 ms. Ein kontrollierter 120-ms-Druck erzeugte dadurch ein erstes Make plus zwei wiederholte Makes. Windows-KeyDown-Wiederholungen werden bereits anhand der gehaltenen Tasten abgefangen; es gibt keinen zweiten TextInput-Pfad und keine zusätzliche KBC-Typematic. Auf dem archivierten bisherigen Starter reproduzieren neue private MS-DOS- und FreeDOS-Starts tatsächlich jeweils drei `a` im leeren Prompt, vier physische IRQ1-/IN60-Zustellungen einschließlich Break.

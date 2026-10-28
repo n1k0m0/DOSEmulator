@@ -18,6 +18,10 @@ public sealed partial class AtaPioController : IStateObject
         w.Value("_controlPort", _controlPort);
         w.Value("_selected", _selected);
         w.Value("_interrupt", _interrupt);
+        w.Value("_dmaAvailable", _dmaAvailable);
+        w.Value("_dmaDriveIndex", _dmaDriveIndex);
+        w.Value("_packetIndex", _packetIndex);
+        w.Value("_shadowAtapiSlave", _shadowAtapiSlave);
         return w.Finish();
     }
 
@@ -29,6 +33,10 @@ public sealed partial class AtaPioController : IStateObject
         r.Invariant("_controlPort", _controlPort);
         _selected = r.Value<int>("_selected");
         _interrupt = r.Value<bool>("_interrupt");
+        r.Invariant("_dmaAvailable", _dmaAvailable);
+        _dmaDriveIndex = r.Value<int>("_dmaDriveIndex");
+        r.Invariant("_packetIndex", _packetIndex);
+        r.Invariant("_shadowAtapiSlave", _shadowAtapiSlave);
         r.Finish();
     }
 
@@ -38,6 +46,7 @@ public sealed partial class AtaPioController : IStateObject
         get
         {
             for (int i = 0; i < _drives.Length; i++) yield return ("_drives/" + i, _drives[i]);
+            if (_atapi is { } child_atapi) yield return ("_atapi", child_atapi);
             yield break;
         }
     }

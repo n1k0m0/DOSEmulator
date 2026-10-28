@@ -1,0 +1,46 @@
+# Windows 95: Firmwarevertrag für IRQ6 bei installiertem Diskettenlaufwerk
+
+Stand: 28. Oktober 2026. Die enge IRQ6-Firmwarekorrektur ist auf V8 mit **12284/12284 Regressionen, 0 Warnungen/Fehlern und 22 eigenen gezielten Fällen** geprüft. Der spätere V9-Kandidat besteht **12401/12401 Regressionen**. Sein tatsächlicher Windows-Gast (Runner 20) mit installiertem 1,44-MB-Laufwerk A und der eigenen schreibgeschützten Testdiskette `windows95-own-probe-v2.img` erreicht die vollständige Setup-Systemkonfiguration, den normalen Neustart und anschließend den Desktop. Die vollständige Windows-95-Betriebsabnahme bleibt offen.
+
+## Konkrete Ursache und ursprünglicher Treiberpfad
+
+Ein echter Windows-Start blieb während der Startmenü-Einrichtung bei einer an A gerichteten GetMediaID-Anfrage stehen. Der zugehörige native HSFLOP-Reset hatte den FDC tatsächlich zurückgesetzt. Vier SENSE-INTERRUPT-Antworten lagen bereit, IRQ6 war am PIC angefordert, wurde aber nicht angenommen.
+
+Der gezielte Abgleich der privaten Testkopien bindet diese Wartekette an originale HSFLOP.PDR-, VFBACKUP- und VPICD-Pfade. HSFLOP besitzt einen gültigen IRQ6-Handle und die passenden Hardware-/EOI-Callbacks; VFBACKUP enthält die dazugehörigen registrierten Zeiger. Die beobachteten Ownerfelder sind null. Eine fehlgeschlagene Registrierung oder ein aktueller fremder exklusiver Owner erklärt die Sperre daher nicht.
+
+Das originale VPICD liest vor seiner PIC-Neuprogrammierung die vorhandenen Masken an 21h/A1h und übernimmt sie als Ausgangswert der VM-PIC-Maske. Hier war das **FFFCh**, also Master FC / Slave FF mit maskiertem IRQ6. Beim späteren Stillstand waren die beobachtete VM-Maske und die daraus veröffentlichte physische Maske EFF8h. IRQ6 blieb maskiert, sein Zähler unmaskierter VMs war null und sein registrierter Descriptor stand auf automatischer Maskierung. Der zweite physische Maskenbeitrag war null.
+
+Die ursprünglichen HSFLOP-/VFBACKUP-Pfade führen an dieser Stelle keinen eigenen `VPICD_Physically_Unmask` aus. Der wirksame Zusammenhang ist somit an den übernommenen BIOS-Maskenstatus gebunden. Daraus folgt keine Erlaubnis, den PIC-Core oder Windows-Speicher nachträglich zu entmasken.
+
+Private, ignorierte Belege: [IRQ-Abgleich](../../artifacts/m4-win95-7d00832aeeeb4b0fb2e179e89257ffde/vfd-irq-review/irq-runtime-review.json) und [Quellenbindung von VFBACKUP](../../artifacts/m4-win95-7d00832aeeeb4b0fb2e179e89257ffde/vfd-irq-review/vfbackup-source.json). Die öffentlichen Microsoft-Grundlagen beschreiben den [VPICD-IRQ-Descriptor](https://techshelps.github.io/MSDN/WIN95DDK/HTML/S34DA.HTM) und die [Floppy-Controller-Arbitration](https://techshelps.github.io/MSDN/WIN95DDK/HTML/S2F3E.HTM). Die konkrete Maskenübernahme ist am tatsächlich verwendeten Originalmodul geprüft.
+
+## Ausschließlich der eigene Windows-ROM-Zweig
+
+Die Änderung gilt nur unter `DOSE_TRIO64_VBE`, also für die beiden festen [Windows-Entwicklungsprofile](S3-WIN95-DEVELOPMENT.md) mit 100 beziehungsweise 133 MHz und 32 MiB:
+
+| Physische Laufwerkskonfiguration | Tatsächlicher POST-Mastermaskenwert |
+| --- | --- |
+| Kein eingerichtetes Diskettenlaufwerk, `floppy_count=0` | FCh |
+| Mindestens ein eingerichtetes Diskettenlaufwerk, `floppy_count!=0` | BCh |
+
+Die Auswahl hängt von installierter Hardware ab, nicht von einer eingelegten Diskette. Der bestehende POST-Ausgabewert FCh verliert ausschließlich Bit 6. Andere IRQ-Bits und die Slave-Maske bleiben erhalten. Der Test von `floppy_count` ist durch PUSHF/POPF geklammert; Flags einschließlich IF bleiben erhalten. Es gibt keinen zusätzlichen NMI-Portzugriff und keinen CPU-/Controlleraustausch.
+
+Der bestehende IVT-Eintrag 0Eh zeigt bereits auf den echten [ROM-Handler `irq_floppy`](../../firmware/floppy-bios.inc). Dieser setzt Bit 7 an BDA 0040:003Eh, also physisch 043Eh, sendet ein Master-PIC-EOI und kehrt mit IRET zurück. Sein Körper bleibt bytegleich. Er liest keine FDC-Resultate und erfindet keinen abgeschlossenen Sektortransfer; der vorhandene Pollingpfad kann die tatsächlichen Resultate weiterhin lesen.
+
+Die Korrektur liegt ausschließlich im [POST-Maskenblock](../../firmware/dose-bios.asm). FDC, PIC, ISA-DMA, Scheduler und CPU-Core werden nicht verändert. Hardware-Resetmasken bleiben unverändert; die neue Freigabe entsteht erst durch ausgeführte Firmware. Die sechs älteren ROM-Payloads sind im V8-Build bytegleich erhalten.
+
+## Getrennter V10-FDC-Befund: Terminal Count vor EOT
+
+Nach der IRQ6-Korrektur zeigte eine tatsächliche Windows-Dateianfrage einen weiteren, davon getrennten Fehler: Der native Treiber sendet `E6h` READ DATA mit CHS 0/0/1, N=2 und EOT=36 an die eigene 1,44-MB-Diskette mit 18 Sektoren je Spur. Der gefilterte Trace bindet zwei solche Befehle ausdrücklich an die **richtige Datenrate 0**, DMA2-Modus 42h und Count=511. Der Controller wies EOT bereits vor dem ersten Backendsektor ab. Der später beobachtete Rate-2-Versuch ist ein getrennter Probeversuch. Private Belege: `fdc-native-trace-v1/run-1/native-copy-fdc-trace.json` und `read-command-summary.json` unter dem genannten Workverzeichnis.
+
+Intels [82077AA-Datenblatt 290166-007](https://ardent-tool.com/datasheets/Intel_82077AA.pdf), 4.2.5 und READ DATA 5.1.1 sowie Tabelle 5-6, behandelt Terminal Count als Abschluss vor EOT. V10 entfernt daher ausschließlich die pauschale obere EOT/SPT-Vorprüfung. Aktueller Sektor, Datenrate, N, EOT<R, Schreibschutz und DMA-/DOR-Gates bleiben geprüft. Ein längerer Transfer bewahrt die tatsächlich bearbeiteten Sektoren und liefert erst beim fehlenden R19 No Data; er darf R19 nicht auf Kopf 1 abbilden. Die EOT-Regel der Tabelle 5-7 für den FDC-VERIFY-Befehl ist keine Regel für READ DATA mit 8237-Verifyoperation. Diese enge sektorweise FDC-Korrektur gilt für den bestehenden Controller; die oben beschriebene IRQ6-POST-Freigabe bleibt ausschließlich dem eigenen Windows-ROM vorbehalten.
+
+Die unabhängig gegengeprüften [30 EOT-/TC-Fälle](../../tests/DOSEmulator.Tests/Windows95FdcEotTests.cs) prüfen echte CPU-Portzugriffe, DMA-Lesen/-Schreiben/-Verify, MT=0/1, R1/R18, EOT36/255, gültige Präfixwirkungen und erhaltene Fehlergrenzen. Ein weiterer Fall verlangt eine tatsächliche SnapshotStore-Fortsetzung eines kompletten 32-MiB-PCs nach dem ersten von zwei Sektoren mit gleichen weiteren CPU-/RAM-/Geräte-/Schedulerwirkungen. Auf den eingefrorenen V9-Modulen bestehen 13 Fälle und scheitern 17 (`fdc-eot-before-probe/before.log`). Der gemeinsame V10-Build ist ohne Warnungen/Fehler fertig; seine vollständige Testsuite läuft noch. Die tatsächliche A:-Dateiprobe läuft ebenfalls noch und ist hier nicht als bestanden ausgewiesen. Der gleichzeitig beobachtete V10-Desktop mit Original-S3-Treiber in 800×600 RGB565 ist ein eigener Startnachweis und ersetzt diese Dateiprüfung nicht.
+
+## Nachweise und offene Betriebsabnahme
+
+[Windows95FloppyBootIrqTests](../../tests/DOSEmulator.Tests/Windows95FloppyBootIrqTests.cs) prüft bei beiden Taktraten sechs Konfigurationen: keine physische Floppy, leeres A, eigene Diskette in A, leeres A+B, eigene Diskette nur in B und eigene Disketten in A+B. Weitere Fälle prüfen echte Reset-IRQ6-Annahme, den ROM-Frame, BDA-Wirkung, EOI, Register-/Stackerhalt sowie anschließend alle vier unverbrauchten SENSE-INTERRUPT-Resultate. Zwei ältere Profilkontrollen behalten ihre bisherige Pollingmaske.
+
+Auf dem eingefrorenen V7-Vorherstand bestehen sechs dieser 22 Fälle; 16 schlagen an der konkret fehlenden IRQ6-Freigabe fehl. V8 besteht alle 22 sowie seine vollständige Suite. Der spätere V9-Gesamtnachweis umfasst 12401 Regressionen und einen kombinierten gezielten Lauf mit 501 Fällen, darunter die getrennten 117 [LAR-Kompatibilitätsfälle](P54C-LAR.md). Auf den alten V8-Modulen bestehen von diesen LAR-Fällen 40, während 77 scheitern. Der IRQ6-Teilumfang umfasst weiterhin 22 eigene Fälle; 501 bezeichnet den kombinierten Lauf mehrerer Testgruppen. Firmware-/CPU-/Gerätenachweise ersetzen die native S3-/Sound- und reguläre Windows-Shutdown-Abnahme nicht.
+
+Der geänderte Windows-ROM-Inhalt ändert die Runtime- und damit die strenge [Format-1-Snapshot-Buildidentität](../SNAPSHOTS.md). Alte laufende Container bleiben an ihren bisherigen Build gebunden; es gibt keine gelockerte Migration. Der tatsächliche V8-Windows-Nachweis (Runner 17) beginnt aus einem frischen privaten Kaltstartzweig derselben versiegelten Setup-HDD-Generation und erreicht mit installiertem, leerem 1,44-MB-Laufwerk A den Zeitzonendialog. Mit der getrennten V9-CPU-Korrektur setzt der ursprüngliche Windows-Pfad in Runner 20 mit der eigenen schreibgeschützten Testdiskette die Konfiguration bis zum normalen Neustart und Desktop fort; auch die ursprüngliche Grafikkartenauswahl öffnet sich jetzt. V10 erreicht inzwischen einen tatsächlichen Kaltstartdesktop mit Original-S3-Treiber; dessen Datei-/GDI-Betriebsnachweise, Sound, weitere Starts und regulärer Shutdown bleiben offen. Daraus folgt keine M4-Gesamtabnahme.
