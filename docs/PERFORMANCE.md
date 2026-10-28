@@ -1,5 +1,85 @@
 # Performance: gemessene Interpreter- und Geräteoptimierungen
 
+## C15: tatsächliche Windows-Profile und verworfener Rechenprototyp
+
+Zwei neue reale OEM-/950-Windows-Kaltstarts bei100/133MHz mit jeweils32MiB bestehen mit dem unveränderten C15, Original-S3/SB16, eigenen Datei-/GDI-/Wave-APIs und regulärem Shutdown. Vier strikte volle Fortsetzungen/72 ganze Vergleiche betreffen Desktop und Wave-DONE. Diese Funktionsprüfung ist getrennt von der folgenden Zeitmessung; sie fügt keine aktiven DMA-Schnitte oder unabhängige Hostaudio-/Mixerabnahme hinzu.
+
+Passives .NET-Stacksampling im frischen100-MHz-Desktop findet ungefähr27,7Prozent der Produktintervalle im tiefsten sichtbaren `TryRunDecodedBatchCore`-Frame, je rund9Prozent im Owner und skalaren Step und7,5Prozent im Decodercache sowie Fetch. Inlinearbeit kann im aufrufenden Frame erscheinen; diese Gewichte sind keine exakten CPU-Zyklusanteile. Eine zusätzliche Bootaufnahme enthält andere Last und darf nicht als ruhiger Desktop verglichen werden.
+
+Der private Versuch berechnet Fristintervalle bis`uint.MaxValue` exakt in`ulong`, mit unverändertem Rest-/Unterlaufschutz und ursprünglichem`UInt128`-Fallback. Ein unabhängiger schreibfreier Gegenreview und ein BigInteger-Ungleichungsoracle bestätigen je10388 Fälle einschließlich großer Grenzen, Frequenz-/Restwechseln, unveränderlicher Schedulerzustände und drei Parameterablehnungen. Das ist keine neue registrierte Produktsuite.
+
+Die maßgeblichen beiden gespiegelten Kohorten verwenden je vier serielle Prozesse auf demselben privaten Hostkern20, normale .NET-Stufen, **200Millionen Aufwärmschritte** und vier gemessene Abschnitte mit je40Millionen Schritten. Alle sechs ganzen Zustands-/32MiB-RAM-/VRAM-/Bild-/späteren PCM-Grenzen und die Endjournale stimmen überein. Die Daten stammen aus den neuen echten C15-Kaltstarts; das manuelle unveränderte Wiederherstellen für diesen Vergleich ist ausdrücklich eine private Datenprobe, kein zusätzlicher strikter Produktimport und keine Migration.
+
+| Aktuelle Windows-Daten | C15 Hostsekunden, Mittel | Privater Versuch | Weniger Hostzeit | C15 virtuell / real |
+|---|---:|---:|---:|---:|
+|100MHz /32MiB |7,989261 |7,983295 |0,07% |80,11% |
+|133MHz /32MiB |8,333301 |8,483725 |-1,81% |57,74% |
+
+Damit wird der Versuch **nicht übernommen**. Zwei vorherige kürzer aufgewärmte Einzelprozesse waren explorativ; ihr25-Prozent-Unterschied ist kein belastbares Ergebnis. Die aktuellen absoluten Raten gehören dieser längeren JIT-Aufwärmung und diesen Desktopdaten, nicht einem neuen Produktgewinn. CPUHz, vier Clocks, Fristen und ausgeführte Arbeit bleiben unverändert; allgemeines1:1 ist offen. Kein neuer Audio-/Diskworker und keine Produktionsaffinität. Alle68 C15- und65 gemeinsamen V12-Produkte bleiben bytegleich; Nachweis `artifacts/tests/windows-c15-release-path.txt`.
+
+## C15: tatsächliche FreeDOS-Decoderzulassung
+
+Der [C15-Abgleich](hardware/DECODED-EXECUTION.md) erlaubt den im tatsächlichen FreeDOS-Real-Mode-Gast erhaltenen CS-Datentag unter denselben unveränderten Grenzen/Breiten wie der skalare Fetch. C14 verwarf dort jeden schnellen Aufruf vor dem Cachezugriff.38 neue Kontrollen, kompletter Lauf13883/13883, unabhängiger Gegenreview und24 reale DOS-Kaltstarts einschließlich skalarer Kontrollen mit24 strikten Fortsetzungen bestätigen die Zustands-/Datei-/Audio-Gleichheit. Die eigentliche Beschleunigung bleibt eine Messfrage.
+
+Zwei gespiegelte ABBA-Kohorten verwenden je vier serielle Prozesse, normale .NET-Stufen, denselben privaten Hostkern20 und je zwei echte separate Aufwärmstarts vor dem gemessenen dritten FreeDOS-Start. Öffnen, Hashen und Textabfragen liegen außerhalb der gemessenen Owner-Ausführung. Alle drei Starts jedes Prozesses sowie sämtliche Varianten erreichen bei gleicher Befehlszahl und virtueller Zeit denselben ganzen RAM-/Zustands-/Journalstand. Die8 gemessenen und16 Aufwärmstarts zählen getrennt von der DOS-Abnahmematrix.
+
+| Eigener tatsächlicher FreeDOS-Boot | C14 Ownersekunden, Mittel | C15 Ownersekunden, Mittel | Weniger Ownerzeit |
+|---|---:|---:|---:|
+| P54C /100MHz /32MiB | 2,837813 | 2,830686 | 0,25% |
+| 486 /33MHz /8MiB | 1,074330 | 1,145025 | -6,58% |
+
+Die486-Baseline schwankt bereits zwischen0,963 und1,185Sekunden. Damit ist kein belastbarer allgemeiner Bootgewinn belegt. C15 stellt die gültige Zulassung her und bleibt ein privater Kandidat für weitere Profilierung; gemeinsamer V12 und alle Benutzer-PCs bleiben unverändert. Dieser damalige DOS-Schritt enthält keine Windows-/GUI-/FPS-/Pacing- oder allgemeine1:1-Abnahme; die anschließende Windows-Prüfung steht oben. Rohsound wird weiterhin ausschließlich im RAM beziehungsweise als Digest geprüft. Nachweise: `artifacts/tests/decoded-dos-release-path.txt`.
+
+## Lokale Threading-Versuche vom 28. Oktober 2026
+
+Die [anschließende echte ATA-Probe](hardware/HOST-THREADING.md#follow-up-with-actual-ata-completions) trennt zusätzlich den Effekt eines Lesecaches vom Thread. Nach identischem längerem Aufwärmen braucht synchrones32-Sektor-Lookahead im eigenen PIO-RAM-Programm8,84/8,48Prozent weniger Hostzeit als der unveränderte C14-Leser bei33/90MHz. Derselbe Cache mit Worker benötigt dagegen10,39/0,57Prozent mehr Zeit als die synchrone Variante.24 kontrollierte serielle Prozesse, ganze Zustände/RAM/Nutzbytes und unveränderte Befehls-/Sektor-/Clockzahlen;24 frühere kurz aufgewärmte Prozesse bleiben explorativ.21 separate private Kontrollen mit77 ganzen Vergleichen und zwei strikten vollen Snapshotfortsetzungen bestehen. Kein I/O-Worker wird integriert; keine neue Windows-Dateikopier-, DMA-/ATAPI-, DOS- oder allgemeine Echtzeitabnahme. C14 und V12 bleiben bytegleich; `artifacts/tests/threading-ata-release-path.txt`.
+
+Der [optionale C14-Videoworker](hardware/HOST-THREADING.md) reduziert die eigentliche RGB565-Pixelumrechnung in den kontrollierten100-/133-MHz-Proben um45,19/45,87Prozent. Für CPU plus Capture ergeben sich bei festem Owner-/Worker-Hostkern nur+0,42/−0,50Prozent; ein Idle-Kontrolllauf zeigt größere CPU-Streuung ohne entsprechende Grafikarbeit. Darum keine allgemeine FPS-/Windows-/1:1-Zusage und Standard **MULTICORE VIDEO OFF**. Vollständige Pixel-/Zustands-/RAM-/spätere PCM-Vergleiche bestehen;13845Regressionen,32neue Fälle,0Warnungen/Fehler. Der erste Vier-Thread-Pool-Prototyp wird nicht übernommen.
+
+Zusätzliche reine Hostblock-Proben: Audiokonversion nur1,06Prozent besser; warmer eigener RAW-Lesepfad mit32-Sektor-Blöcken und unabhängiger CPU-Arbeit18,86Prozent besser, dauerhaftes COW-Schreiben15,69Prozent langsamer. Es sind keine emulierten Soundkarten-/ATA-/Windows-Dateikopier-Abnahmen. Audio bleibt beim vorhandenen Callbackpfad, Disk-I/O beim bisherigen Produktionspfad; kein Durabilitätsvertrag wurde gelockert. Rohsound existiert nur im RAM. Quellen und alle Einzelwerte: `artifacts/tests/threading-release-path.txt`.
+
+## Lokaler C13-Folgeschritt vom 28. Oktober 2026
+
+Der bytegeprüfte Decoder übernimmt zusätzlich unmittelbare ALU-/CMP-RAM-Operanden (`80/81/83`) mit unveränderten Rechten, Faults, Codeguards, TLB-Zählungen, Flags und vier nominalen Clocks je tatsächlich ausgeführtem Element. 77 neue Fälle und die ganze Suite mit 13813/13813 Fällen bestehen; ein unabhängiger statischer Gegenreview meldet keinen konkreten Fehler. Kein neuer Gerätesthread oder Hostendpunkt wurde dafür eingeführt.
+
+| Neue normale .NET-Kohorte, C11 → C13 | Weniger Hostzeit für gleiche Windows-Arbeit | C13: virtuelle Zeit / Hostzeit |
+|---|---:|---:|
+| 100 MHz, erste ABBA-Reihe | 3,33 % | 69,70 % |
+| 100 MHz, zweite ABBA-Reihe | 3,13 % | 70,69 % |
+| 133 MHz, ABBA-Reihe | 6,32 % | 54,32 % |
+
+Jede Reihe besteht aus vier seriellen Prozessen, fünf Millionen Aufwärmschritten und je drei Abschnitten mit zwanzig Millionen Schritten. Sämtliche ganzen Zustands-/RAM-/VRAM-/Bild-/späteren PCM-Grenzen sind gleich. Hashen, Scanout und Laden liegen außerhalb der Ausführungszeit. Die Hostbedingungen dieser neuen Reihen unterscheiden sich von den historischen C11/V12-Messungen unten; absolute Raten über beide Kohorten hinweg sind kein zusätzlicher Codegewinn. Ein ungerollter TLB-Prototyp mit nur 0,84 Prozent instabilem Mittelwert wurde vollständig zurückgenommen. Das allgemeine 1:1-Ziel bleibt offen; Nachweise: `artifacts/tests/realtime-followup-release-path.txt`.
+
+## C11 und frühere Messungen
+
+## Audit und Echtzeitkandidat vom 28. Oktober 2026
+
+Der aktuelle lokale [C11-Kandidat](REALTIME-AND-HOST-CLOCK.md) ergänzt [bytegeprüfte Decoderbatches](hardware/DECODED-EXECUTION.md), aktuelle RAM-/Stackprüfungen, spätere TLB-Ersetzungswahl und wirkungsgleiche S3-Lesevermeidung. CPU-Frequenz, vier nominale Clocks je ausgeführtem Element, Gerätefristen, Fehler-/Debugpfade und sämtliche gespeicherten Diagnosen bleiben erhalten. Frühere langsamere Prototypen sind keine Freigabe. 13736 registrierte Regressionen bestehen; Quellprüfung: 853 Code-/Projektdateien ohne Probleme. Der bestätigte Quellcheckpoint `197937a` wurde zuerst gepusht; diese späteren Änderungen bleiben lokal. Der gemeinsame V12-Starter ist unverändert.
+
+Vier Prozesse je ABBA-Kohorte auf demselben Hostkern, Tiered Compilation nur dort aus, getrennte vollständige DLL-Sätze und identisches Messprogramm. Zeitfenster umfassen ausschließlich gleiche ausgeführte Gastarbeit; Aufbereitung, Hashes und vollständige Zustandsprüfungen liegen außerhalb. Drei feste 20-Millionen-Schritt-Segmente je Prozess auf den eigenen tatsächlichen Windows-Desktopdaten ergeben:
+
+| Kontrollierte Windows-Probe | Weniger Hostzeit je Segment | Verbleibende Echtzeitgeschwindigkeit |
+| --- | ---: | ---: |
+| 100 MHz / 32 MiB | 23,5 / 20,7 / 34,0 % | etwa 48–49 % |
+| 133 MHz / 32 MiB | 21,5 / 21,9 / 22,2 % | etwa 42 % |
+
+Ganze CPU-/RAM-/Geräte-/Scheduler-/Bild-/spätere PCM-Zustände sind gleich. Die alte V12-Diagnosekopie erhält ausschließlich das einzeln geprüfte neue RTC-Ursprungsfeld mit Wert null; das ist eine private Vergleichsfixture, kein Produktimport oder Migrationsvertrag.
+
+Eine getrennte vollständige ABBA-Kohorte verwendet normale .NET-Einstellungen: `DOTNET_TieredCompilation` und `DOTNET_TieredPGO` sind nicht gesetzt; ihre tatsächlichen Werte stehen im Bericht. Derselbe vollständige Zustandsvergleich besteht. Über die drei gleich großen Segmente zusammen ergeben sich:
+
+| Normaler .NET-Betrieb, Windows-Desktopdaten | Weniger Hostzeit insgesamt | Virtuelle Zeit / Hostzeit, Kandidat | Tatsächliche Geschwindigkeit |
+| --- | ---: | ---: | ---: |
+| 100 MHz / 32 MiB | 23,97 % | 2,4000 s / 4,5916 s | 52,27 % |
+| 133 MHz / 32 MiB | 21,05 % | 1,8045 s / 4,5360 s | 39,78 % |
+
+Die einzelnen JIT-Phasen streuen: 21,1/21,3/30,3 Prozent weniger Hostzeit bei 100 MHz und 19,1/19,4/25,2 bei 133 MHz. Jeder Tabellenwert verwendet die Mittelwerte der beiden tatsächlichen A- beziehungsweise B-Prozesse, keine neue oder ausgelassene Gastarbeit. Die spätere normale .NET-Optimierungsstufe ist kein zusätzlicher Implementierungsgewinn. Die Werte sind auf diesen Hostkern und diese Desktopdaten begrenzt; das allgemeine 1:1-Ziel bleibt offen.
+
+Die eigene ungepagte PE32-Register-/MOV-RAM-Schleife benötigt beim direkten Vergleich derselben C11-Module rund 54–55 Prozent weniger Hostzeit. Vollständige Zustands-/8- beziehungsweise 32-MiB-RAM-/VRAM-Grenzen und unabhängige Befehls-, Daten-, Bruchteiltakt- und PIT-Fristenoracles bestehen. Eine getrennte Zwei-Hostsekunden-Pacingprobe liefert bei 33/90/100/133 MHz annähernd 100 Prozent, ohne verworfene Rückstände aus der Gesamtrate herauszurechnen. Die Geräte stehen dabei im gültigen Factory-Resetzustand; dies ist keine POST-/Windows-/alle-Karten-Abnahme.
+
+Ein eigener tatsächlicher S3-Portbefehlstest über jeweils 512 Rechtecke und 25165824 Pixel je Zeile vergleicht vollständiges Videozustandsabbild, alle 2 MiB VRAM, eigene RAM-Guards, Pixel und Revisionen gegen ein unabhängiges altes Byteoracle. Feste Solid-Fills in 8/16/32-Bit-Speicherformaten benötigen 28,6/32,7/43,2 Prozent weniger Hostzeit; überlappende Kopien reichen von praktisch unverändert bis 15,1 Prozent weniger. Die 32-Bit-Speicherprobe ist keine neue Originaltreiber-/Farbmodusabnahme.
+
+Zusätzlich bootet C11 tatsächlich zweimal in Windows, setzt vier strikte volle Container fort und fährt beide Taktraten regulär herunter. Die englischen Tools, Dateibytes, GDI-Pixel und natürliche Wave-API-Rückkehr sind Gastnachweise, keine weiteren Zeitmessungen. Native Hostaudio-/GL-/Mausbedienung und ein universelles Echtzeitergebnis bleiben offen. Private Belege: `artifacts/tests/realtime-hostclock-release-path.txt`.
+
 Der zusätzliche [Gemini-Abgleich](GEMINI-REVIEW-2026-10-27.md) bestätigt vorhandene RAM-/REP-/DMA-Spans und die synchronisierten Audiopuffer. Seine SIMD-/Dispatchfaktoren sind keine gemessenen Werte dieses Emulators. 801 gezielte Testausführungen und zwölf reine Puffer-Stressfälle sind Korrektheitsprüfungen, keine neue Hostzeit-/FPS-/Audioqualitätsmessung. Der 11563er-Produktcode bleibt unverändert.
 
 ## Erneute Auditprüfung vom 27. Oktober 2026

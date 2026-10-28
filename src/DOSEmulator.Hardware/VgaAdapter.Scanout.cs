@@ -36,6 +36,10 @@ public sealed partial class VgaAdapter
     public VideoFrame Capture(ulong now) => Capture(now, new VgaFrameBuffer());
     /// <summary>Captures the component's current output into owned result storage.</summary>
     public VideoFrame Capture(ulong now, VgaFrameBuffer buffer)
+        => Capture(now, buffer, null);
+
+    /// <summary>Optionally shares large scanout conversion across host workers while the owner keeps guest memory stable until completion.</summary>
+    public VideoFrame Capture(ulong now, VgaFrameBuffer buffer, JoinedWorker? worker)
     {
         ArgumentNullException.ThrowIfNull(buffer);
         int width = Width, height = Height;
@@ -43,7 +47,7 @@ public sealed partial class VgaAdapter
         if (!ReferenceEquals(buffer.Owner, this) || buffer.Revision != _pixelRevision || buffer.Phase != phase || buffer.Width != width || buffer.Height != height)
         {
             if (buffer.Pixels.Length != checked(width * height)) buffer.Pixels = new uint[checked(width * height)];
-            Render(now, width, height, buffer.Pixels);
+            Render(now, width, height, buffer.Pixels, worker);
             buffer.Owner = this; buffer.Revision = _pixelRevision; buffer.Phase = phase;
             buffer.Width = width; buffer.Height = height; buffer.RenderedFrames++;
         }
@@ -64,30 +68,45 @@ public sealed partial class VgaAdapter
         green = colorBits == 15 ? (green << 3) | (green >> 2) : (green << 2) | (green >> 4);
         return 0xff000000u | (red << 16) | (green << 8) | blue;
     }
-    /// <summary>Renders the current guest text/graphics state into a complete caller-owned pixel surface.</summary>
-    private void Render(ulong now, int width, int height, uint[] pixels)
+    /// <summary>Whether the current register image permits visible raster output.</summary>
+    private bool ScanoutEnabled => _displayEnabled && (_seq[1] & 32) == 0 &&
+        (IsTrio64 || (_seq[0] & 3) == 3) && (!IsTrio64 || (_seq[0x18] & 0x20) == 0);
+
+    /// <summary>Joins disjoint row workers before drawing the hardware cursor or publishing any caller-owned pixels.</summary>
+    private void Render(ulong now, int width, int height, uint[] pixels, JoinedWorker? worker)
     {
-        if (!_displayEnabled || (_seq[1] & 32) != 0 || !IsTrio64 && (_seq[0] & 3) != 3 || IsTrio64 && (_seq[0x18] & 0x20) != 0) Array.Fill(pixels, 0xff000000u);
+        if (worker is null || Environment.ProcessorCount < 2 || pixels.Length < 131072)
+            RenderRows(now, width, height, pixels, 0, height);
+        else
+            worker.Run(() => RenderRows(now, width, height, pixels, height / 2, height),
+                () => RenderRows(now, width, height, pixels, 0, height / 2));
+        if (ScanoutEnabled && TrioEnhanced && TrioEnhancedColorBits != 0 && (_crtc[0x42] & 0x20) == 0)
+            RenderTrioCursor(width, height, pixels, TrioEnhancedColorBits);
+    }
+
+    /// <summary>Reads one stable guest register/VRAM image and writes only the supplied nonoverlapping output rows.</summary>
+    private void RenderRows(ulong now, int width, int height, uint[] pixels, int firstRow, int endRow)
+    {
+        if (!ScanoutEnabled) Array.Fill(pixels, 0xff000000u, firstRow * width, (endRow - firstRow) * width);
         else if (TrioEnhanced)
         {
             // DB014-B table 11-2: enhanced DWORD scanout pitch is offset * 8 bytes; start units are DWORDs.
             int colorBits = TrioEnhancedColorBits;
             if (colorBits == 0 || (_crtc[0x42] & 0x20) != 0)
-                Array.Fill(pixels, 0xff000000u);
+                Array.Fill(pixels, 0xff000000u, firstRow * width, (endRow - firstRow) * width);
             else
             {
                 // Original Trio64 mode13 uses B,G,R,padding storage; the Trio32-only packed24 mode is not selected here.
                 int bytesPerPixel = colorBits == 8 ? 1 : colorBits == 24 ? 4 : 2;
-                for (int y = 0; y < height; y++)
+                for (int y = firstRow; y < endRow; y++)
                     for (int x = 0; x < width; x++)
                         pixels[y * width + x] = ReadTrioScanoutColor(TrioDisplayStart * 4 + y * TrioOffset * 8 + x * bytesPerPixel, colorBits);
-                RenderTrioCursor(width,height,pixels,colorBits);
             }
         }
         else if (GraphicsMode)
         {
             int pan = _attr[0x13] & 15;
-            for (int y = 0; y < height; y++)
+            for (int y = firstRow; y < endRow; y++)
                 for (int x = 0; x < width; x++)
                 {
                     int pixel = x + pan, address = (Start + y * Stride + (Indexed256 ? pixel / 4 : pixel / 8)) & PlaneAddressMask;
@@ -112,7 +131,7 @@ public sealed partial class VgaAdapter
             int cursor = ((_crtc[14] << 8 | _crtc[15] | (IsEt4000 ? (_crtc[0x33] & 12) << 14 : 0)) + ((_crtc[11] >> 5) & 3)) & PlaneAddressMask;
             ulong rasterFrame = now / FramePeriod;
             bool cursorOff = (rasterFrame & 16) != 0, blinkOff = (rasterFrame & 32) != 0;
-            for (int y = 0; y < height; y++)
+            for (int y = firstRow; y < endRow; y++)
                 for (int x = 0; x < width; x++)
                 {
                     int address = (Start + y / characterHeight * Stride + x / CharacterWidth) & PlaneAddressMask;

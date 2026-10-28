@@ -294,13 +294,22 @@ public sealed partial class VgaAdapter
     {
         var w=_trioEngineActiveWords;var colors=_trioEngineActiveColors;if((w[ECmd]&0x10)==0)return;
         bool inside=x>=w[EL]&&x<=w[ER]&&y>=w[ET]&&y<=w[EB];if(inside==((w[EM]&0x20)!=0))return;
-        int size=w[EDepth],address=TrioEngineAddress(x,y,false);uint limit=size==4?uint.MaxValue:(1u<<(size*8))-1;
-        uint bitmap=ReadTrioEnginePixel(TrioEngineAddress(sx,sy,true)),readMask=colors[3]&limit;
-        bool foreground=(w[EP]&0xc0) switch{0=>true,0x80=>mono,0xc0=>(bitmap&readMask)==readMask,_=>false};
-        int mix=w[foreground?30:29];uint source=((mix>>5)&3) switch{0=>colors[0],1=>colors[1],2=>cpu,_=>bitmap&readMask};
-        uint current=ReadTrioEnginePixel(address),result=TrioMix(source,current,mix&15)&limit;
+        int size=w[EDepth];uint limit=size==4?uint.MaxValue:(1u<<(size*8))-1,mask=colors[2]&limit;
+        // Raw engine reads have no latch effects. A zero mask or destination-only
+        // mix cannot change any byte, even when color comparison is enabled.
+        if(mask==0)return;
+        int control=w[EP]&0xc0;uint bitmap=0,readMask=colors[3]&limit;
+        if(control==0xc0)bitmap=ReadTrioEnginePixel(TrioEngineAddress(sx,sy,true));
+        bool foreground=control switch{0=>true,0x80=>mono,0xc0=>(bitmap&readMask)==readMask,_=>false};
+        int mix=w[foreground?30:29],operation=mix&15,selection=(mix>>5)&3;
+        if(operation==3)return;
+        if(selection==3&&control!=0xc0)bitmap=ReadTrioEnginePixel(TrioEngineAddress(sx,sy,true));
+        uint source=selection switch{0=>colors[0],1=>colors[1],2=>cpu,_=>bitmap&readMask};
+        int address=TrioEngineAddress(x,y,false);
+        uint current=mask!=limit||operation is not (1 or 2 or 4 or 7)?ReadTrioEnginePixel(address):0;
+        uint result=TrioMix(source,current,operation)&limit;
         if((w[EM]&0x100)!=0){bool equal=result==(colors[4]&limit);if(equal!=((w[EM]&0x80)!=0))return;}
-        uint mask=colors[2]&limit;result=(current&~mask)|(result&mask);
+        result=(current&~mask)|(result&mask);
         for(int i=0;i<size;i++)WriteTrioRaw(address+i,(byte)(result>>(8*i)));
     }
     /// <summary>Own lower-WORD MMIO compatibility for a final <=16-bit CPU-mono BUS32/SWP1 rectangle row; rejected offers are effect-free.</summary>

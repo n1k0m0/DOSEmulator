@@ -274,16 +274,19 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
     public static PcMachine CreateDemo(MachineProfile? profile = null) => new(profile ?? new(), new MemoryDisk(DevelopmentFirmware.CreateDemoDisk(), "Built-in test sector (not DOS)"));
 
     /// <summary>Executes bounded guest instruction elements up to the next requested virtual deadline, servicing actual device events and resets.</summary>
-    public int RunSteps(int maximum, ulong? untilVirtualNanoseconds = null)
+    public int RunSteps(int maximum, ulong? untilVirtualNanoseconds = null) => RunSteps(maximum, untilVirtualNanoseconds, true);
+
+    /// <summary>Retains an ordinary-step control for deterministic comparison of the deadline-bounded integer execution path.</summary>
+    public int RunSteps(int maximum, ulong? untilVirtualNanoseconds, bool integerBatch)
     {
         if (_executing) throw new InvalidOperationException("The PC owner cannot reenter execution.");
         _executing = true;
-        try { return RunStepsCore(maximum, untilVirtualNanoseconds); }
+        try { return RunStepsCore(maximum, untilVirtualNanoseconds, integerBatch); }
         finally { _executing = false; }
     }
 
     /// <summary>Runs instruction elements under the owner boundary guard.</summary>
-    private int RunStepsCore(int maximum, ulong? untilVirtualNanoseconds)
+    private int RunStepsCore(int maximum, ulong? untilVirtualNanoseconds, bool integerBatch)
     {
         if (maximum < 0) throw new ArgumentOutOfRangeException(nameof(maximum));
         int executed = 0;
@@ -351,10 +354,21 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
             }
             try
             {
-                int budget = Cpu.HasRepContinuation ? Scheduler.StepBudget(4, (uint)Profile.CpuHz, Math.Min(maximum - executed, 4096), untilVirtualNanoseconds) : 0;
+                int budget = Cpu.HasRepContinuation
+                    ? Scheduler.StepBudget(4, (uint)Profile.CpuHz, Math.Min(maximum - executed, 4096), untilVirtualNanoseconds) : 0;
                 if (budget >= 2 && Cpu.TryRunRepBatch(budget) is > 0 and var elements)
                 {
                     Scheduler.AdvanceCycles((uint)elements * 4, (uint)Profile.CpuHz); executed += elements; continue;
+                }
+                if (integerBatch && Cpu.TryRunDecodedBatch(Math.Min(maximum - executed, 4096), Scheduler,
+                    (uint)Profile.CpuHz, untilVirtualNanoseconds) is > 0 and var integers)
+                {
+                    // Admission allows no intermediate external observation. The last ordinary
+                    // four-clock conversion retains the scalar scheduler's complete cache and
+                    // lets a deadline on the final element see exactly that element's CPU state.
+                    if (integers > 1) Scheduler.AdvanceCycles((uint)(integers - 1) * 4, (uint)Profile.CpuHz);
+                    Scheduler.AdvanceCycles(4, (uint)Profile.CpuHz);
+                    executed += integers; continue;
                 }
                 uint cycles = Cpu.Step();
                 Scheduler.AdvanceCycles(cycles, (uint)Profile.CpuHz);
@@ -403,6 +417,8 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
     public VideoFrame CaptureFrame() => Video.Capture(Scheduler.Now);
     /// <summary>Captures the current guest scanout at the machine's actual virtual time.</summary>
     public VideoFrame CaptureFrame(VgaFrameBuffer buffer) => Video.Capture(Scheduler.Now, buffer);
+    /// <summary>Completes an optional parallel host scanout at the same owner boundary and guest timestamp.</summary>
+    public VideoFrame CaptureFrame(VgaFrameBuffer buffer, JoinedWorker? worker) => Video.Capture(Scheduler.Now, buffer, worker);
     /// <summary>Prepares fresh volatile hardware while acquiring safe leases for the existing attached media.</summary>
     public PcMachine CreatePowerCycle(MachineProfile profile)
     {

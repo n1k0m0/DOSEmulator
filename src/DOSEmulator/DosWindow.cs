@@ -28,11 +28,14 @@ public sealed partial class DosWindow : SharpPixelsWindow
     private readonly string? _smokeDirectory;
     private readonly Stopwatch _elapsed = Stopwatch.StartNew();
     private Task? _worker;
+    private JoinedWorker? _videoWorker;
     private Task? _diskCreation;
     private readonly CancellationTokenSource _diskCreationStop = new();
     private int _machineOperationPending;
     private long _noticeUntil;
     private HostSettings _settings;
+    private bool _showDebugOverlay = true;
+    private bool _parallelVideo;
     private VideoFrame? _frame;
     private long _displayPixelRevision;
     private readonly LatestBufferExchange<VgaFrameBuffer> _frames = new(() => new());
@@ -65,6 +68,9 @@ public sealed partial class DosWindow : SharpPixelsWindow
     private readonly List<object> _audioMeasurements = [];
     private readonly GuestTestScenario? _scenario;
 
+    /// <summary>Uses the reclaimed footer space consistently for guest presentation and mouse capture.</summary>
+    private int GuestAreaHeight => PixelsHeight - (_showDebugOverlay ? 40 : 0);
+
     /// <summary>Reports the instantiated board and nominal clock without presenting its validation subset as a finished historical PC.</summary>
     private static string PlatformLabel(MachineProfile? profile) => profile?.IsPciBiosBoard == true
         ? "430FX / PIIX / S3 / PCI BIOS subset / P54C 100 MHz" : profile?.IsTrio64 == true
@@ -85,6 +91,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
         _session = new(machine); _uiInputGeneration = _session.InputGeneration; _settings = settings with { MasterVolume = Math.Clamp(settings.MasterVolume, 0, 100),
             SpeakerVolume = Math.Clamp(settings.SpeakerVolume, 0, 100), DigitalVolume = Math.Clamp(settings.DigitalVolume, 0, 100),
             FmVolume = Math.Clamp(settings.FmVolume, 0, 100) }; _settingsPath = settingsPath;
+        _showDebugOverlay = LoadDebugOverlay(settingsPath);
+        _parallelVideo = LoadVideoPreference(settingsPath, "parallelVideo", false);
         _smokeDirectory = smokeDirectory;
         _freeDosAcceptance = freeDosAcceptance;
         _captureAfter = captureAfter;
@@ -163,7 +171,9 @@ public sealed partial class DosWindow : SharpPixelsWindow
                         Volatile.Write(ref _guestCalendar, machine.Rtc.Calendar.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
                         Volatile.Write(ref _guestRepeatEnabled, machine.Running && machine.Fault is null && !machine.CpuResetHeld ? 1 : 0);
                         Volatile.Write(ref _status, machine.GetStatus());
-                        _frames.TryPublish(machine, static (surface, owner) => owner.CaptureFrame(surface));
+                        var renderer = Volatile.Read(ref _parallelVideo) ? _videoWorker ??= new JoinedWorker("DOSE video rows") : null;
+                        _frames.TryPublish((machine, renderer),
+                            static (surface, source) => source.machine.CaptureFrame(surface, source.renderer));
                     }
                     _stop.Token.WaitHandle.WaitOne(delay);
                 }
@@ -210,20 +220,23 @@ public sealed partial class DosWindow : SharpPixelsWindow
         if (frame is not null)
         {
             double aspect = _settings.CorrectAspect ? 4.0 / 3 : (double)frame.Width / frame.Height;
-            int width = Math.Min(PixelsWidth, (int)((PixelsHeight - 40) * aspect));
+            int width = Math.Min(PixelsWidth, (int)(GuestAreaHeight * aspect));
             int height = (int)(width / aspect);
             _ = Enum.TryParse(_settings.Filter, out SharpPixelsGpuFilterMode filter);
             _ = Enum.TryParse(_settings.Upscale, out SharpPixelsGpuUpscaleMode upscale);
             int factor = upscale switch { SharpPixelsGpuUpscaleMode.Scale2x => 2, SharpPixelsGpuUpscaleMode.Scale3x => 3, _ => 1 };
             DrawArgbPixelsGpuPresented(frame.ArgbPixels, frame.Width, frame.Height, 0, 0, frame.Width, frame.Height,
-                (PixelsWidth - width) / 2, (PixelsHeight - 40 - height) / 2, width, height, filter, upscale, factor, 8, 10, 21, _displayPixelRevision);
+                (PixelsWidth - width) / 2, (GuestAreaHeight - height) / 2, width, height, filter, upscale, factor, 8, 10, 21, _displayPixelRevision);
         }
         else ClearScreen();
-        DrawFilledRectangle(0, PixelsHeight - 38, PixelsWidth, 38, 12, 15, 29);
-        Text(15, PixelsHeight - 31, $"{PlatformLabel(status?.Configuration).ToUpperInvariant()} | {status?.State.ToString().ToUpperInvariant() ?? "STARTING"} | VGA {frame?.Width}X{frame?.Height} | {status?.Position ?? "RESET"} | {FPS} FPS", 1, Color.LightSteelBlue);
-        Text(15, PixelsHeight - 16, _mouseInput.Captured ? "MOUSE CAPTURED / CTRL+ALT RELEASE   CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN" :
-            status?.Configuration?.Mouse == "ps2-two-button" ? "CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN   CLICK GUEST FOR PS/2 MOUSE" :
-            "CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN   EXPERIMENTAL REAL-MODE DOS", 1, Color.Gray);
+        if (_showDebugOverlay)
+        {
+            DrawFilledRectangle(0, PixelsHeight - 38, PixelsWidth, 38, 12, 15, 29);
+            Text(15, PixelsHeight - 31, $"{PlatformLabel(status?.Configuration).ToUpperInvariant()} | {status?.State.ToString().ToUpperInvariant() ?? "STARTING"} | VGA {frame?.Width}X{frame?.Height} | {status?.Position ?? "RESET"} | {FPS} FPS", 1, Color.LightSteelBlue);
+            Text(15, PixelsHeight - 16, _mouseInput.Captured ? "MOUSE CAPTURED / CTRL+ALT RELEASE   CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN" :
+                status?.Configuration?.Mouse == "ps2-two-button" ? "CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN   CLICK GUEST FOR PS/2 MOUSE" :
+                "CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN   EXPERIMENTAL REAL-MODE DOS", 1, Color.Gray);
+        }
         if (status?.Fault is not null && _page.Length == 0)
         {
             DrawFilledRectangleWithAlpha(20, 18, PixelsWidth - 40, 80, 30, 10, 20, 235);
@@ -240,8 +253,9 @@ public sealed partial class DosWindow : SharpPixelsWindow
         }
         else if (_notice.Length > 0)
         {
-            DrawFilledRectangleWithAlpha(0, PixelsHeight - 61, PixelsWidth, 23, 35, 15, 20, 240);
-            Text(15, PixelsHeight - 54, _notice.Length > 140 ? _notice[..140] : _notice, 1, Color.Salmon);
+            int footer = _showDebugOverlay ? 38 : 0;
+            DrawFilledRectangleWithAlpha(0, PixelsHeight - footer - 23, PixelsWidth, 23, 35, 15, 20, 240);
+            Text(15, PixelsHeight - footer - 16, _notice.Length > 140 ? _notice[..140] : _notice, 1, Color.Salmon);
         }
         double speedPercent = Volatile.Read(ref _realtimePercent);
         string speedLabel = double.IsNaN(speedPercent) ? "SPEED --" : $"SPEED {speedPercent:0}%";
@@ -317,7 +331,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
             "ATTACH WITH PRIVATE OVERLAY... (RESTART)", "DETACH DISK (RESTART)", "BACK"],
         "RESET / POWER" => ["SEND CTRL+ALT+DEL TO GUEST", "HARDWARE RESET / CPU, RAM RETAINED", "POWER CYCLE / RAM CLEARED", "BACK"],
         "VIDEO SETTINGS" => [$"FILTER          {_settings.Filter.ToUpperInvariant()}", $"UPSCALE         {_settings.Upscale.ToUpperInvariant()}",
-            $"ASPECT          {(_settings.CorrectAspect ? "4:3" : "SOURCE PIXELS")}", $"VSYNC           {(_settings.VSync ? "ON" : "OFF")}", "BACK"],
+            $"ASPECT          {(_settings.CorrectAspect ? "4:3" : "SOURCE PIXELS")}", $"VSYNC           {(_settings.VSync ? "ON" : "OFF")}",
+            $"DEBUG OVERLAY   {(_showDebugOverlay ? "ON" : "OFF")}", $"MULTICORE VIDEO {(_parallelVideo ? "ON" : "OFF")}", "BACK"],
         "MACHINE / HARDWARE" => [profile.IsTrio64 ? "CPU: FX/PIIX/S3 / P54C 100 MHZ (FIXED)" : profile.IsPiixReset ? "CPU: FX/PIIX RESET / P54C 100 MHZ (FIXED)" : profile.IsPiixIde ? "CPU: FX/PIIX IDE / P54C 100 MHZ (FIXED)" : profile.IsPiixIrq ? "CPU: FX/PIIX IRQ / P54C 100 MHZ (FIXED)" : profile.IsFxHost ? "CPU: 430FX HOST / P54C 100 MHZ (FIXED)" : profile.IsP54c ? "CPU: DOSE AT / P54C B5 SUBSET 90 MHZ (RESTART)" : "CPU: 486DX / 33 MHZ (RESTART)", $"RAM: {profile.RamMiB} MIB ({(profile.IsFxHost ? "FIXED HOST BOARD" : "CHANGE RESTARTS")})",
             $"FLOPPY A: {profile.FloppyDriveA.ToUpperInvariant()} (CHANGE RESTARTS)", $"FLOPPY B: {profile.FloppyDriveB.ToUpperInvariant()} (CHANGE RESTARTS)",
             $"BOOT: {profile.BootDevice.ToUpperInvariant()} (CHANGE RESTARTS)",
@@ -418,7 +433,9 @@ public sealed partial class DosWindow : SharpPixelsWindow
                 case 1: _settings = _settings with { Upscale = Cycle(_settings.Upscale, ["None", "Scale2x", "Scale3x"]) }; break;
                 case 2: _settings = _settings with { CorrectAspect = !_settings.CorrectAspect }; break;
                 case 3: _settings = _settings with { VSync = !_settings.VSync }; PresentationVSyncEnabled = _settings.VSync; break;
-                case 4: OpenPage("MAIN MENU"); return;
+                case 4: _showDebugOverlay = !_showDebugOverlay; break;
+                case 5: Volatile.Write(ref _parallelVideo, !Volatile.Read(ref _parallelVideo)); break;
+                case 6: OpenPage("MAIN MENU"); return;
             }
             SaveSettings(); RebuildItems(); _notice = "APPLIED LIVE / HOST PRESENTATION ONLY";
         }
@@ -673,11 +690,34 @@ public sealed partial class DosWindow : SharpPixelsWindow
         Command("SetHardDisk", new { slot, path = image.FileName, overlayPath }); CloseMenu();
     }
 
-    /// <summary>Atomically replaces the host presentation/audio preferences file after a UI setting changes.</summary>
+    /// <summary>Loads the UI-only footer preference, retaining the former visible default for older settings.</summary>
+    private static bool LoadDebugOverlay(string path)
+        => LoadVideoPreference(path, "showDebugOverlay");
+
+    /// <summary>Loads an optional UI-only video flag with its explicit compatibility default.</summary>
+    private static bool LoadVideoPreference(string path, string name, bool fallback = true)
+    {
+        try
+        {
+            if (!File.Exists(path)) return fallback;
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty(name, out var value) &&
+                value.ValueKind is JsonValueKind.True or JsonValueKind.False) return value.GetBoolean();
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { }
+        return fallback;
+    }
+
+    /// <summary>Atomically replaces host preferences, including the UI-only footer without changing VM contracts.</summary>
     private void SaveSettings()
     {
         string temporary = _settingsPath + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(_settings, new JsonSerializerOptions(IpcProtocol.JsonOptions) { WriteIndented = true }));
+        var options = new JsonSerializerOptions(IpcProtocol.JsonOptions) { WriteIndented = true };
+        var values = JsonSerializer.SerializeToNode(_settings, options)!.AsObject();
+        values["showDebugOverlay"] = _showDebugOverlay;
+        values["parallelVideo"] = _parallelVideo;
+        File.WriteAllText(temporary, values.ToJsonString(options));
         File.Move(temporary, _settingsPath, true);
     }
 
@@ -728,9 +768,9 @@ public sealed partial class DosWindow : SharpPixelsWindow
             // Capture only a click inside the displayed guest, never a menu/status bar.
             var frame = Volatile.Read(ref _frame);
             double aspect = _settings.CorrectAspect ? 4.0 / 3 : frame is null ? 4.0 / 3 : (double)frame.Width / frame.Height;
-            int width = Math.Min(PixelsWidth, (int)((PixelsHeight - 40) * aspect)), height = (int)(width / aspect);
+            int width = Math.Min(PixelsWidth, (int)(GuestAreaHeight * aspect)), height = (int)(width / aspect);
             double x = MousePosition.X * PixelsWidth / ClientSize.X, y = MousePosition.Y * PixelsHeight / ClientSize.Y;
-            if (x < (PixelsWidth - width) / 2 || x >= (PixelsWidth + width) / 2 || y < (PixelsHeight - 40 - height) / 2 || y >= (PixelsHeight - 40 + height) / 2) return;
+            if (x < (PixelsWidth - width) / 2 || x >= (PixelsWidth + width) / 2 || y < (GuestAreaHeight - height) / 2 || y >= (GuestAreaHeight + height) / 2) return;
             _mouseInput.Capture(); CursorState = CursorState.Grabbed;
         }
         SendMouse(_mouseInput.Button(bit, down));
@@ -934,6 +974,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         ReleaseMouse();
         FinishNativeMouseInput();
         _stop.Cancel(); _worker?.GetAwaiter().GetResult(); ShutdownStage("worker-stopped");
+        _videoWorker?.Dispose(); _videoWorker = null; ShutdownStage("video-worker-stopped");
         _diskCreationStop.Cancel(); _diskCreation?.GetAwaiter().GetResult(); _diskCreationStop.Dispose();
         _audio?.Dispose(stage => ShutdownStage("audio-" + stage)); ShutdownStage("audio-stopped");
         _ipc.DisposeAsync().AsTask().GetAwaiter().GetResult(); ShutdownStage("ipc-stopped");

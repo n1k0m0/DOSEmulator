@@ -1,5 +1,17 @@
 # Festplatten und gespeicherte PCs
 
+## Optionale parallele Bildaufbereitung
+
+**Ctrl+Alt+F10 → VIDEO SETTINGS → MULTICORE VIDEO → ON/OFF** schaltet im privaten C14-Frontend den zusätzlichen Grafikworker live um. Die Einstellung wird automatisch gespeichert und ist zunächst **OFF**. Bei größeren Bildern können zwei Hostthreads getrennte Bildhälften umrechnen; Cursor und Veröffentlichung folgen erst nach Abschluss. Die eigentliche Gast-CPU und Gerätezeit bleiben unverändert. Kleine Bilder behalten ihren bisherigen Pfad. [Messwerte und Grenzen](hardware/HOST-THREADING.md): ungefähr45Prozent weniger reine Umrechnungszeit in der RGB565-Probe, bislang kein belastbarer Gesamt-FPS-Gewinn. Ein Neustart mit dem neuen privaten Build ist nötig; laufende Instanzen werden nicht ersetzt.
+
+## Debuganzeige ein- und ausblenden
+
+**Ctrl+Alt+F10 → VIDEO SETTINGS → DEBUG OVERLAY → ON/OFF** schaltet die beiden unteren Statuszeilen sofort um. Die Einstellung wird automatisch unter `showDebugOverlay` in der lokalen `settings.json` gespeichert. Bei älteren Einstellungen bleibt die Anzeige zunächst eingeschaltet.
+
+Ohne Anzeige steht auch der bisher reservierte 40-Pixel-Bereich dem Gastbild zur Verfügung; die Klickfläche folgt derselben Geometrie. Menü, Fehlermeldungen und die Geschwindigkeitsanzeige im Fenstertitel bleiben erreichbar. Die ausgeblendete Leiste erzeugt keine Texte oder Bitmap-Zeichenaufrufe; bei ansonsten ruhiger Oberfläche entfallen nach dem einmaligen Löschen auch ihre laufenden Overlay-Uploads und der zusätzliche Zeichenpass. Ein allgemeiner FPS-/Echtzeitgewinn ist daraus nicht gemessen.
+
+Dies ist eine reine Frontendeinstellung. Die fünf VM-Module und die Snapshotidentität des verwendeten Builds ändern sich dadurch nicht. Der neue private Frontendbuild ist über `artifacts/tests/debug-overlay-work-path.txt` dokumentiert; eine laufende Instanz lädt Änderungen erst beim nächsten Start.
+
 ## Zusätzliches PIIX-IDE-Validierungsprofil
 
 `profiles/dose-430fx-piix-ide-dev-v1.json` wählt die [eigene IDE-/Busmaster-Platine](hardware/PIIX-IDE.md): P54C B5 subset/100 MHz/32 MiB, 82437FX A2 und 82371FB A1 an 00:07.0/1. Factory, Ownerwechsel, CLI/Hardwaremenü und volle Snapshots verwenden feste Peers. DOSEBios programmiert DRBs, BMIBA=C000h, beide IDETIM.DE und MIRQ0→IRQ15, schaltet IOSE an und lässt BME für den Gast aus. Alte Profile bleiben unverändert eingegrenzt. Die acht DOS-/EMM386-Läufe mit je zwei Fortsetzungen auf Build 10755 belegen diesen Teilumfang; Resetdomänen/CF9/INIT und vollständiger Windows-PC bleiben offen.

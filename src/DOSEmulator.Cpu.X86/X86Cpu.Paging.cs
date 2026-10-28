@@ -61,7 +61,7 @@ public sealed partial class X86Cpu
         if (!PagingEnabled) return address;
         bool user = !supervisor && CurrentPrivilegeLevel == 3;
         uint page = address >> 12;
-        int first = (int)(page & 7) * 4, victim = first;
+        int first = (int)(page & 7) * 4;
         for (int i = first; i < first + 4; i++)
         {
             ref var cached = ref _tlb[i];
@@ -77,6 +77,13 @@ public sealed partial class X86Cpu
                 }
                 return cached.Frame | (address & 0xfff);
             }
+        }
+        // Victim selection has no observable effects and is needed only after all
+        // four ways miss. Keep its former invalid-way and equal-age ordering.
+        int victim = first;
+        for (int i = first; i < first + 4; i++)
+        {
+            ref var cached = ref _tlb[i];
             if (!cached.Valid || (_tlb[victim].Valid && cached.Age < _tlb[victim].Age)) victim = i;
         }
         PageWalks++;
