@@ -1,5 +1,29 @@
 # DOSE – Implementierungsstand
 
+**Lokaler Last-Teststand C45 vom 30. Oktober 2026:** Register-Shifts/Rotationen
+und signed IMUL laufen zusätzlich im geprüften Decoderpfad. Der eigene gemischte
+Win32-Rechen-/RAM-Test benötigt in acht seriellen Vergleichsprozessen 27,78%
+weniger Hostzeit unter Win95 und 43,32% unter Win98; ganze Zustände, Bilder,
+spätere PCM-Daten und Endjournale bleiben gleich. Zwei echte Kaltstarts, je eine
+aktive volle Fortsetzung mit 18 Vergleichen, natürliche Datei-/GDI-/Wave-/
+Schluss-APIs und regulärer Shutdown bestehen. Die späteren 20-Sekunden-Lastproben
+erreichen ungefähr 100%; Win98s erste Zehn-Sekunden-Probe liegt noch bei 90,68%.
+Allgemeines 1:1 für alle Lasten bleibt offen.
+[Messwerte und Grenzen](PERFORMANCE.md#c45-measured-windows-cpuram-load-30-october-2026).
+
+C45 besteht **14969/14969 Regressionen**, darunter 56 neue Fälle mit 12586 inneren
+Differenzial-/Frist-/Ablehnungskontrollen; Build ohne Warnungen/Fehler, Zustand
+48/957/43. Nur CPU-Produktquelltext ändert sich; die fünf neu gebauten VM-Dateien
+erhalten neue Identitäten und laden keine alten Laufzeitsicherungen. Ganzer
+eigener CLI-RAM/Zustand/Bildvergleich und echte alte Buildablehnung vor dem
+Medienzweig bestehen. Getrennte `run-win95-load.cmd`/`run-win98-load.cmd` verwenden
+114 eingefrorene Produkte, eigene Journale und eine eigene RO-Testdiskette.
+Bestehende Windows-PCs, Starter und geladene Module bleiben erhalten. Keine
+native Fenster-/Eingabe-/GL-/Hostaudioabnahme und keine neuen Hostendpunkte.
+Private Medien bleiben von Git ausgeschlossen. Automation bleibt **PAUSIERT**;
+übrige M4–M8-/RTM-/Tools-Ziele offen.
+Nachweis: `artifacts/tests/windows-load-release-path.txt`.
+
 **Performance experiments after checkpoint `5c910a2`, 30 October 2026:** A private
 register/RAM JIT passes full-state differential checks and saves 22.20% in its
 own CPU/RAM loop, but needs 2.33%/16.76% more time in matched Win95/98 boot

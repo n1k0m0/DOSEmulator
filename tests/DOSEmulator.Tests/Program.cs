@@ -352,6 +352,7 @@ DebugExtensionTests.AddTo(Test);
 PopMemoryTests.AddTo(Test);
 CpuAuditTests.AddTo(Test);
 SchedulerAuditTests.AddTo(Test);
+DecodedMathBatchTests.AddTo(Test);
 BiosAuditBoundaryTests.AddTo(Test);
 InputHostAuditTests.AddTo(Test);
 CowAuditPerformanceTests.AddTo(Test);

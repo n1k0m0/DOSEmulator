@@ -1,5 +1,25 @@
 # Guarded decoded execution
 
+C45 additionally admits prefix-free register shifts/rotates
+(`C0/C1/D0/D1/D2/D3`) and signed IMUL (`69/6B/0F AF`). Immutable plans retain
+only encoding/register/width information; CL, operands and flags are current on
+every execution. Shifts reuse the scalar helper's count-zero and reserved-op
+policy. IMUL preserves scalar truncation/CF/OF behavior and other flags. Memory
+forms and prefixes gain no admission. Existing current-byte/translation/debug/
+observer/checkpoint/deadline checks and four-clock accounting remain, without
+new serialized fields or callbacks.
+
+The 56 permanent cases cover both CPU models, seven real/protected/paged/V86
+contexts, operation/count boundaries, signed encodings and register aliases,
+current code/CL changes, budgets and conservative denials: 12586 full CPU/RAM
+and admission-purity vectors. The identical DLL gives 14 PASS/42 FAIL on the old
+CPU and 56 PASS on C45; old failures are admission limitations. The complete
+14969-case suite passes. Actual matched Windows load replays and genuine cold
+starts/active full continuations are recorded in
+[PERFORMANCE.md](../PERFORMANCE.md#c45-measured-windows-cpuram-load-30-october-2026).
+This is an interpreter-plan extension; the rejected CLR-JIT stays separate.
+Format 1 retains strict actual five-module identity.
+
 The follow-up actual C15 Windows evidence passes two cold starts at100/133MHz, original S3/SB16 and own file/GDI/Wave work, regular shutdown and four strict full imports with72 whole32MiB comparisons. No CPU instruction/interrupt observer disables the decoded path. Desktop and Wave-DONE cuts preserve all fields and later PCM/media; this does not add an active-DMA, native input/GL or independent mixer test. All68 C15 and65 shared V12 products remain unchanged.
 
 Actual100MHz desktop sampling places about27.7% of product-stack intervals in the deepest visible decoded-batch frame and7.5% in its cache, with inlined work attributed to callers. A subsequent exact64-bit scheduler-budget experiment has no reliable whole-Windows gain after long normal-tier warmup and is not integrated. The accepted13883 registered cases remain the unchanged C15 suite; the10388 private arithmetic controls per variant are separate. Universal1:1 and shared promotion remain open; `artifacts/tests/windows-c15-release-path.txt`.

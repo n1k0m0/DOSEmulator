@@ -1,5 +1,79 @@
 # Performance: gemessene Interpreter- und Geräteoptimierungen
 
+## C45: measured Windows CPU/RAM load, 30 October 2026
+
+The guarded decoder now admits register shifts/rotates (`C0/C1/D0/D1/D2/D3`)
+and signed IMUL (`69/6B/0F AF`). Longer ordinary decoded runs avoid repeated
+scalar decoding and admission. The scalar shift helper and IMUL flag policy,
+current code/operand/translation checks, four clocks and owner deadlines remain.
+No JIT, worker, memory-form admission or frequency change is introduced.
+
+An own Win32 program executes a ten-instruction register/RAM/ROL/IMUL loop in
+real timer callbacks while retaining real file/GDI/Wave calls. A separate page
+walker binds its counters and exact code bytes to actual CPL3/current CR3.
+Eight serial mirrored processes compare C44b with the complete C45 build, with
+normal .NET tiers, 200 million warmup steps and four measured 40-million-step
+intervals per process. Private host-core affinity is identical in both modes;
+there is no product affinity setting.
+
+| Own mixed Win32 load | Old mean host time | C45 mean host time | Less host time |
+|---|---:|---:|---:|
+| Win95 OEM/950, 100 MHz / 64 MiB, BAAB | 5.419538 s | 3.914080 s | 27.78% |
+| Win98 SE, 133 MHz / 128 MiB, ABBA | 5.330805 s | 3.021502 s | 43.32% |
+
+All six initial and thirty later whole CPU/RAM/VRAM/device/scheduler comparison
+boundaries, scanouts, published PCM and final actual journals agree. No state
+fields are omitted. This cross-build diagnostic same-data restoration is not a
+strict product import or migration. All individual times remain available; the
+earlier two-process 42.75% Win98 pilot is separate and exploratory.
+
+Two genuine C45 cold starts additionally load the own program through the real
+FDC with original Windows/S3/SB16 paths. Production pacing and 60-Hz headless
+captures give these bounded results:
+
+| C45 mixed-load interval | Host duration / warmup | Guest time / host time |
+|---|---|---:|
+| Win95, first interval after its active-cut continuation | 10 s / 0 s | 100.002% |
+| Win95, later steady interval | 20 s / 10 s | 100.000% |
+| Win98, first interval after its active-cut continuation | 10 s / 0 s | 90.684% |
+| Win98, later steady interval | 20 s / 10 s | 100.149% |
+
+The last interval includes a small amount of actual catch-up. None resets a
+pacing debt anchor; the initial shortfall remains in the report. These are not
+matched old/new pacing comparisons. General 100% for boot, cold app launch,
+games, graphics, sound, disk workloads or other hosts remains open. No native
+GUI/GL or host-audio behavior is measured.
+
+Each cold-started system passes a strict full import in its actual load loop
+with active SB16 DMA: 18 whole comparisons, 40 million steps per side, all
+64/128 MiB and devices/scheduler retained. Futures of 1.600000000/1.203007519 s
+publish 76800/57600 identical timed stereo frames per side, without a new
+independent DAC/ISR/EOI/mixer reconstruction. Both naturally reach Wave-DONE,
+close through original APIs and reach their original safe-to-power-off screens.
+Independent FAT16/FAT32 checks read all 1027 data and 512 proof bytes from sealed
+own journals alone, without opening a RAW base. Three fixed central GDI
+rectangles contain 36864 exact RGB pixels per system, with no exclusions inside.
+
+C45 passes **14969/14969** regressions, including 56 new cases with 12586 internal
+full-state/budget/denial vectors across both CPU models and seven modes. The
+identical checker gives 14 PASS/42 FAIL on the old CPU: those are missing
+fast-path admission, not old arithmetic faults. Builds have zero warnings/errors;
+state generation stays 48 types / 957 members / 43 unchanged callback bodies.
+Only CPU production source changes, although all five normally rebuilt VM files
+have new identities. An actual old C44 snapshot is rejected before branching
+with the existing nonzero CLR abort, without migration or a controlled exit 1.
+The new CLI preserves whole RAM/state/frame and 36 other report fields for
+10001 direct steps versus 10000 plus capture/load plus one; four capture UUIDs
+and their actual metadata-file digests are independently bound.
+
+Separate clean C45 copies use `run-win95-load.cmd` / `run-win98-load.cmd`, a frozen
+114-file runtime and independent journals. Their own RO floppy provides
+`A:\DOSELOAD.EXE -wave`. Existing PCs, launchers and loaded modules stay intact.
+Preparation opened no native window; automation remains paused. Private media
+stay excluded from Git. Evidence: `artifacts/tests/windows-load-release-path.txt`.
+The inconsistent clock-only prototype and unbuilt cache-context experiment are
+excluded; the earlier rejected CLR-JIT remains separate.
+
 ## Dynamic execution experiments, 30 October 2026
 
 The private follow-up to checkpoint `5c910a2` tests generated CLR code with

@@ -11,25 +11,29 @@ using DOSEmulator.Hardware;
 internal static class DecodedBatchTests
 {
     /// <summary>Private CPU/RAM fixture with its actual code entry and mode.</summary>
-    private sealed record Rig(X86Cpu Cpu, MemoryBus Memory, uint Start, int Mode);
+    internal sealed record Rig(X86Cpu Cpu, MemoryBus Memory, uint Start, int Mode);
     /// <summary>Requires an independent effect, cache bound or complete serialized CPU/RAM equality.</summary>
     private static void Check(bool value, string message = "Decoded batch invariant")
     { if (!value) throw new Exception(message); }
 
     /// <summary>Builds private real/PE/paged/V86 code and data, warming translations through actual scalar instructions.</summary>
-    private static Rig Make(int mode, byte[] program)
+    internal static Rig Make(int mode, byte[] program, X86CpuModel model = X86CpuModel.IntelP54cB5Subset)
     {
         var clock = new DeviceScheduler(); X86Cpu cpu; MemoryBus memory; uint start;
         if (mode == 0)
         {
-            memory = new(2 * 1024 * 1024); cpu = new(memory, new(), X86CpuModel.IntelP54cB5Subset, clock, 100000000);
+            memory = new(2 * 1024 * 1024); cpu = new(memory, new(), model,
+                model == X86CpuModel.IntelP54cB5Subset ? clock : null, model == X86CpuModel.IntelP54cB5Subset ? 100000000u : 0);
             cpu.SetSegment(Segment.Cs, 0); cpu.SetSegment(Segment.Ss, 0); cpu.SetSegment(Segment.Ds, 0); start = 0x2000;
         }
         else
         {
             var pair = mode is 3 or 4 or 6
-                ? PagingTests.Create([], model: X86CpuModel.IntelP54cB5Subset, timestampSource: clock, timestampFrequency: 100000000)
-                : ProtectedModeTests.Rig([], code32: mode != 1, model: X86CpuModel.IntelP54cB5Subset, timestampSource: clock, timestampFrequency: 100000000);
+                ? PagingTests.Create([], model: model, timestampSource: model == X86CpuModel.IntelP54cB5Subset ? clock : null,
+                    timestampFrequency: model == X86CpuModel.IntelP54cB5Subset ? 100000000u : 0)
+                : ProtectedModeTests.Rig([], code32: mode != 1, model: model,
+                    timestampSource: model == X86CpuModel.IntelP54cB5Subset ? clock : null,
+                    timestampFrequency: model == X86CpuModel.IntelP54cB5Subset ? 100000000u : 0);
             cpu = pair.Cpu; memory = pair.Memory;
             if (mode is 5 or 6)
             {
@@ -61,7 +65,7 @@ internal static class DecodedBatchTests
     }
 
     /// <summary>Compares every CPU member, TLB diagnostic/history field and all physical RAM without exclusions.</summary>
-    private static void Equal(Rig a, Rig b)
+    internal static void Equal(Rig a, Rig b)
     {
         StateBlock left = a.Cpu.SaveState(), right = b.Cpu.SaveState();
         Check(left.Type == right.Type && left.Version == right.Version && left.Fields.Keys.SequenceEqual(right.Fields.Keys));

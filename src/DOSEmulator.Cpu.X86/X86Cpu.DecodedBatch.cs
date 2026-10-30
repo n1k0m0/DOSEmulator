@@ -11,7 +11,7 @@ public sealed partial class X86Cpu
     private enum DecodedIntegerKind
     {
         Nop, MoveImmediate, MoveRegister, AluRegister, AluImmediate, TestRegister, TestImmediate,
-        IncDec, Exchange, EffectiveAddress, SignExtend, Flag, Bswap, MoveExtend, SetCondition, Branch, Memory, Stack
+        ShiftRegister, MultiplyImmediate, MultiplyRegister, IncDec, Exchange, EffectiveAddress, SignExtend, Flag, Bswap, MoveExtend, SetCondition, Branch, Memory, Stack
     }
 
     private readonly record struct DecodedAddress(int Basis, int Index, int Shift, uint Displacement, Segment Segment, bool Narrow);
@@ -182,10 +182,14 @@ public sealed partial class X86Cpu
             byte second = bytes[1];
             if (second is >= 0xc8 and <= 0xcf) return true; // Retain the existing 32-bit effect in every admitted code-default mode.
             if (second is >= 0x80 and <= 0x8f) return bytes.Length >= 2 + width;
-            return (second is >= 0x90 and <= 0x9f or 0xb6 or 0xb7 or 0xbe or 0xbf) && bytes.Length >= 3 && bytes[2] >= 0xc0;
+            return (second is >= 0x90 and <= 0x9f or 0xaf or 0xb6 or 0xb7 or 0xbe or 0xbf) && bytes.Length >= 3 && bytes[2] >= 0xc0;
         }
         if (bytes.Length < 2) return false;
         byte modrm = bytes[1];
+        if (opcode is 0x69 or 0x6b)
+            return modrm >= 0xc0 && bytes.Length >= 2 + (opcode == 0x6b ? 1 : width);
+        if (opcode is 0xc0 or 0xc1 or 0xd0 or 0xd1 or 0xd2 or 0xd3)
+            return modrm >= 0xc0 && bytes.Length >= (opcode is 0xc0 or 0xc1 ? 3 : 2);
         if (opcode is >= 0x88 and <= 0x8b or 0x84 or 0x85) return true;
         if (opcode is 0x86 or 0x87) return modrm >= 0xc0;
         if (opcode == 0x8d) return modrm < 0xc0;
@@ -245,6 +249,20 @@ public sealed partial class X86Cpu
                 break;
             case DecodedIntegerKind.TestRegister: Alu(4, ReadRegister(destination, width), ReadRegister(source, width), width); break;
             case DecodedIntegerKind.TestImmediate: Alu(4, ReadRegister(destination, width), element.Immediate, width); break;
+            case DecodedIntegerKind.ShiftRegister:
+                Shift(new(true, destination, 0, 0), element.Operation, width,
+                    element.Source != 0 ? (int)ReadRegister(1, 1) : (int)element.Immediate);
+                break;
+            case DecodedIntegerKind.MultiplyImmediate:
+            case DecodedIntegerKind.MultiplyRegister:
+                long left = Signed(ReadRegister(source, width), width);
+                long right = element.Kind == DecodedIntegerKind.MultiplyRegister ? Signed(ReadRegister(destination, width), width)
+                    : element.Operation == 0x6b ? unchecked((sbyte)element.Immediate) : Signed(element.Immediate, width);
+                long product = left * right;
+                WriteRegister(destination, width, unchecked((uint)product));
+                bool overflow = product != Signed(unchecked((uint)product), width);
+                SetFlag(Carry, overflow); SetFlag(Overflow, overflow);
+                break;
             case DecodedIntegerKind.IncDec:
                 uint carry = Eflags & Carry;
                 WriteRegister(destination, width, Alu(element.Operation, ReadRegister(destination, width), 1, width));
@@ -309,6 +327,23 @@ public sealed partial class X86Cpu
         if (bytes.IsEmpty) return false;
         byte opcode = bytes[0]; int width = code32 ? 4 : 2;
         if (opcode == 0x90) { element = new(DecodedIntegerKind.Nop, 1, width, 1); return true; }
+        if (opcode is 0xc0 or 0xc1 or 0xd0 or 0xd1 or 0xd2 or 0xd3)
+        {
+            bool immediate = opcode is 0xc0 or 0xc1;
+            if (bytes.Length < (immediate ? 3 : 2) || bytes[1] < 0xc0) return false;
+            element = new(DecodedIntegerKind.ShiftRegister, immediate ? 3 : 2, (opcode & 1) == 0 ? 1 : width,
+                immediate ? 3 : 2, bytes[1] & 7, opcode is 0xd2 or 0xd3 ? 1 : 0,
+                (bytes[1] >> 3) & 7, immediate ? bytes[2] : 1u);
+            return true;
+        }
+        if (opcode is 0x69 or 0x6b)
+        {
+            int count = opcode == 0x6b ? 1 : width;
+            if (bytes.Length < 2 + count || bytes[1] < 0xc0) return false;
+            element = new(DecodedIntegerKind.MultiplyImmediate, 2 + count, width, 3,
+                (bytes[1] >> 3) & 7, bytes[1] & 7, opcode, DecodeImmediate(bytes[2..], count));
+            return true;
+        }
         if (opcode is >= 0x50 and <= 0x5f or 0x60 or 0x61 or 0xc3)
         { element = new(DecodedIntegerKind.Stack, 1, width, 1, Operation: opcode); return true; }
         if (opcode is 0xe8 or 0xc2)
@@ -369,6 +404,8 @@ public sealed partial class X86Cpu
             }
             if (bytes.Length < 3 || bytes[2] < 0xc0) return false;
             int register = (bytes[2] >> 3) & 7, rm = bytes[2] & 7;
+            if (second == 0xaf)
+            { element = new(DecodedIntegerKind.MultiplyRegister, 3, width, 3, register, rm); return true; }
             if (second is >= 0x90 and <= 0x9f)
             { element = new(DecodedIntegerKind.SetCondition, 3, 1, 3, rm, Operation: second & 15); return true; }
             if (second is 0xb6 or 0xb7 or 0xbe or 0xbf)
