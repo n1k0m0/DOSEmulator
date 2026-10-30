@@ -135,8 +135,8 @@ internal static class Windows95PciPostIrqTests
         Check(machine.PiixIrq.Elcr == (seeded ? 0x5820 : 0x0800) && machine.Pic.LevelMask == machine.PiixIrq.Elcr,
             "ELCR level selection or preserved unrelated bits differ.");
         Check(machine.PiixIrq.ReadConfiguration(0x70, 2) == 0x800f, "POST changed the existing motherboard IDE route.");
-        Check(machine.Ports.Read(0x21, 1) == 0xfc && machine.Ports.Read(0xa1, 1) == 0xff,
-            "The new route unmasked or reprogrammed a PIC input.");
+        Check(machine.Ports.Read(0x21, 1) == 0xf8 && machine.Ports.Read(0xa1, 1) == 0xff,
+            "POST must leave the cascade open and every slave source masked.");
         Check(machine.PiixIrq.PirqAssertions == 0 && (machine.Pic.InputLines & 0x0800) == 0,
             "Resource allocation manufactured a S3 interrupt source.");
         Check(machine.Ports.Read(0xcf8, 4) == 0, "Cold POST leaked a changed CF8 end value.");
@@ -242,7 +242,7 @@ internal static class Windows95PciPostIrqTests
                 Check(levels[0].Width == 1 && levels[0].Value == 0x58 && routes[0].Width == 1 && routes[0].Value == 11 &&
                     lines[0].Width == 1 && lines[0].Value == 11 && new[] { levels[0], routes[0], lines[0] }.All(p => p.Instruction is >= 0xf0000 and <= 0xfffff));
                 Check(Array.IndexOf(rows, levels[0]) < Array.IndexOf(rows, routes[0]) && Array.IndexOf(rows, routes[0]) < Array.IndexOf(rows, lines[0]));
-                Check(rows.Where(p => p.Write && p.Address == 0x21).Select(p => p.Value).SequenceEqual(new uint[] { 8, 4, 1, 0xfc }) &&
+                Check(rows.Where(p => p.Write && p.Address == 0x21).Select(p => p.Value).SequenceEqual(new uint[] { 8, 4, 1, 0xf8 }) &&
                     rows.Where(p => p.Write && p.Address == 0xa1).Select(p => p.Value).SequenceEqual(new uint[] { 0x70, 2, 1, 0xff }),
                     "The new allocation changed the original PIC initialization or masks.");
                 Check(rows.Any(p => !p.Write && p.Address == 0x4d1 && p.Width == 1 && p.Value == 0x50));
@@ -260,7 +260,7 @@ internal static class Windows95PciPostIrqTests
                 var result = Bios(m, 0xb10f, 0x18, 0x0b0a);
                 Check(m.PiixIrq.ReadConfiguration(0x60, 1) == 11 && m.PiixIrq.Elcr == 0x4820 && m.S3.ReadConfiguration(0x3c, 1) == 255);
                 Check(!result.Ports.Any(p => p.Write && (p.Address is 0x20 or 0x21 or 0xa0 or 0xa1 || IsLine(p))) &&
-                    m.Ports.Read(0x21, 1) == 0xfc && m.Ports.Read(0xa1, 1) == 0xff && m.Ports.Read(0xcf8, 4) == 0x8000f8a0);
+                    m.Ports.Read(0x21, 1) == 0xf8 && m.Ports.Read(0xa1, 1) == 0xff && m.Ports.Read(0xcf8, 4) == 0x8000f8a0);
                 RoutingBuffer(m); Check(Bios(m, 0xb10e, 0).Bx == 0x0800); CheckRoutingBuffer(m);
             });
             foreach (string cut in new[] { "ELCR", "PIRQA" })

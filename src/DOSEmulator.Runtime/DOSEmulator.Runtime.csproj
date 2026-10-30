@@ -7,4 +7,9 @@
     <ProjectReference Include="../DOSEmulator.Cpu.X86/DOSEmulator.Cpu.X86.csproj" />
     <ProjectReference Include="../DOSEmulator.Hardware/DOSEmulator.Hardware.csproj" />
   </ItemGroup>
+  <ItemGroup Condition="Exists('$(MSBuildThisFileDirectory)../../artifacts/network-runtime/win-x64/network-runtime.json')">
+    <Content Include="$(MSBuildThisFileDirectory)../../artifacts/network-runtime/win-x64/**/*"
+             Link="native/win-x64/%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

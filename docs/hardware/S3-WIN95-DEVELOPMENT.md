@@ -1,5 +1,17 @@
 # S3 Trio64: eigene Windows-95-Entwicklungskandidaten
 
+## Lokale Bedienkorrekturen C18
+
+Der aktuelle lokale Benutzerfix besteht **14074/14074 Regressionen bei 0 Buildwarnungen/Fehlern**. Die Win95-Profile erlauben jetzt 16/32/64/128 MiB, ihre allgemeinen JSON-Vorlagen behalten 32 MiB als Vorgabe. Die tatsächlichen DRB-OUTs und die BIOS-/CMOS-Speichermeldungen folgen der gewählten Größe; die ältere 32-MiB-BIOS-Sequenz bleibt erhalten. Die übrigen älteren FX-Profile behalten ihre bisherigen festen RAM-Verträge.
+
+Die eigene Windows-Firmware ergänzt 107h und den eigenen 207h-Alias für **1280×1024 CI8**, Pitch1280, CR50=C0h und CR5E=15h. Alle sechs früheren ROM-Bytestrome bleiben erhalten. Ein tatsächlicher Windows-Kaltstart/Neustart auf C17 erhält diesen Modus und besteht die vollständige eigene GDI-Clientflächenprüfung sowie eine volle 64-MiB-Fortsetzung. C18 bewahrt diesen Firmwarepfad.
+
+Der zusätzliche echte True-Color-Befund war ein verlorener physischer WORD-Zugriff: Der originale Treiber schreibt beispielsweise C0C0h und 00C0h zweimal an AA6E8h. Der frühere Bytefallback überschreibt dabei dieselbe untere Hälfte und hinterlässt 000000C0h. C18 nimmt über die **bereits vorhandene** `IMemoryWordWriteDevice`-Schnittstelle ausschließlich vollständige Standard-MMIO-Farbwörter bei 32 Speicherbits/CMR32=0 an. Es schreibt die durch den gemeinsamen RSF ausgewählte Hälfte und schaltet RSF einmal um. Eine Ablehnung bleibt wirkungslos. BYTE-/DWORD-Stores, gepackte Aliase, sämtliche Lesewege und die bestehende CMR32-Direktpolitik bleiben unverändert. Eine vollständige historische WORD-Lese-/Busphasenpräzision wird damit nicht behauptet.
+
+Grundlage sind DB014-B 13.3.1/Table13-1, 13.3.2 sowie die Farbregister-/RSF-Beschreibungen in Kapitel18 und der unabhängig beobachtete Originaltreiber. **145 neue Fälle** prüfen alle fünf Register, wirkliche CPU-/Bus-WORDs, negative Angebote, PIO-/MMIO-Wechsel, unveränderte BYTE-/DWORD-/Read-/Packed-Grenzen, ältere Farbtiefen, Targetgates und vollständige Fortsetzungen. Im echten C18-Gast bei 100MHz/128MiB bestehen **640×480×32**, alle1027 DAT-/512 BIN-Bytes,94620 innere RGB-Pixel ohne Ausschlüsse, natürliche Wave-DONE-Rückgaben und die strikte vollständige 128-MiB-Fortsetzung. Es gibt keine neuen Zustandsfelder, Callbackkörper oder Gerätefristen. Die Hardware-DLL ändert wie üblich die strikte Format1-Buildidentität.
+
+Die folgenden Abschnitte behalten ihre jeweiligen historischen Builds und Abnahmegrenzen.
+
 Stand: 28. Oktober 2026. Der lokal abgenommene deutsche OEM-Vertikalstand **V12 mit 12589/12589 Regressionen bei 0 Warnungen/Fehlern ist in den gemeinsamen Starter `artifacts/m1-build` übernommen**. Beim vorausgegangenen Kandidatenbuild blieben 195 geschützte Produktdateien unverändert; diese historische Buildkontrolle ist von der anschließenden bewussten Starterübernahme getrennt. Der tatsächliche 100-MHz-/32-MiB-Gast erreicht nun den nativen S3-Desktop in 800×600 RGB565, die eigene Win32-Datei-/GDI-/Wave-Probe, reguläres Anwendungsschließen und den ursprünglichen Windows-Ausschaltbildschirm. Aktive DMA-/Audiofortsetzung ist separat auf einem strikten Desktopimport geprüft. Auch der 133-MHz-Kaltstart mit Datei-/GDI-/Wave-Probe und normalem Windows-Neustart ist nun belegt; beide benannten Taktraten erreichen jetzt auch den regulären Windows-Ausschaltbildschirm. Original-RTM-, Host-Audio- und M4-Gesamtabnahme bleiben getrennt offen. Historische Nachweise behalten ihre eigenen Builds und Grenzen.
 
 Der historische V10-Kandidat für S3-MMIO und FDC besteht **12459/12459 Regressionen bei 0 Warnungen/Fehlern**; 195 geschützte Produktdateien bleiben unverändert. Ein tatsächlicher frischer V10-Kaltstart derselben HDD-Generation mit ausgewähltem Original-S3-Treiber erreicht nach 493,2 Millionen Schritten beziehungsweise 19,728 virtuellen Sekunden den Windows-Desktop mit Begrüßung in **800×600 RGB565**; die CPU befindet sich anschließend im V86-Leerlauf statt in der S3-Busy-Schleife. Das belegt diesen Start, noch keine vollständige GDI-/Datei-/Sound- oder M4-Abnahme. Privater Bildbeleg: `live-win95-v10-native-s3/v10-native-s3-first-cold-boot.png` unter dem unten genannten Workverzeichnis.
@@ -10,12 +22,12 @@ Dieser Vertrag ergänzt den historischen Einstieg [S3 Trio64 86C764](S3-TRIO64.m
 
 | Profil | Nominale CPU-/TSC-Rate | RAM |
 | --- | ---: | ---: |
-| [`dose-430fx-piix-s3-win95-dev-v1`](../../profiles/dose-430fx-piix-s3-win95-dev-v1.json) | 100 MHz | 32 MiB |
-| [`dose-430fx-piix-s3-win95-133-dev-v1`](../../profiles/dose-430fx-piix-s3-win95-133-dev-v1.json) | 133 MHz | 32 MiB |
+| [`dose-430fx-piix-s3-win95-dev-v1`](../../profiles/dose-430fx-piix-s3-win95-dev-v1.json) | 100 MHz | 16/32/64/128 MiB, Vorgabe32 |
+| [`dose-430fx-piix-s3-win95-133-dev-v1`](../../profiles/dose-430fx-piix-s3-win95-133-dev-v1.json) | 133 MHz | 16/32/64/128 MiB, Vorgabe32 |
 
 Beide Kandidaten behalten das benannte P54C-B5-Teilmodell, den 82437FX-A2-Host, beide ursprünglichen 82371FB-Funktionen, S3 `5333:8811` an 00:03.0 und einen installierten SFF-8020i-PIO-CD-ROM-Peer. Die ausgelieferten JSONs wählen dessen IDE-Slot 2. Die bisherige ausdrücklich konfigurierte Auswahl 0–3 bleibt erhalten. Die Original-P54C-Merkmalsmaske wird durch den höheren nominalen Takt nicht erweitert.
 
-Jede neue ID erlaubt genau ihren angegebenen Takt und 32 MiB. Bestehende 486-/P54C-/430FX-/PIIX-/S3-/ATAPI-/PCI-BIOS-Tupel behalten ihre bisherigen Taktraten und Firmwareauswahl. CPU, Ownerclock und ROM werden bei kalter Konstruktion gebunden. Ein laufender CPU-/ROM-Tausch oder eine gelockerte Importprüfung gehört nicht zum Vertrag. Die nominalen Raten sind keine historische CPU-/PCI-/DRAM-Zeitkalibrierung.
+Jede Windows95-ID erlaubt genau ihren angegebenen Takt und die oben genannten RAM-Größen. Bestehende ältere 486-/P54C-/430FX-/PIIX-/S3-/ATAPI-/PCI-BIOS-Tupel behalten ihre bisherigen RAM-Verträge, Taktraten und Firmwareauswahl. CPU, RAM, Ownerclock und ROM werden bei kalter Konstruktion gebunden. Ein laufender CPU-/ROM-Tausch oder eine gelockerte Importprüfung gehört nicht zum Vertrag. Die nominalen Raten sind keine historische CPU-/PCI-/DRAM-Zeitkalibrierung.
 
 Der Adapter behält dieselben vier gemeinsamen VRAM-Ebenen mit insgesamt 2 MiB, seine 8-MiB-BAR-Ressource und die bestehende Kollisionspolitik. VGA, Banken, LFB, 2D-Engine und Cursor greifen auf diese Bytes zu. Die ursprünglichen Grenzen für unbestückten Speicher, PCI-Busmasterziele und nicht geprüfte Legacy-Adressierungsfälle bleiben im [Grundvertrag](S3-TRIO64.md) sichtbar.
 

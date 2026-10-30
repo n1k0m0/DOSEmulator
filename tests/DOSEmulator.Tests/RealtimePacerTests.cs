@@ -59,5 +59,64 @@ internal static class RealtimePacerTests
             clock.AdvanceTo(p.Target(clock.Now, 1002000000)); Check(clock.Now == 7000000 && delivered == 1);
             clock.AdvanceTo(p.Target(clock.Now, 1003000000)); Check(delivered == 1);
         });
+        test("interactive pacing executes a short stall in bounded slices without discarding host time", () =>
+        {
+            var clock=new DeviceScheduler(); var delivered=new List<ulong>();
+            foreach(ulong due in new ulong[]{1,20_000_000,20_000_001,375_000_000,750_000_000})
+            { clock.ScheduleAfter(due,()=>delivered.Add(clock.Now)); }
+            var p=new RealtimePacer(0,2_000_000_000);
+            for(int i=0;i<38;i++)
+            {
+                ulong before=clock.Now,target=p.Target(before,750_000_000);
+                Check(target>=before && target-before<=20_000_000 && p.Resynchronizations==0);
+                clock.AdvanceTo(target);
+            }
+            Check(clock.Now==750_000_000 && delivered.SequenceEqual(new ulong[]{1,20_000_000,20_000_001,375_000_000,750_000_000}));
+        });
+        test("interactive pacing keeps audio lead through a recoverable host stall", () =>
+        {
+            var p=new RealtimePacer(40_000_000,2_000_000_000);p.Reset(5_000_000,100_000_000);
+            ulong now=5_000_000;
+            for(int i=0;i<27;i++)now=p.Target(now,600_000_000);
+            Check(now==545_000_000 && p.Resynchronizations==0);
+            Check(p.Target(now,610_000_000)==555_000_000);
+        });
+        test("interactive pacing recovers a Windows loader stall by executing all pending device events", () =>
+        {
+            var clock=new DeviceScheduler();var actual=new List<ulong>();
+            foreach(ulong due in new ulong[]{1_000_000,100_000_000,2_000_000_000,3_500_000_000})
+                clock.ScheduleAfter(due,()=>actual.Add(clock.Now));
+            var p=new RealtimePacer(0,5_000_000_000);
+            for(int i=0;i<175;i++)
+            {
+                ulong before=clock.Now,target=p.Target(before,3_500_000_000);
+                Check(target>=before && target-before<=20_000_000 && p.Resynchronizations==0);
+                clock.AdvanceTo(target);
+            }
+            Check(clock.Now==3_500_000_000 && actual.SequenceEqual(new ulong[]{1_000_000,100_000_000,2_000_000_000,3_500_000_000}));
+        });
+        test("interactive pacing resets a prolonged host suspension without advancing any guest time", () =>
+        {
+            var p=new RealtimePacer(0,2_000_000_000);p.Reset(5_000_000,10_000_000);
+            Check(p.Target(5_000_000,2_010_000_000)==25_000_000 && p.Resynchronizations==0);
+            Check(p.Target(5_000_000,2_010_000_001)==5_000_000 && p.Resynchronizations==1);
+            Check(p.Target(5_000_000,2_011_000_001)==6_000_000);
+        });
+        test("halted host pacing coalesces tiny work but never adds a sleep to a busy late CPU", () =>
+        {
+            var p=new RealtimePacer();
+            foreach(ulong behind in new ulong[]{1,100_000,999_999})
+                Check(p.DelayMilliseconds(0,behind,true)==1 && p.DelayMilliseconds(0,behind,false)==0);
+            foreach(ulong behind in new ulong[]{1_000_000,20_000_000,99_000_000})
+                Check(p.DelayMilliseconds(0,behind,true)==0 && p.DelayMilliseconds(0,behind,false)==0);
+            Check(p.Resynchronizations==0 && p.DelayMilliseconds(0,0,true)==1);
+        });
+        foreach(ulong maximum in new ulong[]{0,19_999_999,60_000_000_001})
+            test("host pacing rejects an unsupported recovery interval "+maximum,()=>
+            {
+                bool rejected=false;
+                try{_ = new RealtimePacer(0,maximum);}catch(ArgumentOutOfRangeException){rejected=true;}
+                Check(rejected);
+            });
     }
 }

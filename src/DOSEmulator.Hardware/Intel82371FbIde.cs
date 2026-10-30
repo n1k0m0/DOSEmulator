@@ -17,7 +17,7 @@ public sealed record PiixIdeChannelState(byte Command, byte Status, uint Descrip
 
 /// <summary>Original 82371FB A1 function-one subset: legacy I/O gates, relocatable BMIBA, and physical PRD-driven MDMA0.
 /// PCI/ATA timing uses named nominal grants; CF9, electrical FIFOs and chipset reset domains remain separate.</summary>
-public sealed partial class Intel82371FbIde : IPciConfigurationFunction, IIoPortDecoder
+public sealed partial class Intel82371FbIde : IPciConfigurationFunction, IIoPortWindowDecoder
 {
     /// <summary>One functional 32-byte MDMA0 grant; not a measured PCI/IDE line-buffer or arbitration calibration.</summary>
     public const ulong BurstDelayNanoseconds = 7_680;
@@ -119,8 +119,12 @@ public sealed partial class Intel82371FbIde : IPciConfigurationFunction, IIoPort
     public bool Decodes(ushort port, int width)
     {
         WidthMask(width); int offset = port - BusMasterBase;
-        return IoSpaceEnabled && offset >= 0 && offset <= 16 - width && _ports.IsFixedWindowAvailable(BusMasterBase, 16);
+        return IoSpaceEnabled && offset >= 0 && offset <= 16 - width && _ports.IsFixedWindowAvailable(BusMasterBase, 16) &&
+            _ports.IsDynamicWindowAvailable(BusMasterBase, 16, this);
     }
+
+    /// <summary>Advertises the enabled busmaster BAR without recursively querying any other decoder.</summary>
+    public bool OverlapsWindow(ushort start, int length) => IoSpaceEnabled && start < BusMasterBase + 16 && BusMasterBase < start + length;
     /// <summary>Maps only actual task and alt-status ports; 3F7/377 always remain outside this device for ISA/FDC forwarding.</summary>
     private static int LegacyChannel(ushort port) => port is >= 0x1f0 and <= 0x1f7 or 0x3f6 ? 0 :
         port is >= 0x170 and <= 0x177 or 0x376 ? 1 : -1;

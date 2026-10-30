@@ -87,8 +87,8 @@ public sealed partial class RtcCmos(DeviceScheduler scheduler, int ramMiB, byte 
             9 => Encode(now.Year % 100), 0x32 => Encode(now.Year / 100),
             0x0a => 0x26, 0x0b => _statusB, 0x0c => 0, 0x0d => 0x80,
             0x10 => floppyTypes, 0x14 => floppyTypes == 0 ? 0x20u : 0x21u, 0x15 => 0x7f, 0x16 => 2,
-            0x17 or 0x30 => (byte)((ramMiB - 1) * 1024),
-            0x18 or 0x31 => (byte)(((ramMiB - 1) * 1024) >> 8),
+            0x17 or 0x30 => (byte)Math.Min((ramMiB - 1) * 1024, 0xfc00),
+            0x18 or 0x31 => (byte)(Math.Min((ramMiB - 1) * 1024, 0xfc00) >> 8),
             _ => _nvram[_index & 127]
         };
     }

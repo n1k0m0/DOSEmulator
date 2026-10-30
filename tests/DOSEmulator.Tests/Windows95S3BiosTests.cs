@@ -11,14 +11,16 @@ using DOSEmulator.Runtime;
 /// <summary>Real own Trio64 BIOS instructions, original in-box mode identifiers, physical pixels and complete continuation.</summary>
 internal static class Windows95S3BiosTests
 {
-    private sealed record Mode(ushort Number, int Width, int Height, int Pitch, int Bits, byte Dac, byte Engine, int Red, int Green, int Blue, int Reserved);
+    private sealed record Mode(ushort Number, int Width, int Height, int Pitch, int Bits, byte Dac, byte Engine, int Red, int Green, int Blue, int Reserved, byte VerticalOverflow = 0);
     private sealed record Port(ushort Address, uint Value, int Width, bool Write);
     private static readonly Mode[] Modes =
     [
         new(0x101,640,480,640,8,0,0x40,0,0,0,0), new(0x103,800,600,800,8,0,0x80,0,0,0,0), new(0x105,1024,768,1024,8,0,0,0,0,0,0),
+        new(0x107,1280,1024,1280,8,0,0xc0,0,0,0,0,0x15),
         new(0x110,640,480,1280,16,0x30,0x50,5,5,5,1), new(0x111,640,480,1280,16,0x50,0x50,5,6,5,0),
         new(0x114,800,600,1600,16,0x50,0x90,5,6,5,0), new(0x117,1024,768,2048,16,0x50,0x10,5,6,5,0),
         new(0x201,640,480,640,8,0,0x40,0,0,0,0), new(0x203,800,600,800,8,0,0x80,0,0,0,0), new(0x205,1024,768,1024,8,0,0,0,0,0,0),
+        new(0x207,1280,1024,1280,8,0,0xc0,0,0,0,0,0x15),
         new(0x211,640,480,1280,16,0x50,0x50,5,6,5,0), new(0x214,800,600,1600,16,0x50,0x90,5,6,5,0), new(0x220,640,480,2560,32,0xd0,0x70,8,8,8,8)
     ];
 
@@ -92,14 +94,16 @@ internal static class Windows95S3BiosTests
         Check(data.Length==256 && BinaryPrimitives.ReadUInt16LittleEndian(data)==0x1b && data[2]==7 && data[3]==0,"Mode support/window attributes");
         Check(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(4))==64 && BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(6))==64 &&
             BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(8))==0xa000 && BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(10))==0,"Actual shared64KiB window");
+        Check(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(12)) is >0 and <65535 && BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(14))==0xf000,"Actual bank callback ROM pointer");
         Check(BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(16))==mode.Pitch && BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(18))==mode.Width &&
-            BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(20))==mode.Height && data[24]==1 && data[25]==mode.Bits && data[26]==1 && data[27]==(mode.Bits==8?4:6),"Exact actual surface layout");
+            BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(20))==mode.Height && data[22]==8 && data[23]==16 && data[24]==1 && data[25]==mode.Bits && data[26]==1 && data[27]==(mode.Bits==8?4:6) && data[28]==0,"Exact actual surface layout");
         Check(data[29]==2097152/(mode.Pitch*mode.Height)-1 && data[30]==1,"Actual complete image pages/reserved field");
         Check(data[31]==mode.Red && data[33]==mode.Green && data[35]==mode.Blue && data[37]==mode.Reserved && data[39]==0,"Truthful direct-color masks/ramp");
         Check(data.Skip(40).All(x=>x==0),"VBE2/LFB fields falsely advertised");
         if(mode.Dac==0x30)Check(data[32]==10&&data[34]==5&&data[36]==0&&data[38]==15,"555 field positions");
-        if(mode.Dac==0x50)Check(data[32]==11&&data[34]==5&&data[36]==0,"565 field positions");
+        if(mode.Dac==0x50)Check(data[32]==11&&data[34]==5&&data[36]==0&&data[38]==0,"565 field positions");
         if(mode.Dac==0xd0)Check(data[32]==16&&data[34]==8&&data[36]==0&&data[38]==24,"BGRx32 field positions");
+        if(mode.Bits==8)Check(data.AsSpan(31,9).IndexOfAnyExcept((byte)0)<0,"Indexed mode advertised direct-color fields");
     }
 
     /// <summary>Checks every real mode's scanout and command-depth registers against separately fixed expected values.</summary>
@@ -108,8 +112,20 @@ internal static class Windows95S3BiosTests
         var m=rig.Machine;var fields=m.Video.SaveState().Fields;byte[] crtc=fields["_crtc"].Deserialize<byte[]>(StateValues.Json)!;
         Check(m.Video.GraphicsMode && m.Video.Width==mode.Width && m.Video.Height==mode.Height,"Actual mode geometry");
         Check(crtc[0x67]==mode.Dac && crtc[0x50]==mode.Engine && (crtc[0x13]|((crtc[0x51]&0x30)<<4))*8==mode.Pitch,"Actual RAMDAC/engine/scanout byte pitch");
+        Check(crtc[0x5d]==0 && crtc[0x5e]==mode.VerticalOverflow && crtc[0x42]==0 && (crtc[9]&0x9f)==0,"Actual noninterlaced overflow/single-scan registers");
+        int displayEnd=crtc[0x12]|((crtc[7]&2)<<7)|((crtc[7]&0x40)<<3)|((crtc[0x5e]&2)<<9);
+        Check(displayEnd==mode.Height-1,"Independent vertical display-end arithmetic");
+        if(mode.Height==1024)
+        {
+            int total=(crtc[6]|((crtc[7]&1)<<8)|((crtc[7]&0x20)<<4)|((crtc[0x5e]&1)<<10))+2;
+            int blank=crtc[0x15]|((crtc[7]&8)<<5)|((crtc[9]&0x20)<<4)|((crtc[0x5e]&4)<<8);
+            int sync=crtc[0x10]|((crtc[7]&4)<<6)|((crtc[7]&0x80)<<2)|((crtc[0x5e]&0x10)<<6);
+            Check(displayEnd==0x3ff && total==1064 && blank==0x400 && sync==0x401,"Actual1024-line CRTC total/blank/sync bit10 boundaries");
+        }
         Check(crtc[0x6a]==0 && (crtc[0x35]&15)==0 && (crtc[0x58]&0x10)==0 && (crtc[0x31]&9)==9,"Actual bank0 and disabled LFB");
-        Check(rig.Ports.Any(p=>p.Write&&p.Address==0x4ae8&&p.Width==2&&p.Value==1) && rig.Ports.Any(p=>p.Write&&p.Address==0x3d4&&p.Width==2&&(p.Value&255)==0x67),"No genuine enhanced mode OUTs");
+        Check(rig.Ports.Any(p=>p.Write&&p.Address==0x4ae8&&p.Width==2&&p.Value==1) &&
+            new[]{(0x5e,(int)mode.VerticalOverflow),(0x50,(int)mode.Engine),(0x67,(int)mode.Dac)}.All(pair=>
+                rig.Ports.Any(p=>p.Write&&p.Address==0x3d4&&p.Width==2&&p.Value==(uint)(pair.Item1|(pair.Item2<<8)))),"No genuine enhanced format/width/overflow mode OUTs");
         var frame=m.CaptureFrame();Check(frame.Width==mode.Width&&frame.Height==mode.Height,"Actual frame dimensions");
     }
 
@@ -130,6 +146,45 @@ internal static class Windows95S3BiosTests
         for(int x=0;x<mode.Width;x++)for(int b=0;b<bytes;b++)Check(Raw(raw,x*bytes+b)==(byte)(encoded[x%4]>>(b*8)),"Physical raw interleave mismatch");
     }
 
+    /// <summary>Checks all1024 rows, both sides of every64KiB boundary and the last populated byte through actual BIOS bank changes.</summary>
+    private static void TallBankProof(Mode mode)
+    {
+        using var r=new Rig();Check((r.Call(0x4f02,bx:mode.Number)[0]&65535)==0x4f,"Tall indexed mode set failed");Layout(r,mode);
+        var m=r.Machine;byte[] expected=new byte[2097152];
+        Check(mode.Width==1280&&mode.Height==1024&&mode.Pitch==1280&&mode.Bits==8,"Tall proof requires the exact indexed surface");
+        for(int y=0;y<1024;y++)
+        {
+            expected[y*1280]=(byte)(1+y%3);expected[y*1280+1279]=(byte)(1+(y+1)%3);
+        }
+        for(int bank=0;bank<32;bank++)
+        {
+            expected[bank*65536]=(byte)(1+bank%3);expected[(bank+1)*65536-1]=(byte)(1+(bank+2)%3);
+        }
+        m.Ports.Write(0x3c8,0,1);
+        foreach(byte value in new byte[]{0,0,0,63,0,0,0,63,0,0,0,63})m.Ports.Write(0x3c9,value,1);
+        for(int bank=0;bank<32;bank++)
+        {
+            r.Bank(bank);
+            for(int offset=0;offset<65536;offset++)
+            {
+                byte value=expected[bank*65536+offset];if(value==0)continue;
+                m.Memory.WriteByte(0xa0000u+(uint)offset,value);
+                Check(m.Memory.ReadByte(0xa0000u+(uint)offset)==value,"Actual indexed bank readback differs");
+            }
+        }
+        byte[][] raw=Planes(m);
+        for(int i=0;i<expected.Length;i++)Check(Raw(raw,i)==expected[i],"Whole populated VRAM differs at"+i);
+        var frame=m.CaptureFrame();uint[] colors=[0xff000000,0xffff0000,0xff00ff00,0xff0000ff];
+        Check(frame.Width==1280&&frame.Height==1024&&frame.ArgbPixels.Length==1310720,"Tall indexed frame size");
+        for(int i=0;i<frame.ArgbPixels.Length;i++)Check(frame.ArgbPixels[i]==colors[expected[i]],"Independent indexed row/bank-edge pixel differs at"+i);
+        Check((r.Call(0x4f05,bx:0x100)[2]&65535)==31,"Last populated bank lost after scanout");
+        string before=JsonSerializer.Serialize(m.Video.SaveState(),StateValues.Json);
+        Check((r.Call(0x4f05,dx:32)[0]&65535)==0x14f&&before==JsonSerializer.Serialize(m.Video.SaveState(),StateValues.Json),"One-past-populated bank changed actual video state");
+        Check((r.Call(0x4f02,bx:(ushort)(mode.Number|0x8000))[0]&65535)==0x4f,"Tall indexed preserve rejected");
+        raw=Planes(m);for(int i=0;i<expected.Length;i++)Check(Raw(raw,i)==expected[i],"Tall preserve changed populated byte"+i);
+        Check((r.Call(0x4f02,bx:mode.Number)[0]&65535)==0x4f&&Planes(m).All(p=>p.All(b=>b==0)),"Tall indexed clear lost a populated bank");
+    }
+
     /// <summary>Registers bounded CPU/firmware/device proofs; an installed original Windows driver remains a separate acceptance.</summary>
     public static void AddTo(Action<string,Action> test)
     {
@@ -141,9 +196,16 @@ internal static class Windows95S3BiosTests
             });
             test("M4 Win95 own S3 VBE real mode registers/pixels mode="+mode.Number.ToString("X"),()=>
             {
-                using var r=new Rig();Check((r.Call(0x4f02,bx:mode.Number)[0]&65535)==0x4f,"ModeSet failed");Layout(r,mode);PixelProof(r,mode);
+                using var r=new Rig();Check((r.Call(0x4f02,bx:0x8107)[0]&65535)==0x4f,"Incoming1024-line mode did not set overflow bits");
+                Check((r.Call(0x4f02,bx:mode.Number)[0]&65535)==0x4f,"ModeSet failed");Layout(r,mode);PixelProof(r,mode);
                 Check((r.Call(0x4f03)[3]&65535)==mode.Number,"Current-mode OEM identity lost");
             });
+        }
+        foreach(Mode mode in Modes.Where(mode=>mode.Height==1024))
+        {
+            test("M4 Win95 own S3 VBE tall indexed rows/all32bank boundaries mode="+mode.Number.ToString("X"),()=>TallBankProof(mode));
+            foreach(bool mhz133 in new[]{false,true})
+                test("M4 Win95 own S3 VBE tall complete running store continuation "+(mhz133?133:100)+"/"+mode.Number.ToString("X"),()=>Snapshot(mhz133,mode.Number));
         }
         test("M4 Win95 own S3 VBE controller truthful2MiB list and actual far pointers",()=>
         {
@@ -219,12 +281,12 @@ internal static class Windows95S3BiosTests
     }
 
     /// <summary>Uses the real store and fresh branch for all CPU/RAM/VRAM/devices/events, including open DAC/ATC and raw x87.</summary>
-    private static void Snapshot(bool mhz133)
+    private static void Snapshot(bool mhz133,ushort mode = 0x214)
     {
         string root=Path.Combine(Path.GetTempPath(),"dose-own-s3-vbe-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(root);
         try
         {
-            using var r=new Rig(mhz133);r.Call(0x4f02,bx:0x8214);r.Bank(17);var m=r.Machine;
+            using var r=new Rig(mhz133);Check((r.Call(0x4f02,bx:(ushort)(mode|0x8000))[0]&65535)==0x4f,"Snapshot mode set failed");r.Bank(17);var m=r.Machine;
             m.Memory.WriteWord(0xa0020,0xf800);m.Ports.Write(0x3c8,37,1);m.Ports.Write(0x3c9,12,1);m.Ports.Read(0x3da,1);m.Ports.Write(0x3c0,0x10,1);
             string save=Path.Combine(root,"cut.dossav"),branch=Path.Combine(root,"resumed.dosebranch");SnapshotStore.Capture(m,save);
             using var resumed=SnapshotStore.Load(save,branch);Check(State(m)==State(resumed)&&m.Memory.Ram.AsSpan().SequenceEqual(resumed.Memory.Ram),"Full restored own VBE cut differs");

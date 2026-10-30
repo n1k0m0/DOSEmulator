@@ -23,23 +23,26 @@ public static partial class DOSEBios
     /// <summary>Chooses only the explicit board firmware variant while retaining the public legacy ROM builder ABI.</summary>
     internal static byte[] CreateBiosForBoard(bool fxHost, int ramMiB, IReadOnlyList<IReadOnlyBlockDevice?> disks,
         FloppyGeometry? floppyA, FloppyGeometry? floppyB, bool bootFloppy, bool ps2Mouse, bool et4000, bool gameport, bool serial, bool parallel,
-        ushort midiPort, byte midiIrq, bool piixIde = false, bool piixReset = false, bool trio64 = false, bool pciBios = false, bool trioVbe = false)
+        ushort midiPort, byte midiIrq, bool piixIde = false, bool piixReset = false, bool trio64 = false, bool pciBios = false, bool trioVbe = false, bool networkPci = false, bool apm = false)
         => CreateBiosCore(ramMiB, disks.Select(d => d?.SectorCount ?? 0).ToArray(), disks.Select(d => d is IWritableBlockDevice).ToArray(),
-            floppyA, floppyB, bootFloppy, ps2Mouse, et4000, gameport, serial, parallel, midiPort, midiIrq, fxHost, piixIde, piixReset, trio64, pciBios, trioVbe);
+            floppyA, floppyB, bootFloppy, ps2Mouse, et4000, gameport, serial, parallel, midiPort, midiIrq, fxHost, piixIde, piixReset, trio64, pciBios, trioVbe, networkPci, apm);
 
     /// <summary>Patches immutable ROM configuration, including translated CHS geometry for disks larger than 504 MiB.</summary>
     private static byte[] CreateBiosCore(int ramMiB, long[] capacities, bool[] writableDrives,
-        FloppyGeometry? floppyA, FloppyGeometry? floppyB, bool bootFloppy, bool ps2Mouse, bool et4000, bool gameport, bool serial, bool parallel, ushort midiPort, byte midiIrq, bool fxHost = false, bool piixIde = false, bool piixReset = false, bool trio64 = false, bool pciBios = false, bool trioVbe = false)
+        FloppyGeometry? floppyA, FloppyGeometry? floppyB, bool bootFloppy, bool ps2Mouse, bool et4000, bool gameport, bool serial, bool parallel, ushort midiPort, byte midiIrq, bool fxHost = false, bool piixIde = false, bool piixReset = false, bool trio64 = false, bool pciBios = false, bool trioVbe = false, bool networkPci = false, bool apm = false)
     {
         if (trioVbe && (!trio64 || !pciBios)) throw new ArgumentException("The own Trio64 VBE ROM requires its constructor-bound PCI-BIOS/S3 board.");
+        if (networkPci && !pciBios) throw new ArgumentException("PCI networking requires its real PCI BIOS firmware.");
+        if (apm && !trioVbe) throw new ArgumentException("The own APM CPU-idle ROM requires the Windows development board.");
         if (midiPort != 0 && (midiPort is not (0x300 or 0x330) || midiIrq is not (5 or 7 or 9 or 10)))
             throw new ArgumentException("Unsupported CT1740 MIDI inventory resources.");
         long sectors = capacities.FirstOrDefault(c => c > 0);
         int first = Array.FindIndex(capacities, c => c > 0);
         bool writable = first >= 0 && writableDrives[first];
-        using var compressed = new MemoryStream(Convert.FromBase64String(trioVbe ? Windows95CompressedImage : pciBios ? PciBiosCompressedImage : trio64 ? Trio64CompressedImage : piixReset ? PiixResetCompressedImage : piixIde ? PiixIdeCompressedImage : fxHost ? FxHostCompressedImage : CompressedImage));
+        using var compressed = new MemoryStream(Convert.FromBase64String(apm ? (networkPci ? ApmNetworkWindows95CompressedImage : ApmWindows95CompressedImage) : networkPci ? (trioVbe ? NetworkWindows95CompressedImage : NetworkPciBiosCompressedImage) : trioVbe ? Windows95CompressedImage : pciBios ? PciBiosCompressedImage : trio64 ? Trio64CompressedImage : piixReset ? PiixResetCompressedImage : piixIde ? PiixIdeCompressedImage : fxHost ? FxHostCompressedImage : CompressedImage));
         using var gzip = new GZipStream(compressed, CompressionMode.Decompress);
         byte[] rom = new byte[65536]; gzip.ReadExactly(rom);
+        if (fxHost) ConfigureFxHostRam(rom, ramMiB);
         System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(rom.AsSpan(0xe000), (ushort)Math.Min(0xfc00, (ramMiB - 1) * 1024));
         System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(rom.AsSpan(0xe002), (uint)Math.Min(0x10000000, sectors));
         rom[0xe006] = writable ? (byte)1 : (byte)0;
@@ -82,6 +85,39 @@ public static partial class DOSEBios
         Cp437Font.Table(14).CopyTo(rom.AsSpan(0xa800));
         Cp437Font.Table(16).CopyTo(rom.AsSpan(0xc000));
         return rom;
+    }
+
+    /// <summary>Patches only checked own DRB/E801 operands; the 32-MiB ROM and all earlier fixed-board bytes remain identical.</summary>
+    private static void ConfigureFxHostRam(Span<byte> rom, int ramMiB)
+    {
+        if (ramMiB is not (16 or 32 or 64 or 128))
+            throw new ArgumentOutOfRangeException(nameof(ramMiB), "The own 430FX RAM configuration supports 16/32/64/128 MiB.");
+        // These are real early CF8/CFC guest instructions, not a host-side decoder override.
+        ReadOnlySpan<byte> drb = [0x66,0xb8,0x60,0,0,0x80,0x66,0xef,0xba,0xfc,0x0c,0x66,0xb8,8,8,8,8,0x66,0xef,
+            0xba,0xf8,0x0c,0x66,0xb8,0x64,0,0,0x80,0x66,0xef,0xba,0xfc,0x0c,0xb0,8,0xee];
+        int at = UniqueRomSequence(rom, drb);
+        byte boundary = checked((byte)(ramMiB / 4));
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(rom.Slice(at + 13, 4), (uint)boundary * 0x01010101u);
+        rom[at + 34] = boundary;
+        if (ramMiB <= 32) return;
+        // E801 reports KiB between 1 and 16 MiB and 64-KiB blocks above 16 MiB.
+        // Retain the historical 32-MiB handler; only newly supported larger configurations use this split.
+        ReadOnlySpan<byte> e801 = [0x2e,0xa1,0,0xe0,0x36,0x89,0x46,0xfc,0x36,0x89,0x46,0xf8,
+            0x36,0xc7,0x46,0xf0,0,0,0x36,0xc7,0x46,0xf4,0,0];
+        at = UniqueRomSequence(rom, e801);
+        rom[at] = 0xb8; rom[at + 1] = 0; rom[at + 2] = 0x3c; rom[at + 3] = 0x90;
+        ushort blocks = checked((ushort)((ramMiB - 16) * 16));
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(rom.Slice(at + 16, 2), blocks);
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(rom.Slice(at + 22, 2), blocks);
+    }
+
+    /// <summary>Requires one complete original instruction sequence before patching any of its fixed-size configuration operands.</summary>
+    private static int UniqueRomSequence(ReadOnlySpan<byte> rom, ReadOnlySpan<byte> sequence)
+    {
+        int at = rom.IndexOf(sequence);
+        if (at < 0 || rom[(at + 1)..].IndexOf(sequence) >= 0)
+            throw new InvalidOperationException("The selected own BIOS RAM instructions differ from their checked layout.");
+        return at;
     }
     /// <summary>Identifies only the selected own P54C platform in the immutable ROM inventory without changing the 486 builder ABI or bytes.</summary>
     internal static void ConfigureP54cInventory(byte[] rom)

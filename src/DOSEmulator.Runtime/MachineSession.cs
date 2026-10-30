@@ -4,41 +4,79 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using DOSEmulator.Contracts;
 using DOSEmulator.Hardware;
+using DOSEmulator.Runtime.Networking;
 
 namespace DOSEmulator.Runtime;
 
 /// <summary>UI and IPC enqueue work; only the emulation owner pumps and mutates the machine.</summary>
 public sealed class MachineSession : IDisposable
 {
-    private readonly ConcurrentQueue<(IpcRequest Request, TaskCompletionSource<IpcResponse> Result, long Generation)> _commands = new();
+    private readonly ConcurrentQueue<(IpcRequest Request, TaskCompletionSource<IpcResponse> Result, long Generation, long NetworkGeneration)> _commands = new();
     private bool _disposed;
     private readonly object _queueGate = new();
     private long _revision = 1;
     private long _inputGeneration = 1;
+    private long _resumeGeneration;
+    private long _networkGeneration = 1;
     private string _definitionId = Guid.NewGuid().ToString("N");
     private string? _definitionName;
+    private readonly bool _enableHostNetworking;
+    private NetworkService _network;
+    // External input awaiting admission is session-owned, like _commands, not saved guest state.
+    private readonly Queue<RelativeMouseInput.Input> _pendingMouse = new();
+    private const int PendingMouseLimit = 128;
     /// <summary>Current PC owned by this session; only queued owner-thread commands may replace it.</summary>
     public PcMachine Machine { get; private set; }
     /// <summary>Configuration/reset revision used to reject stale prepared changes.</summary>
     public long Revision => _revision;
     /// <summary>Current input ownership epoch; frontends acknowledge it only after discarding their retired held input.</summary>
     public long InputGeneration => Interlocked.Read(ref _inputGeneration);
+    /// <summary>Successful paused-to-running Resume commands, allowing frontend policy to observe transitions coalesced in one pump.</summary>
+    public long ResumeGeneration => Interlocked.Read(ref _resumeGeneration);
 
     /// <summary>Initializes MachineSession and connects the supplied dependencies before the component is used.</summary>
-    public MachineSession(PcMachine machine)
+    public MachineSession(PcMachine machine, bool enableHostNetworking = false)
     {
+        _enableHostNetworking = enableHostNetworking;
+        _network = new(machine, enableHostNetworking);
         Machine = machine; Machine.HardwareResetOccurred += TrackReset;
         var definition = machine.CaptureDefinition(); _definitionId = definition.Id; _definitionName = definition.Name;
     }
     /// <summary>Invalidates the configuration revision after a real machine reset event.</summary>
-    private void TrackReset() => _revision++;
+    private void TrackReset()
+    {
+        _revision++;
+        if (Machine.LastResetSource == "cf9-hard")
+        {
+            Interlocked.Increment(ref _networkGeneration);
+            string? failure = null;
+            try { _network.Dispose(); } catch (Exception error) { failure = error.Message; }
+            foreach (var adapter in Machine.Profile.NetworkAdapters.ToArray()) Machine.SetNetworkCablePreference(adapter.Slot, false);
+            _network = new(Machine, _enableHostNetworking);
+            if (failure is not null) _network.RecordFailure(failure);
+        }
+    }
     /// <summary>Transfers battery state, releases the old machine and adopts an already prepared replacement.</summary>
     private void ReplaceMachine(PcMachine replacement, bool carryBattery = true)
     {
         if (carryBattery) Machine.Rtc.CarryBatteryStateTo(replacement.Rtc);
+        try { _network.Dispose(); }
+        catch (Exception error)
+        {
+            Interlocked.Increment(ref _networkGeneration);
+            _revision++;
+            foreach (var adapter in Machine.Profile.NetworkAdapters.ToArray()) Machine.SetNetworkCablePreference(adapter.Slot, false);
+            _network = new(Machine, _enableHostNetworking);
+            _network.RecordFailure(error.Message);
+            replacement.Dispose();
+            throw new IOException("The previous network connection could not close. The original PC is retained with networking disconnected.", error);
+        }
+        _pendingMouse.Clear();
         Machine.HardwareResetOccurred -= TrackReset;
         Machine.Dispose(); Machine = replacement;
         Machine.HardwareResetOccurred += TrackReset; _revision++; Interlocked.Increment(ref _inputGeneration);
+        Interlocked.Increment(ref _networkGeneration);
+        _network = new(Machine, _enableHostNetworking);
     }
 
     /// <summary>Queues a bounded UI/IPC request for the emulation owner; completion never runs controller code on the caller.</summary>
@@ -52,7 +90,7 @@ public sealed class MachineSession : IDisposable
         {
             if (_disposed) completion.SetResult(new(1, request.RequestId, false, "SessionStopped", null));
             else if (_commands.Count >= 256) completion.SetResult(new(1, request.RequestId, false, "QueueFull", null));
-            else _commands.Enqueue((request, completion, observedInputGeneration));
+            else _commands.Enqueue((request, completion, observedInputGeneration, Interlocked.Read(ref _networkGeneration)));
         }
         return completion.Task;
     }
@@ -60,13 +98,16 @@ public sealed class MachineSession : IDisposable
     /// <summary>Executes a bounded number of queued UI/IPC requests on the sole emulation owner.</summary>
     public void PumpCommands()
     {
+        PumpMouseInput();
         int count = 0;
         while (count++ < 256 && _commands.TryDequeue(out var command))
         {
             try
             {
-                bool input = command.Request.Command is "SendScanCode" or "SendMouseInput" or "SendCtrlAltDel" or "SetGameportInput" or "SendSerialInput" or "SetParallelInput" or "SendMidiInput";
-                if (input && command.Generation != Interlocked.Read(ref _inputGeneration))
+                bool input = command.Request.Command is "SendScanCode" or "SendMouseInput" or "SendCtrlAltDel" or "SetGameportInput" or "SendSerialInput" or "SetParallelInput" or "SendMidiInput" or "SetNetworkConnection";
+                if (command.Request.Command == "SetNetworkConnection" && command.NetworkGeneration != Interlocked.Read(ref _networkGeneration))
+                    command.Result.TrySetResult(new(1, command.Request.RequestId, false, "StaleNetworkGeneration", null));
+                else if (input && command.Generation != Interlocked.Read(ref _inputGeneration))
                     command.Result.TrySetResult(new(1, command.Request.RequestId, false, "StaleInputGeneration", null));
                 else command.Result.TrySetResult(Handle(command.Request));
             }
@@ -78,6 +119,25 @@ public sealed class MachineSession : IDisposable
             {
                 command.Result.TrySetResult(new(1, command.Request.RequestId, false, "ResourceUnavailable", new { message = ex.Message }));
             }
+        }
+        PumpMouseInput();
+        _network.Pump(Machine.Running);
+    }
+
+    /// <summary>Preserves host button edges until an actual PS/2 report accepts the preceding state.</summary>
+    private void PumpMouseInput()
+    {
+        var mouse = Machine.Mouse;
+        if (mouse is null) { _pendingMouse.Clear(); return; }
+        while (_pendingMouse.TryPeek(out var input))
+        {
+            // Movement with the same buttons can accumulate normally. A later edge must not
+            // erase an unreported press/release when both host events arrive in one owner pump.
+            // Paused or disabled devices retain their previous latest-sensor-state policy.
+            if (Machine.Running && (mouse.Enabled || mouse.Remote) &&
+                input.Buttons != mouse.Buttons && mouse.Buttons != mouse.ReportedButtons) break;
+            _pendingMouse.Dequeue();
+            mouse.Inject(input.X, input.Y, input.Buttons);
         }
     }
 
@@ -99,6 +159,16 @@ public sealed class MachineSession : IDisposable
         {
             case "Ping": result = new { pong = true }; break;
             case "GetStatus": result = Machine.GetStatus(); break;
+            case "GetNetworkStatus": result = _network.GetStatus(); break;
+            case "SetNetworkConnection":
+            {
+                int slot = ReadInt32(request.Payload, "slot", 0, 1);
+                if (!request.Payload.TryGetProperty("connected", out var connected) || connected.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                    throw new ArgumentException("Property 'connected' must be a JSON boolean.");
+                try { _network.SetConnected(slot, connected.GetBoolean()); }
+                finally { _revision++; }
+                result = _network.GetStatus(); break;
+            }
             case "GetMachineDefinition": result = Machine.CaptureDefinition(_definitionName, _definitionId); break;
             case "SaveMachineDefinition":
             {
@@ -199,12 +269,20 @@ public sealed class MachineSession : IDisposable
                     atapiDma = false, atapiAudioPlayback = false, hostOpticalDrive = false,
                     pciBios21Subset = true, bios32ServiceDirectory = true, pciBiosProfile = MachineProfile.PciBiosProfileId,
                     pciBiosActive = Machine.Profile.IsPciBiosBoard, pciSpecialCycles = false, fullPciBiosConformance = false,
-                    et4000FullChip = false, ideChannels = 2, ideSlots = 4, machineDefinitions = true, blankDiskImages = true, mediaCheckpoints = true, runningStateSnapshots = true,
+                    et4000FullChip = false, ideChannels = 2, ideSlots = 4, networkAdapterSlots = 2, networkModels = new[] { "ne2000-isa", "rtl8029-pci" }, networkModes = new[] { "nat", "host-only", "bridged" }, networkSnapshotReconnectRequired = true, machineDefinitions = true, blankDiskImages = true, mediaCheckpoints = true, runningStateSnapshots = true,
                     biosVgaTextScanlines = true, msDos622Cp850Text = true, guestCpuHotReset = true,
                     resetScope = "CPU only; RAM, devices, virtual time and attached media retained",
-                    commands = new[] { "CreateSnapshot", "LoadSnapshot", "CreateMediaCheckpoint", "CreateMediaBranch", "GetMachineDefinition", "SaveMachineDefinition", "LoadMachineDefinition", "SetHardDisk", "SetOpticalDisc", "Ping", "GetStatus", "GetCapabilities", "Pause", "Resume", "HardwareReset", "SendCtrlAltDel", "PowerCycleCurrent", "PowerCycleDemo", "PowerCycleReadOnlyDisk", "PowerCycleOverlayDisk", "InsertFloppy", "EjectFloppy", "PrepareConfigurationChange", "CommitConfigurationChange", "SendScanCode", "SendMouseInput", "SetGameportInput", "SendSerialInput", "SetParallelInput", "SendMidiInput" } }; break;
+                    commands = new[] { "CreateSnapshot", "LoadSnapshot", "CreateMediaCheckpoint", "CreateMediaBranch", "GetMachineDefinition", "SaveMachineDefinition", "LoadMachineDefinition", "SetHardDisk", "SetOpticalDisc", "Ping", "GetStatus", "GetCapabilities", "GetNetworkStatus", "SetNetworkConnection", "Pause", "Resume", "HardwareReset", "SendCtrlAltDel", "PowerCycleCurrent", "PowerCycleDemo", "PowerCycleReadOnlyDisk", "PowerCycleOverlayDisk", "InsertFloppy", "EjectFloppy", "PrepareConfigurationChange", "CommitConfigurationChange", "SendScanCode", "SendMouseInput", "SetGameportInput", "SendSerialInput", "SetParallelInput", "SendMidiInput" } }; break;
             case "Pause": Machine.Running = false; result = Machine.GetStatus(); break;
-            case "Resume": Machine.Running = true; result = Machine.GetStatus(); break;
+            case "Resume":
+            {
+                if (!Machine.Running)
+                {
+                    long next = checked(_resumeGeneration + 1);
+                    Machine.Running = true; Interlocked.Exchange(ref _resumeGeneration, next);
+                }
+                result = Machine.GetStatus(); break;
+            }
             case "HardwareReset": Machine.HardwareReset(); result = Machine.GetStatus(); break;
             case "SendCtrlAltDel":
                 if (!Machine.Keyboard.TryInjectTranslatedSet1([0x1d, 0x38, 0x53, 0xd3, 0xb8, 0x9d]))
@@ -259,7 +337,8 @@ public sealed class MachineSession : IDisposable
             case "PrepareConfigurationChange":
             {
                 var requested = request.Payload.Deserialize<MachineProfile>(IpcProtocol.JsonOptions) ?? throw new ArgumentException("Missing profile.");
-                requested.Validate(); result = new ConfigurationPlan(_revision, requested, requested != Machine.Profile); break;
+                requested.Validate(); result = new ConfigurationPlan(_revision, requested,
+                    JsonSerializer.Serialize(requested, IpcProtocol.JsonOptions) != JsonSerializer.Serialize(Machine.Profile, IpcProtocol.JsonOptions)); break;
             }
             case "CommitConfigurationChange":
             {
@@ -298,7 +377,11 @@ public sealed class MachineSession : IDisposable
                 int x = ReadInt32(request.Payload, "x", -32767, 32767), y = ReadInt32(request.Payload, "y", -32767, 32767);
                 int buttons = ReadInt32(request.Payload, "buttons", 0, 3);
                 if (Machine.Mouse is null) throw new InvalidOperationException("No PS/2 mouse configured.");
-                Machine.Mouse.Inject(x, y, buttons); result = null; break;
+                PumpMouseInput();
+                if (_pendingMouse.Count == PendingMouseLimit)
+                    return new(1, request.RequestId, false, "InputNotAccepted", null);
+                _pendingMouse.Enqueue(new(x, y, buttons));
+                PumpMouseInput(); result = null; break;
             }
             case "SetGameportInput":
             {
@@ -328,9 +411,11 @@ public sealed class MachineSession : IDisposable
         lock (_queueGate)
         {
             _disposed = true;
+            _pendingMouse.Clear();
             while (_commands.TryDequeue(out var item)) item.Result.TrySetResult(new(1, item.Request.RequestId, false, "SessionStopped", null));
         }
         Machine.HardwareResetOccurred -= TrackReset;
-        Machine.Dispose();
+        try { _network.Dispose(); }
+        finally { Machine.Dispose(); }
     }
 }

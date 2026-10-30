@@ -1,5 +1,37 @@
 # Realtime execution and host calendar
 
+## C44/C44b: original Windows idle driver and bounded host recovery
+
+The limited [APM 1.1 CPU-idle BIOS](hardware/APM-BIOS.md) lets the original
+Windows power driver execute real guest `STI`/`HLT` and wake on emulated IRQs.
+This removes unnecessary idle CPU execution. It does not replace the Windows
+timer or the RTC, and it does not accelerate a CPU-bound task by changing its
+clock. The user's host-local-calendar policy after load and pause/resume remains
+unchanged; the deterministic core and strict loader do not read host wall time.
+
+The GUI explicitly selects five seconds of recoverable host lag, with the same
+20-ms maximum execution slice. A halted CPU may wait one host millisecond for a
+sub-millisecond outstanding target; a running CPU behind its target still waits
+zero. Default callers retain the old 100-ms recovery bound. Explicit resume or a
+longer host suspension rebases the origin. Speed still measures actual guest
+time over monotonic host time, including remaining deficits.
+
+Actual Windows95/98 idle and steady test-app samples reach approximately 100%;
+the measured cold app launches remain 43.56% and 78.94%, respectively. These are
+different workloads, not universal realtime or a controlled CPU speedup claim.
+See [the measured scopes](PERFORMANCE.md). All changes remain local, the hourly
+automation stays **PAUSED**, and existing user working disks are not test media.
+
+## Windows starter and resume repair, C18
+
+The user requested that the hourly job be paused and the accepted C15 sources be committed/pushed before these repairs. That checkpoint is `c94cf37ea50b6ce5013f2a38b95f4f5edc7cae7e`; the job remains **PAUSED**. The following repairs remain local. The previous `run-win95.cmd` delegated to frozen V12, so it did not load the later CPU optimizations or host-clock policy merely because those sources existed in the workspace.
+
+C18 also fixes a coalesced pause/resume: the owner increments a resume generation only after a successful transition to running, and the frontend passes that generation to the calendar policy after pumping requests. A resume processed between two frontend observations now still supplies current host local time. Negative/stale generations are rejected, machine replacement rebinds the policy, and a failed calendar update does not consume the generation. The original four-argument API remains available. Core hardware and the strict snapshot loader still never read host time.
+
+Both repaired private Windows copies have the English DOSE Tools helper installed at `C:\DOSETOOLS\DOSETIME.EXE` and its actual Windows Run registration. Fresh C18 starts with a probe-only disk containing no installer show the running helper's date/time updates. Original Windows reports confirm 64 MiB profiles, one PCI display device without the stale legacy devnode, and current local calendar fields. The 100-MHz/128-MiB case also passes the same clock and memory report. These controlled headless probes explicitly seed the RTC; the compiled frontend policy supplies periodic host correction in normal GUI use. No continuous accuracy guarantee, native UI/input/audio acceptance or general 1:1 performance claim is derived from those samples.
+
+All **14074** registered regressions pass, including nine new clock cases, and the state generator remains46 types/895 members/40 unchanged callback bodies. Windows software time still requires the helper; a bare RTC correction alone does not keep every already-running Windows clock synchronized. The previous build-specific results below retain their original scope.
+
 The subsequent genuine C15 Windows gate now passes at100/133MHz and32MiB: two new cold boots from fresh own media, original S3/SB16 drivers, full1027-byte DAT and512-byte proof,94620 exact inner RGB pixels with no exclusions, natural Wave-DONE/Unprepare/Close, application close and regular shutdown. Four strict full imports/72 whole comparisons cover desktop and Wave-DONE with identical later PCM bytes/timestamps; these are not new active-DMA or independent native-sample/mixer/host-audio tests. CPU instruction/interrupt observers are absent.
 
 A private64-bit scheduler-budget arithmetic experiment passes10388 BigInteger inequality controls and three invalid-parameter cases per variant, with no state mutation. Eight serial, mirrored processes with200-million-step warmups and normal .NET tiers compare actual C15 Windows desktop data. Every complete state/RAM/VRAM/image/later-PCM boundary and final journal agrees. The experiment takes0.07% less host time at100MHz and1.81% more at133MHz, so it is not integrated. The unchanged C15 baseline reaches80.11/57.74% realtime in these specific long-warmed segments; differing warmup/source phases prevent calling the absolute difference from older cohorts another code gain. The earlier short pair is exploratory. This comparison uses unedited same-shape private state data, not additional strict product imports or snapshot migration.

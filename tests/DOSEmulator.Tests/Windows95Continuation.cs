@@ -12,7 +12,7 @@ using DOSEmulator.Runtime;
 /// <summary>Bounded continuation of one actual running PC against its one complete, normally validated snapshot import.</summary>
 internal static class Windows95Continuation
 {
-    private const int RequiredRamBytes = 32 * 1024 * 1024, MaximumAudioBlocks = 2048;
+    private const int MaximumAudioBlocks = 2048;
     private static readonly JsonSerializerOptions Json = new(IpcProtocol.JsonOptions) { WriteIndented = true, IncludeFields = true };
     private sealed record PcmBlock(ulong VirtualNanoseconds, int SampleRate, int Channels, int Frames, int Bytes, string Sha256);
     private sealed record Scanout(int Width, int Height, int ModeGeneration, long FrameId, ulong VirtualNanoseconds,
@@ -143,9 +143,11 @@ internal static class Windows95Continuation
 
     /// <summary>Compares every raw state/RAM byte, then complete real scanouts and all state again after both render counters advance.</summary>
     private static Comparison Compare(string stage, PcMachine original, PcMachine restored, VgaFrameBuffer originalBuffer, VgaFrameBuffer restoredBuffer,
-        PcmObserver? originalPcm = null, PcmObserver? restoredPcm = null, string? finalDirectory = null)
+        int requiredRamBytes, PcmObserver? originalPcm = null, PcmObserver? restoredPcm = null, string? finalDirectory = null)
     {
         Healthy(original, "Original"); Healthy(restored, "Restored");
+        Require(original.Memory.Ram.Length == requiredRamBytes && restored.Memory.Ram.Length == requiredRamBytes,
+            stage + " actual full RAM lengths differ from the admitted original.");
         SameBytes(State(original), State(restored), stage + " raw full hardware/scheduler graph");
         SameBytes(original.Memory.Ram, restored.Memory.Ram, stage + " full RAM");
         var first = original.CaptureFrame(originalBuffer); var second = restored.CaptureFrame(restoredBuffer);
@@ -163,7 +165,7 @@ internal static class Windows95Continuation
             WriteNew(Path.Combine(finalDirectory, "final-ram.bin"), original.Memory.Ram);
         }
         return new(stage, original.Scheduler.Now, original.Cpu.Instructions, restored.Cpu.Instructions, state.Length, Hash(state),
-            original.Memory.Ram.Length, Hash(original.Memory.Ram), new(first.Width, first.Height, first.ModeGeneration, first.FrameId,
+            requiredRamBytes, Hash(original.Memory.Ram), new(first.Width, first.Height, first.ModeGeneration, first.FrameId,
                 first.VirtualNanoseconds, first.ArgbPixels.Length, Hash(MemoryMarshal.AsBytes(first.ArgbPixels.AsSpan())), original.Video.GraphicsMode, original.Video.ReadText()));
     }
 
@@ -203,8 +205,13 @@ internal static class Windows95Continuation
         if (slices is < 1 or > 64 || stepsPerSlice is < 1 or > 500000 || (long)slices * stepsPerSlice * 2 > 1_000_000 ||
             maximumMilliseconds is < 100 or > 60000 || maximumVirtualNanoseconds is < 1000000 or > 1000000000)
             throw new ArgumentException("Continuation requires 1..64 slices, <=1,000,000 combined step elements, <=60s host budget and 1ms..1s virtual budget.");
-        if (original.Memory.Ram.Length != RequiredRamBytes || original.CaptureDefinition().BuiltInTestDisk)
-            throw new ArgumentException("Continuation requires the actual 32-MiB PC with regular file-backed private media.");
+        int requiredRamBytes = original.Memory.Ram.Length;
+        bool legacyRam = requiredRamBytes == 32 * 1024 * 1024;
+        bool windowsRam = original.Profile.IsWindows95Board && original.Profile.RamMiB is 16 or 64 or 128 &&
+            original.Profile.GetSupportedRamMiB().Contains(original.Profile.RamMiB) &&
+            requiredRamBytes == (long)original.Profile.RamMiB * 1024 * 1024;
+        if ((!legacyRam && !windowsRam) || original.CaptureDefinition().BuiltInTestDisk)
+            throw new ArgumentException("Continuation requires the actual 32-MiB PC or a supported 16/64/128-MiB Windows95 board with regular file-backed private media.");
         if (original.Scheduler.Now > ulong.MaxValue - maximumVirtualNanoseconds) throw new ArgumentException("Virtual deadline would overflow.");
         string root = Path.GetFullPath(directory);
         if (Directory.Exists(root) || File.Exists(root) || !Directory.Exists(Path.GetDirectoryName(root)))
@@ -217,7 +224,7 @@ internal static class Windows95Continuation
         {
             Healthy(original, "Original"); progress(new { stage = "continuation-capture", output = root, virtualNanoseconds = startedAt });
             string saved = Path.Combine(root, "cut.dossav"); var manifest = SnapshotStore.Capture(original, saved);
-            Require(manifest.RamBytes == RequiredRamBytes && manifest.StateSha256 == Hash(State(original)) &&
+            Require(manifest.RamBytes == requiredRamBytes && original.Memory.Ram.Length == requiredRamBytes && manifest.StateSha256 == Hash(State(original)) &&
                 manifest.RamSha256 == Hash(original.Memory.Ram), "The saved cut does not describe the actual running original.");
             using var cutMediaDocument = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(saved, "media.dosemedia", "media.json")));
             string cutMediaId = cutMediaDocument.RootElement.GetProperty("id").GetString() ?? "";
@@ -227,7 +234,7 @@ internal static class Windows95Continuation
             stage = "load"; progress(new { stage = "continuation-load", snapshot = saved });
             using var restored = SnapshotStore.Load(saved, Path.Combine(root, "restored.dosebranch"));
             var originalBuffer = new VgaFrameBuffer(); var restoredBuffer = new VgaFrameBuffer();
-            stage = "initial-comparison"; var initial = Compare("initial", original, restored, originalBuffer, restoredBuffer);
+            stage = "initial-comparison"; var initial = Compare("initial", original, restored, originalBuffer, restoredBuffer, requiredRamBytes);
             long initialGenerated = original.Audio.GeneratedFrames; int initialBuffered = BufferedFrames(original);
             ulong initialBlockStart = original.Audio.SaveState().Fields["_blockStart"].GetUInt64();
             using var originalPcm = new PcmObserver(original); using var restoredPcm = new PcmObserver(restored);
@@ -241,7 +248,7 @@ internal static class Windows95Continuation
                 int first = original.RunSteps(stepsPerSlice, until); originalSteps += first; originalExecuted(first);
                 int second = restored.RunSteps(stepsPerSlice, until); restoredSteps += second;
                 Require(first == second, "Actual normal RunSteps return values differ at slice " + i);
-                comparisons.Add(new(i, first, second, Compare(stage, original, restored, originalBuffer, restoredBuffer, originalPcm, restoredPcm)));
+                comparisons.Add(new(i, first, second, Compare(stage, original, restored, originalBuffer, restoredBuffer, requiredRamBytes, originalPcm, restoredPcm)));
                 if (first == 0) { stopReason = original.Scheduler.Now >= until ? "virtual-deadline" : "no-executable-progress"; break; }
             }
             stage = "pcm-clock";
@@ -255,12 +262,12 @@ internal static class Windows95Continuation
             Require(new[] { manifest.Id, cutMediaId, firstMedia.Report.Id, secondMedia.Report.Id }.Distinct(StringComparer.Ordinal).Count() == 4,
                 "The four real capture IDs must be individually valid and distinct.");
             stage = "final-comparison";
-            var final = Compare("final-after-media-sealing", original, restored, originalBuffer, restoredBuffer, originalPcm, restoredPcm, root);
+            var final = Compare("final-after-media-sealing", original, restored, originalBuffer, restoredBuffer, requiredRamBytes, originalPcm, restoredPcm, root);
             bool observedFuture = originalSteps > 0 || original.Scheduler.Now > startedAt;
             var result = new { passed = observedFuture, allComparedDataEqual = true, scope = "Bounded continuation of the actual running guest; a Mini-Setup waiting cut does not certify an installed or shut-down Windows 95.",
                 originalWasControllerPc = true, originalCaptureCount = 1, fullSnapshotImports = 1, traceCapacity = 0,
                 inputPacketsInjected = 0, audioFlushes = 0, capturedStateFieldsExcluded = 0, mediaFieldsExcluded = new[] { "/id" },
-                profileId = original.Profile.Id, output = root, snapshot = saved, manifest, cutMediaId,
+                profileId = original.Profile.Id, requiredRamBytes, output = root, snapshot = saved, manifest, cutMediaId,
                 snapshotManifestSha256 = HashFile(Path.Combine(saved, "snapshot.json")), initial, final,
                 requestedSlices = slices, completedSlices = comparisons.Count, stepsPerSlice, combinedStepBudget = (long)slices * stepsPerSlice * 2,
                 originalStepElements = originalSteps, restoredStepElements = restoredSteps, combinedStepElements = originalSteps + restoredSteps,
@@ -278,7 +285,7 @@ internal static class Windows95Continuation
         catch (Exception error) when (error is IOException or InvalidOperationException or ArgumentException or OverflowException)
         {
             WriteJson(Path.Combine(root, "failure.json"), new { passed = false, stage, error = error.GetType().Name, message = error.Message,
-                originalStepElements = originalSteps, restoredStepElements = restoredSteps, startedAt, originalNow = original.Scheduler.Now,
+                originalStepElements = originalSteps, restoredStepElements = restoredSteps, requiredRamBytes, startedAt, originalNow = original.Scheduler.Now,
                 originalPosition = original.Cpu.Position, originalFault = original.Fault, originalTripleFaulted = original.Cpu.TripleFaulted,
                 hostMilliseconds = timer.Elapsed.TotalMilliseconds, completedSlices = comparisons });
             throw;

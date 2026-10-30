@@ -11,11 +11,12 @@ using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
+using DOSEmulator.Runtime.Networking;
 
 /// <summary>Persistent headless owner controller using only real guest execution and virtual KBC/PS2 input.</summary>
 internal static class Windows95GuestRunner
 {
-    private sealed record Input(string? Machine, string? Snapshot, string? Branch, string Output, int TraceCapacity = 0, int ProgressMilliseconds = 1000);
+    private sealed record Input(string? Machine, string? Snapshot, string? Branch, string Output, int TraceCapacity = 0, int ProgressMilliseconds = 1000, bool EnableNetwork = false);
     private sealed record Point(ulong Nanoseconds, long Instructions, string Position, uint LinearInstructionAddress, uint PhysicalInstructionAddress,
         uint Flags, uint Cr0, uint Cr2, uint Cr3, uint Cr4, bool V86, bool Halted, bool TripleFaulted, uint[] Registers, ushort[] Segments, uint[] Bases);
     private sealed record TraceRow(long Sequence, string Kind, ulong Nanoseconds, long Instructions, ushort Cs, uint Eip, ushort Ss, uint Esp,
@@ -183,7 +184,7 @@ internal static class Windows95GuestRunner
     }
 
     /// <summary>Owns new private evidence destinations and one already constructed regular product PC.</summary>
-    private sealed class Controller(PcMachine machine, string output, int progressMilliseconds, Trace trace)
+    private sealed class Controller(PcMachine machine, string output, int progressMilliseconds, Trace trace, NetworkService network)
     {
         private readonly VgaFrameBuffer _frameBuffer = new();
         private long _stepElements;
@@ -304,6 +305,7 @@ internal static class Windows95GuestRunner
                         fault = machine.Fault, graphics = machine.Video.GraphicsMode, text = machine.Video.ReadText(), keyboardOutputBytes = machine.Keyboard.OutputByteCount });
                     nextProgress = timer.ElapsedMilliseconds + progressMilliseconds;
                 }
+                network.Pump();
                 int amount = machine.RunSteps((int)Math.Min(10000, requested - executed));
                 executed += amount; _stepElements += amount; batches++;
                 if (amount == 0) { reason = machine.Fault is null ? "no-executable-progress" : "guest-fault"; break; }
@@ -377,6 +379,14 @@ internal static class Windows95GuestRunner
             switch (command.ToLowerInvariant())
             {
                 case "step": return (Step(request), false);
+                case "networkstatus": return (network.GetStatus(), false);
+                case "networkconnect":
+                {
+                    int slot = (int)Number(request, "slot", 0, 1);
+                    Check(request.TryGetProperty("connected", out var cable) && cable.ValueKind is JsonValueKind.True or JsonValueKind.False, "connected must be boolean.");
+                    network.SetConnected(slot, cable.GetBoolean());
+                    return (network.GetStatus(), false);
+                }
                 case "comparecontinuation": return (CompareContinuation(request), false);
                 case "keys": return (Keys(request), false);
                 case "mouse": return (Mouse(request), false);
@@ -449,7 +459,8 @@ internal static class Windows95GuestRunner
         using var machine = cold ? MachineFactory.FromDefinition(MachineDefinitionStore.Load(Path.GetFullPath(input.Machine!, inputDirectory)))
             : SnapshotStore.Load(Path.GetFullPath(input.Snapshot!, inputDirectory), Path.GetFullPath(input.Branch!, inputDirectory));
         using var trace = new Trace(machine, input.TraceCapacity);
-        var controller = new Controller(machine, output, input.ProgressMilliseconds, trace);
+        using var network = new NetworkService(machine, input.EnableNetwork);
+        var controller = new Controller(machine, output, input.ProgressMilliseconds, trace, network);
         Reply(new { protocol = 1, ready = true, ownerThread = Environment.CurrentManagedThreadId, output, actualProfile = machine.Profile,
             buildModules = BuildModules(), point = Observe(machine), inputMode = "atomic-kbc-translated-set1", traceCapacity = input.TraceCapacity });
         string? line;

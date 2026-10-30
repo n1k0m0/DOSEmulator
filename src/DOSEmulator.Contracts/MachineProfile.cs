@@ -66,7 +66,7 @@ public sealed record MachineProfile
         if (IsFxHost)
         {
             if (!useP54c) throw new InvalidOperationException(IsWindows95Board
-                ? "The Windows95 development board retains its fixed P54C, nominal clock and 32 MiB tuple."
+                ? "The Windows95 development board retains its fixed P54C and nominal clock."
                 : "The 430FX-host board has a fixed P54C/100-MHz/32-MiB tuple.");
             return this;
         }
@@ -121,6 +121,33 @@ public sealed record MachineProfile
     public string OpticalDrive { get; init; } = "none";
     /// <summary>One of the four physical IDE positions reserved for the installed packet target.</summary>
     public int AtapiSlot { get; init; } = 2;
+    private NetworkAdapterSequence _networkAdapters = new([]);
+    /// <summary>At most two explicitly configured NICs, with ordered structural record equality; old definitions retain none.</summary>
+    public NetworkAdapterProfile[] NetworkAdapters
+    {
+        get => _networkAdapters.Items!;
+        init => _networkAdapters = new(value);
+    }
+
+    /// <summary>Keeps array contents in the synthesized profile equality without replacing any other record-field comparison.</summary>
+    private sealed class NetworkAdapterSequence(NetworkAdapterProfile[]? items) : IEquatable<NetworkAdapterSequence>
+    {
+        /// <summary>Retains the public array value, including invalid null inputs for the existing controlled validator.</summary>
+        public NetworkAdapterProfile[]? Items { get; } = items;
+        /// <summary>Compares every adapter value in its persisted order, independently from array identity.</summary>
+        public bool Equals(NetworkAdapterSequence? other) => ReferenceEquals(this, other) || other is not null &&
+            (ReferenceEquals(Items, other.Items) || Items is not null && other.Items is not null && Items.SequenceEqual(other.Items));
+        /// <summary>Uses the same content comparison through object-based record and collection APIs.</summary>
+        public override bool Equals(object? obj) => obj is NetworkAdapterSequence other && Equals(other);
+        /// <summary>Hashes the same ordered adapter values and length used by equality, including an invalid null array.</summary>
+        public override int GetHashCode()
+        {
+            if (Items is null) return 0;
+            var hash = new HashCode(); hash.Add(Items.Length);
+            foreach (var adapter in Items) hash.Add(adapter);
+            return hash.ToHashCode();
+        }
+    }
     private string _videoCard = DOSEIdentity.VgaModel;
     /// <summary>Canonical adapter ID; older saved PCs normalize the former reference-VGA spelling while loading.</summary>
     public string VideoCard
@@ -138,6 +165,10 @@ public sealed record MachineProfile
         ? $"A{SoundBlasterBasePort:X3} I{SoundBlasterIrq} D{SoundBlasterDmaChannel} H{SoundBlasterDma16Channel}" + (MidiInterface == "none" ? "" : $" P{MidiBasePort:X3}") + " T6"
         : $"A{SoundBlasterBasePort:X3} I{SoundBlasterIrq} D{SoundBlasterDmaChannel} T3";
 
+    /// <summary>Lists constructor-supported RAM sizes; only the Windows boards vary within the 82437FX's 128-MiB limit.</summary>
+    public ReadOnlySpan<int> GetSupportedRamMiB() => IsWindows95Board ? [16, 32, 64, 128]
+        : IsFxHost ? [FxHostRamMiB] : [4, 8, 16];
+
     /// <summary>Rejects unsupported CPU/platform/clock tuples before optional drive-geometry inference opens any media.</summary>
     public void ValidateCpuSelection()
     {
@@ -147,12 +178,15 @@ public sealed record MachineProfile
             IsFxHost ? FxHostCpuHz : IsP54c ? P54cCpuHz : 33_000_000;
         if (CpuHz != expectedHz)
             throw new ArgumentException("The selected development CPU requires its fixed nominal virtual clock.");
-        if (IsFxHost ? RamMiB != FxHostRamMiB : RamMiB is not (4 or 8 or 16))
-            throw new ArgumentException("Use 32 MiB for the 430FX-host board, or 4/8/16 MiB for an existing AT board.");
+        if (!GetSupportedRamMiB().Contains(RamMiB))
+            throw new ArgumentException(IsWindows95Board
+                ? "Use 16, 32, 64 or 128 MiB for the Windows95 development board."
+                : "Use 32 MiB for the 430FX-host board, or 4/8/16 MiB for an existing AT board.");
         if (IsAtapi != IsAtapiBoard || OpticalDrive is not ("none" or AtapiCdRomId) || AtapiSlot is < 0 or > 3 || !IsAtapi && AtapiSlot != 2)
             throw new ArgumentException("The packet CD-ROM requires its fixed S3/PIIX board and one valid IDE slot.");
         if (IsTrio64 != IsS3Trio64Board)
             throw new ArgumentException("The original Trio64 adapter requires its fixed 430FX/PIIX/S3 board tuple.");
+        ValidateNetworkAdapters();
     }
 
     /// <summary>Rejects unsupported hardware identifiers, sizes and conflicting DOSE platform resource selections.</summary>
@@ -193,6 +227,34 @@ public sealed record MachineProfile
         if (ParallelPort != "none" && SoundBlasterIrq == 7 && (IsSb16 || SoundCard is "sb2-dsp-development" or "sb2-opl2-development"))
             throw new ArgumentException("The IBM LPT adapter reserves IRQ7; select a different sound-card IRQ before enabling it.");
         if (VideoCard is not ("dose-vga-development" or "et4000ax-isa-1m-development" or S3Trio64VideoId)) throw new ArgumentException("Unknown development video card.");
+    }
+
+    /// <summary>Checks the complete NIC set against the original fixed resource windows and active sound/MPU peers.</summary>
+    private void ValidateNetworkAdapters()
+    {
+        if (NetworkAdapters is null || NetworkAdapters.Length > 2) throw new ArgumentException("Configure at most two network adapters.");
+        if (NetworkAdapters.Length == 0) return;
+        var slots = new HashSet<int>(); var addresses = new HashSet<string>(StringComparer.Ordinal);
+        bool soundIrq = IsSb16 || SoundCard is "sb2-dsp-development" or "sb2-opl2-development";
+        for (int i = 0; i < NetworkAdapters.Length; i++)
+        {
+            var adapter = NetworkAdapters[i] ?? throw new ArgumentException("A network adapter entry must not be null.");
+            adapter.Validate(IsPciBiosBoard);
+            if (!slots.Add(adapter.Slot) || !addresses.Add(adapter.MacAddress)) throw new ArgumentException("Network slots and MAC addresses must be unique.");
+            // The allowlisted NIC windows avoid fixed DMA/PIC/PIT/KBC/RTC/IDE/FDC/VGA/PCI,
+            // COM1, LPT1 and gameport resources. MPU300/330 is the selectable overlap.
+            if (MidiInterface != "none" && adapter.IoBase < MidiBasePort + 2 && MidiBasePort < adapter.IoBase + 32)
+                throw new ArgumentException("The network I/O window overlaps the configured MPU-UART.");
+            if (soundIrq && adapter.Irq == SoundBlasterIrq) throw new ArgumentException("A network adapter cannot share the active sound-card IRQ.");
+            for (int j = 0; j < i; j++)
+            {
+                var earlier = NetworkAdapters[j];
+                if (adapter.IoBase < earlier.IoBase + 32 && earlier.IoBase < adapter.IoBase + 32)
+                    throw new ArgumentException("Network adapter I/O windows must not overlap.");
+                if (adapter.Irq == earlier.Irq && !(adapter.Model == NetworkAdapterProfile.Rtl8029Pci && earlier.Model == NetworkAdapterProfile.Rtl8029Pci))
+                    throw new ArgumentException("Only the two PCI adapters may share their board's fixed PIRQA/IRQ11 route.");
+            }
+        }
     }
 }
 

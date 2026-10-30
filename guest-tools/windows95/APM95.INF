@@ -1,0 +1,41 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
+; Uses the installed Windows 95 layout to obtain original files from its setup media.
+[Version]
+Signature="$CHICAGO$"
+Class=System
+Provider=%DOSE%
+LayoutFile=layout.inf
+SetupClass=BASE
+
+[Manufacturer]
+%DOSE%=DOSE.Models
+
+[DOSE.Models]
+%APM%=DOSE_APM,*PNP0C05
+
+[DOSE_APM]
+AddReg=APM.Properties
+CopyFiles=APM.Files
+UpdateInis=APM.StaticDriver
+UpdateIniFields=APM.BootDriver
+
+[APM.Properties]
+HKR,,EnumPropPages,,"sysclass.dll,APMEnumPropPages"
+
+[DestinationDirs]
+APM.Files=11
+
+[APM.Files]
+power.drv
+vpowerd.vxd
+
+[APM.StaticDriver]
+system.ini,386Enh,,"device=vpowerd.vxd"
+
+[APM.BootDriver]
+system.ini,boot,drivers,,power.drv,0
+
+[Strings]
+DOSE="DOSE"
+APM="DOSE APM support for Windows 95"

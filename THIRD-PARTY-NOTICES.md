@@ -18,6 +18,12 @@ The Windows GUI uses NAudio 2.3.0 by Mark Heath and contributors, under the MIT 
 
 The current default output adapter uses NAudio's shared WASAPI render endpoint. It opens no capture endpoint and changes no global endpoint volume. The legacy WaveOut adapter is retained only as an explicit diagnostic option; the previously observed native WaveOut close failure is not claimed fixed inside NAudio. Source documentation checks use Roslyn assemblies already supplied by the installed .NET SDK; they are development tools, not a runtime dependency or redistributed compiler.
 
+## Optional native networking runtime
+
+NAT and the isolated Host-only gateway use libslirp 4.9.3 from the official MSYS2 UCRT64 package repository. The pinned preparation script records package URLs, SHA-256 values and the actual AMD64 PE dependency closure. Original libslirp, GLib, gettext/libintl, libiconv and PCRE2 license/copyright files accompany the prepared runtime under `native/win-x64/licenses`; the package manifest identifies the exact five DLLs. These include BSD and LGPL components and remain separate dynamic libraries. Upstream source and package recipes are linked in the manifest. Their notices must accompany any redistributed native runtime.
+
+Bridged networking optionally loads the user's separately installed Npcap/WinPcap-compatible library. Npcap is not bundled or installed by DOSE. Original Realtek/Microsoft guest drivers used for local validation stay in ignored private artifacts and are not DOSE source, firmware or repository downloads.
+
 ## Firmware, probes and font
 
 The development BIOS, demo boot-sector generator, VGA reference palettes, DOS COM probe sources and bitmap fonts are original project sources. No commercial BIOS ROM, IBM font ROM, DOS, Windows, driver or game media is included. The original small diagnostic font is limited; the later complete CP437 artwork at 8/14/16 rows is also original project work, not an IBM font ROM. Source headers identify Apache-2.0; `REUSE.toml` annotates the original profile/font data formats that cannot carry comments. Existing full SharpPixels notices are retained.

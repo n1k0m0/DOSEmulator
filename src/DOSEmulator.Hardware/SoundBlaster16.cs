@@ -18,8 +18,12 @@ public sealed partial class SoundBlaster16 : IIoPortDevice
     private readonly byte[] _parameters = new byte[3];
     /// <summary>Own opaque XBUS05 readback byte: power/PIIX ISA reset zero; DSP reset preserves it. No DMA/IRQ bit effects are claimed.</summary>
     private byte _xbus05Control;
+    /// <summary>Opaque XBUS09 latch initialized by DSP4.05 cold_boot; no additional FIFO pin effects are claimed.</summary>
+    private byte _xbus09Control = 0xf8;
+    /// <summary>F9 exposes only the documented cold/reset RAM subset until another state-changing DSP command executes.</summary>
+    private bool _resetRamReadable = true;
     private byte _command, _mixerIndex, _interruptSources;
-    private int _received, _expected, _blockLength, _legacyLength = 65536, _activeRate, _rateRemainder;
+    private int _received, _expected, _blockLength, _legacyLength = 2048, _activeRate, _rateRemainder;
     private bool _ready, _resetHigh, _busy, _auto, _exitAuto, _recording, _signed, _stereo, _word, _rightNext, _halfPending;
     private bool _lineHigh;
     private Mpu401Uart? _midi;
@@ -173,7 +177,8 @@ public sealed partial class SoundBlaster16 : IIoPortDevice
             _audio.AdvanceTo(_clock.Now); DacLeft = DacRight = 0;
             Cancel(ref _resetEvent); Cancel(ref _commandEvent); Stop();
             _resetHigh = true; _resetSince = _clock.Now; _ready = _busy = false;
-            _responses.Clear(); _received = _expected = 0; _legacyLength = 65536;
+            _responses.Clear(); _received = _expected = 0; _legacyLength = 2048;
+            _xbus09Control = 0xf8; _resetRamReadable = true;
             _word = _stereo = _signed = _recording = _rightNext = false; FifoRequested = false;
             InputRate = OutputRate = 22050; _inputPeriod = _outputPeriod = 0;
             SpeakerEnabled = false; _interruptSources &= 4; UpdateIrq(); ResetCount++;
@@ -199,7 +204,7 @@ public sealed partial class SoundBlaster16 : IIoPortDevice
         {
             >= 0xb0 and <= 0xcf => 3,
             0x05 or 0x0e or 0x41 or 0x42 or 0x14 or 0x24 or 0x48 => 2,
-            0x04 or 0x0f or 0x10 or 0x40 or 0x38 => 1,
+            0x04 or 0x0f or 0x10 or 0x40 or 0x38 or 0xf9 => 1,
             _ => 0
         };
         if (_expected == 0) Execute();
@@ -207,6 +212,10 @@ public sealed partial class SoundBlaster16 : IIoPortDevice
     /// <summary>Dispatches a decoded primary opcode, including prefix validity and operand-width rules.</summary>
     private void Execute()
     {
+        // CT1741 RAM is not emulated generally. These queries and external-XBUS
+        // accesses preserve the named reset bytes; other commands end that scope.
+        if (_command is not (0x03 or 0x04 or 0x05 or 0x0e or 0x0f or 0xe1 or 0xe3 or 0xf9))
+            _resetRamReadable = false;
         if (_command is >= 0xb0 and <= 0xcf)
         {
             if ((_command & 1) != 0 || (_parameters[0] & 0xcf) != 0) { RejectedParameters++; return; }
@@ -221,11 +230,25 @@ public sealed partial class SoundBlaster16 : IIoPortDevice
             case 0x04: case 0x05: break;
             case 0x0e:
                 if (_parameters[0] == 5) _xbus05Control = _parameters[1];
+                else if (_parameters[0] == 9) _xbus09Control = _parameters[1];
                 else if (_parameters[0] is < 0x80 or > 0x83) { UnsupportedCommands++; LastUnsupportedCommand = _command; }
                 break;
             case 0x0f:
                 if (_parameters[0] == 5) Reply(_xbus05Control);
+                else if (_parameters[0] == 9) Reply(_xbus09Control);
                 else if (_parameters[0] is >= 0x80 and <= 0x83) Reply(0xff);
+                else { UnsupportedCommands++; LastUnsupportedCommand = _command; }
+                break;
+            case 0xf9:
+                byte? resetByte = _resetRamReadable ? _parameters[0] switch
+                {
+                    0x0b or 0x23 or 0x24 or 0x2b or 0x2c or 0x2d => (byte)0,
+                    0x0e => (byte)(_legacyLength - 1),
+                    0x0f => (byte)((_legacyLength - 1) >> 8),
+                    0x37 => (byte)0x38,
+                    _ => null
+                } : null;
+                if (resetByte.HasValue) Reply(resetByte.Value);
                 else { UnsupportedCommands++; LastUnsupportedCommand = _command; }
                 break;
             case 0xe1: Reply(4); Reply(5); break;

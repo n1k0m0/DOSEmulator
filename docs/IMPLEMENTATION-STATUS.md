@@ -1,5 +1,80 @@
 # DOSE – Implementierungsstand
 
+**Lokaler Echtzeit-Teststand C44b vom 30. Oktober 2026:** Der neue begrenzte
+[APM-1.1-BIOS-Pfad](hardware/APM-BIOS.md) lässt originale Windows-Energietreiber
+die untätige Gast-CPU wirklich anhalten und durch tatsächliche IRQs wecken.
+CPU-Takt, vier nominale Clocks pro gewöhnlichem ausgeführtem Element, Gerätezeit
+und Snapshotfelder bleiben erhalten. Der GUI-Pacer hält kurze Rückstände länger
+für wirkliche Nachholarbeit und vermeidet unnötiges Host-Spinning bei HLT.
+Die [Messungen](PERFORMANCE.md) erreichen unter Win95/98 im Leerlauf und mit
+geöffnetem Testprogramm ungefähr 100%; kalte Programmstarts bleiben bei 43,56%
+beziehungsweise 78,94% im jeweiligen ersten Zehn-Sekunden-Abschnitt. Kein
+allgemeines 1:1 für Boot, Dauerlast oder schwächere Hosts wird daraus abgeleitet.
+
+Eigene getrennte PCs mit Original-S3/800×600 RGB565 und Original-SB16 liegen privat
+unter `artifacts/Windows-Realtime-C44b`. Sie verwenden 100 MHz/64 MiB beziehungsweise
+133 MHz/128 MiB, unabhängige Journale, neue PC-IDs und eigene UI-Einstellungen.
+`run-win95-apm.cmd` und `run-win98-apm.cmd` laden genau 114 eingefrorene Dateien
+ohne Neubau. Die bisherigen `run-win95.cmd`/C19 und `run-win98.cmd`/C23 sowie
+deren Arbeitsplatten und geladene Module werden nicht ersetzt. Die neuen Kopien
+stammen aus regulären Shutdowns; die Original-APM-Treiber sind darin bereits
+installiert. Der Win98-Kaltstart ohne Installationsdiskette verbindet sich
+automatisch; seine anschließende Leerlaufprobe erreicht 99,989%.
+
+Beide Systeme bestehen vollständige 1027 DAT-/512 Proofbytes, 94620 exakte innere
+GDI-Pixel und natürliche Wave-/Anwendungsschluss-APIs sowie regulären Shutdown.
+Win95s dünne eigene INF kopiert die Originaltreiber tatsächlich von der OEM-CD;
+Win98s direkte dünne eigene INF bleibt experimentell, dessen geprüfte Installation
+verwendet den Original-MACHINE.INF-Abschnitt. Drei C44-Vergleichspaare mit striktem
+Import ergeben 18 ganze 64-MiB-, 18 ganze 128-MiB- und 4 weitere ganze 128-MiB-Vergleiche.
+Der letzte Schnitt beginnt bei aktiver Win98-DMA und führt zwei Sekunden mit
+96000 gleichen späteren Stereo-Frames fort. Keine neuen unabhängigen
+DAC-/ISR-/EOI-/Ganzmix- oder nativen Hostaudio-/GL-Abnahmen.
+
+C44 besteht 14912/14912 Regressionen und baut ohne Warnungen/Fehler. C44b ändert
+die GUI-Nachholgrenze von zwei auf fünf Sekunden, ergänzt einen Test und besteht
+317/317 Hostfälle; seine 14913 registrierten Fälle sind kein behaupteter neuer
+Vollsuitelauf. Alle fünf VM-Module bleiben C44-bytegleich, Zustand 48/957/43,
+902 Code-/Projektdateien ohne Qualitätsprobleme. Neun historische ROM-Nutzlasten
+sind gegen den eingefrorenen C23 unverändert; zwei APM-Varianten kommen hinzu.
+Neuer CLI-RAM/Zustand/Bildvergleich und alte C23-Buildablehnung bestehen.
+Keine weitere Commit-/Push-Aktion, native Hosteingabe oder Aktivierung von
+Hostendpunkten. Automation weiterhin **PAUSIERT**, ursprüngliches RTM und
+allgemeine M4–M8-Abnahme offen. Nachweis:
+`artifacts/tests/windows-apm-realtime-release-path.txt`.
+
+**Win98-Benutzerstand C23:** Das originale englische Windows 98 SE ist auf einer eigenen 4-GiB-FAT32-Platte installiert und läuft bei 133 MHz/128 MiB mit Original-S3 in 800×600 RGB565 und funktionierendem Original-SB16-Wave. Datei-/GDI-/API-Nachweise und 18 ganze aktive 128-MiB-Fortsetzungsvergleiche über 40 Millionen Schritte je Seite bestehen. Der englische Zeithelfer ist installiert und startet beim abschließenden Kaltstart ohne Diskette automatisch; sein Timer und 10/40-ms-Kalenderabstände sind unabhängig geprüft. Die Benutzerplatte fährt regulär herunter. `run-win98.cmd` wählt die 110 bytegeprüften C23-Produkte ohne Neubau; vorhandene Windows-95-PCs bleiben unverändert. **14883/14883 Regressionen, 0 Warnungen/Fehler; Zustand 48/957/43.** [Nachweise und konkrete Grenzen](WINDOWS98-INSTALLATION.md). Allgemeines 1:1, native Bedien-/Hostaudio-/GL- und vollständige M4–M8-Abnahmen bleiben offen; Automation bleibt pausiert.
+
+**Aktueller Benutzerstand vom 29. Oktober 2026: Die stündliche Automation ist auf ausdrücklichen Wunsch PAUSIERT.** Der vorherige geprüfte C15-Quellstand wurde vor diesen Reparaturen als `c94cf37ea50b6ce5013f2a38b95f4f5edc7cae7e` in das private Repository gepusht. Alle folgenden Änderungen bleiben lokal. Die nachstehenden älteren Aussagen zu aktivem Job, unveränderten Benutzerstartern und damaligen Kandidatenständen sind historische Nachweise.
+
+**Windows-98-Installationsverlauf:** Die verlinkte originale ISO ist privat heruntergeladen und gegen MD5/SHA1/CRC32 des Archivs geprüft. Das Originalsetup hat eine eigene neue 4-GiB-Platte vollständig FAT32-formatiert und installiert; unabhängige Sektor-/FAT-/FSInfo-Prüfungen bestehen. Verwendet werden die derzeit schnellste implementierte P54C-Konfiguration mit 133 MHz/128 MiB, S3 Trio64, SB16/MPU, PS/2 und RTL8029 PCI mit getrenntem Kabel. Der eigene DOS-CD-Treiber lädt das Originalsetup; dessen Oak-Erkennung war zuvor negativ. Weder originale Windows-Programme noch Treiber werden dafür ersetzt. Die folgenden C20-/C21-Absätze beschreiben historische Zwischenstände vor der oben geprüften C23-Bereitstellung.
+
+Der separate **C20 besteht 14781/14781 Regressionen, sechs neue Fälle und 0 Buildwarnungen/Fehler**. Ein echter Setup-Befund korrigiert ausschließlich die bisher maskierte IRQ2-Kaskade im Windows-POST, damit direkt aktivierte IRQ12-Daten auch IRQ1 nicht blockieren. Derselbe neue Prüfer scheitert auf C19 sechsmal und besteht auf C20 sechsmal; [Vertrag und historische Nachweise](hardware/WINDOWS95-FLOPPY-IRQ.md). Sieben andere ROM-Nutzlasten sowie die vier übrigen VM-Module bleiben bytegleich. Zustandsgenerator weiterhin 48/955/43; 452 C#-/891 Code-/Projektdateien ohne Qualitätsprobleme. Ganzer neuer CLI-RAM/Zustand/Bild und alte Buildablehnung bestehen. Die originale Dateikopie ist abgeschlossen; der tatsächliche Festplattenstart, Benutzer-/Lizenz- und erfolgreiche Schlüsselabfrage sind beobachtet. Jetzt läuft die normale Windows-Hardwareerkennung; ein fertiger Desktop ist noch nicht abgenommen. Der Produktschlüssel bleibt privat, vorhandene Windows-95-/Spielplatten und C19-Starter bleiben unangetastet. Zeiger: `artifacts/tests/win98-work-path.txt`. Kein Commit/Push; Automation bleibt pausiert.
+
+**C21: Die originale Windows-98-Abschlusskonfiguration verwendet eine abgefangene EMMS-Probe.** Auf dem P54C ohne MMX lieferte DOSE bisher einen Hostabbruch; jetzt entsteht eine restartbare Gast-`#UD` bei unveränderten rohen x87-Werten/Tags. Derselbe 44er-Prüfer ergibt auf C20 12 PASS/32 FAIL und auf C21 44 PASS. C21 besteht 14825/14825 Regressionen, 0 Warnungen/Fehler; vier andere VM-Module und alle neun ROM-Nutzlasten unverändert. Der echte CLI- und Zustandsgeneratorvergleich bestehen. Die Installation setzt nach normalem Recovery-ScanDisk in einer eigenen kalten Medienkopie fort; Desktop/Betriebsprüfung noch offen. [Vertrag, Originalbefund und Grenzen](WINDOWS98-INSTALLATION.md). Keine vorhandenen Benutzerprodukte ersetzt; Automation bleibt pausiert.
+
+**C19: NE2000 ISA und RTL8029 PCI mit je NAT, Host-only oder Bridged.** Zwei optionale Kartenplätze und das englische Menü **NETWORK / ADAPTER 1 / ADAPTER 2** sind integriert; Kartenmodell, Modus, Ressourcen, MAC und Host-only-LAN bleiben konfigurierbar, Kabelaktionen laufen auf dem Owner. Vorhandene PCs erhalten keine Karte automatisch. NAT benutzt den gebündelten geprüften libslirp-Runtime. Host-only verbindet auch getrennte DOSE-Prozesse über einen benannten privaten Ethernet-Switch mit DHCP und Host-Loopback-Gateway. Bridged verlangt separat installiertes Npcap und eine explizite Hostschnittstelle; Npcap fehlt auf diesem Host, daher keine praktische physische LAN-Abnahme und kein stiller NAT-Fallback.
+
+Der eingefrorene C19 besteht **14775/14775 Regressionen, 701 neue Fälle gegenüber C18, 0 Warnungen/Fehler**. Sechs getrennte native Kontrollgruppen prüfen echte lokale TCP-/UDP-/DHCP-/ARP-Pfade, gemeinsame IPX-/Ethernet-LANs, zwei Prozesse und16 Teilnehmer mit Ablehnung des17. Ein tatsächlicher FreeDOS-Kaltstart mit originalem Crynwr-Treiber liest die richtige MAC und tauscht vollständige ARP-Bytes. Zwei tatsächliche Windows95A-Kaltstarts bei100MHz/64MiB mit originalem RTL8029-Treiber übertragen je257UDP-/1027TCP-Bytes vollständig hin und zurück über NAT beziehungsweise Host-only; unabhängige FAT/COW- und Gegenstellenprüfer bestätigen alle Bytes/API-Rückgaben und natürliches TCP-EOF. Beide Windows-Läufe fahren regulär herunter.
+
+Der erste allgemeine Originaltreiber5.06 meldete Code2; im tatsächlichen950a-NDIS fehlen dessen zwei Dpr-Spinlock-Imports. Die separate originale Win95A-Version findet alle38 Imports und funktioniert im Gast. Ein wirklicher ISA-PROM-Befund aus dem Crynwr-Treiber korrigiert eng die vollständige Word-Bestätigung bei BYTE-IN und WTS1. Derselbe endgültige Network-Prüfer ergibt mit altem C19d-Hardwaremodul692PASS/10FAIL, mit dem neuen Modul702PASS; Byte-DMA und PCI-Lanes bleiben getrennt. [Originaltreiber und Bedienung](NETWORKING.md).
+
+Nach externer Trennung bestehen je18 volle64MiB-Windows-Fortsetzungsvergleiche sowie ein strikter8MiB-DOS-Import mit250000 Schritten je Seite und bytegleichem gesamten Zustand/RAM. Kein Zustandsfeld wird ausgeschlossen; die späteren480Stereo-Frames je Windows-Seite bleiben zeit-/bytegleich, ohne neue Mixer-/Hostaudio-Abnahme. Zustandsgenerator48Typen/955Member/43Operationen, alle40 vorherigen Callbackkörper und sieben vorherigen ROM-Nutzlasten unverändert. Ein neuer Zwei-Karten-CLI-Speicher-/Ladevergleich besteht vollständig; alte C18-/C19d-Container werden vor Zweig abgewiesen, keine Migration.451C#-/890Code-/Projektdateien qualitätsgeprüft ohne Probleme.
+
+Die beiden privaten Windows-Starter wählen jetzt die110 exakt geprüften C19-Dateien einschließlich42 nativer Laufzeit-/Lizenzdateien. Ihre bestehenden C18-Arbeitsplatten, Profile und UI-Pfade bleiben unangetastet; C18-Runtime und separate Rückfallstarter bleiben erhalten. Die private originale95A-Treiberdiskette liegt unter `artifacts/Windows95/network-drivers-c19/rtl8029-win95a.img`. Kein Benutzer-/Spiel-COW wurde für diese Arbeit geöffnet. Kein natives Fenster, Hosteingabe, Hostaudio, Aufnahme, Commit oder Push. Die Automation bleibt pausiert; allgemeines1:1, physisches Bridged-LAN und der gesamte M5-/M4–M8-Umfang bleiben offen. Privater Gesamtnachweis: `artifacts/tests/network-release-path.txt`.
+
+## Vorheriger C18-Benutzerstand
+
+**C18: 14074/14074 Regressionen, 191 neue Fälle gegenüber C15, 0 Buildwarnungen/Fehler.** 863 Code-/Projektdateien ohne Qualitätsprobleme; Zustandsgenerator unverändert 46 Typen/895 Mitglieder/40 Callbackkörper. Der tatsächliche Benutzerstarter lud noch V12. Die beiden reparierten privaten Starter wählen jetzt den eingefrorenen C18, eigene sauber heruntergefahrene Windows-Platten und eigene UI-Einstellungen. V12, seine Starter und die ursprünglichen Benutzerplatten bleiben erhalten. Eine während der Abschlussprüfung erkannte neuere 100-MHz-Plattengeneration wurde vollständig als neuer Reparaturausgang übernommen; die ältere Reparaturkopie wird nicht ausgeliefert.
+
+Die Windows-Profile erlauben im englischen Hardwaremenü 16/32/64/128 MiB, mit tatsächlicher DRB-/E801-/CMOS-Abbildung und kaltem Neustart. Die reparierten Benutzer-PCs verwenden 64 MiB. Der Hostkalender wird bei Laden und Fortsetzen übernommen, auch wenn Pause und Fortsetzen innerhalb desselben Owner-Pump stattfinden. Der englische DOSE-Tools-Zeithelfer ist in beiden Windows-Kopien installiert und startet ohne Installationsdiskette. Die bewiesenen veralteten ROOT-S3-Einträge mit Code 2 wurden durch den echten Geräte-Manager entfernt; eine funktionierende PCI-S3 bleibt erhalten. [Englische Bedienhinweise und Modustabelle](WINDOWS95-USER-GUIDE.md).
+
+Die Original-S3-Pfade sind zusätzlich bei 1024×768 High Color, 1280×1024 mit 256 Farben und 640×480 True Color tatsächlich geprüft. Der True-Color-Befund war ein realer WORD-MMIO-Farbstore des Originaltreibers: die enge atomare WORD-Übernahme bewahrt beide Farbbytes und die bestehende RSF-Folge; BYTE-/DWORD-/Port-Fallbacks bleiben erhalten. 145 neue permanente Fälle und derselbe endgültige Zehn-Fall-Prüfer ergeben auf C17 0 PASS/10 FAIL, auf C18 10 PASS. Sechs frühere ROM-Nutzlasten bleiben bytegleich.
+
+Tatsächliche C18-Windows-Kaltstarts, volle Datei-/GDI-/Wave-Rückgaben, regulärer Shutdown und strikte vollständige 64-/128-MiB-Fortsetzungen bestehen. Alle 1027 DAT-/512 BIN-Bytes und 94620 inneren RGB-Pixel werden ohne Ausschlüsse unabhängig geprüft; zukünftiger CPU-/RAM-/VRAM-/Geräte-/Scheduler-/PCM-/Medienstand bleibt gleich. Der neue CLI-Speicher-/Ladevergleich umfasst ganzen RAM und Zustand; ein alter C17-Import wird vor Zweiganlage abgewiesen. Keine Migration, zusätzliche Hostaudio-/native Bedienabnahme oder allgemeine 1:1-Zusage. Privater Gesamtnachweis: `artifacts/tests/win95-usability-release-path.txt`. M4–M8, ursprüngliches RTM und DOSE-Tools-Dateitransfer bleiben offen.
+
+## Historische C15- und frühere Nachweise
+
 C15 ist jetzt auch auf **zwei echten Windows-95-Kaltstarts bei100/133MHz und32MiB** geprüft, jeweils von neuen privaten Kopien eigener sauber heruntergefahrener Medien. Original-S3/800×600RGB565, echtes FDC-Laden des eigenen Win32-Programms, alle1027 DAT-/512 BIN-Bytes,94620 innere RGB-Pixel ohne Ausschlüsse, natürliche Wave-DONE-/Unprepare-/Close-Rückgaben, Anwendungsschluss und regulärer Windows-Shutdown bestehen. Vier strikte volle Snapshotimporte ergeben72 ganze CPU-/RAM-/VRAM-/Geräte-/Schedulervergleiche sowie zeit-/bytegleiche spätere Stereo-PCM-Daten; die neuen Schnitte liegen am Desktop beziehungsweise nach Wave-DONE, nicht während aktiver DMA. Keine neue unabhängige Sample-/ISR-/Mixer-/Hostaudio- oder native Bedienabnahme. `artifacts/tests/windows-c15-release-path.txt`.
 
 Die anschließende CPU-Profilierung und acht lange aufgewärmte serielle Windows-Vergleichsprozesse ergeben **keinen belastbaren Gewinn** für einen privaten64-Bit-Fristrechenpfad:0,07Prozent weniger Hostzeit bei100MHz und1,81Prozent mehr bei133MHz. Alle ganzen Zustands-/RAM-/Bild-/späteren PCM-/Endmediengrenzen sind gleich;10388 unabhängige ganzzahlige Grenzfälle plus drei Parameterablehnungen je Variante bestehen. Der Prototyp bleibt ausschließlich privat und wird nicht übernommen. Die unveränderte C15-Baseline erreicht in diesen begrenzten Abschnitten80,11/57,74Prozent Echtzeit; das ist kein zusätzlicher Codegewinn gegenüber früheren anders aufgewärmten Kohorten. Allgemeines1:1, M4–M8 bleiben offen. Alle68 eingefrorenen C15- und65 gemeinsamen V12-Produkte bleiben bytegleich; keine neue Vollsuite oder Produktkompilierung, keine Übernahme in den gemeinsamen Starter.

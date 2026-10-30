@@ -45,6 +45,17 @@ internal static partial class SnapshotValidation
         if (state.Components.TryGetValue("cpu", out var cpuState)) CheckRepContinuation(cpuState);
         Range("audio", "_count", 0, 958);
         Range("sb16", "_xbus05Control", 0, 255);
+        Range("sb16", "_xbus09Control", 0, 255);
+        if (state.Components.TryGetValue("sb16", out var sb16))
+        {
+            var dsp = new StateReader(sb16, "DOSEmulator.Hardware.SoundBlaster16");
+            if (dsp.Value<bool>("_resetRamReadable") &&
+                (dsp.Value<int>("_legacyLength") != 2048 || dsp.Value<int>("RemainingSamples") != 0 ||
+                 dsp.Value<int>("InputRate") != 22050 || dsp.Value<int>("OutputRate") != 22050 ||
+                 dsp.Value<bool>("SpeakerEnabled") || dsp.Value<bool>("Paused") ||
+                 new[] { "_word", "_stereo", "_signed", "_recording", "_rightNext", "_auto", "_exitAuto", "_halfPending" }.Any(dsp.Value<bool>)))
+                throw new InvalidDataException("DSP reset RAM readback disagrees with the current DSP state.");
+        }
         if (state.Components.TryGetValue("audio", out var audio))
         {
             if (audio.Fields["_samples"].GetArrayLength() != 960 || audio.Fields["_count"].GetInt32() % 2 != 0 ||
@@ -143,6 +154,7 @@ internal static partial class SnapshotValidation
             throw new InvalidDataException("The selected AT board has no programmable DRAM or PCI host controller.");
         CheckPicRouting(state, profile);
         CheckAtapi(state, profile);
+        CheckNetwork(state, profile);
         CheckIdeDma(state, profile);
         CheckPiixReset(state, profile);
         CheckTrio64(state, profile);

@@ -176,8 +176,8 @@ internal static class Windows95ProfileTests
             foreach (int hz in fast ? new[] { 90_000_000, 100_000_000, 132_000_000, 133_000_001 } : new[] { 90_000_000, 99_000_000, 100_000_001, 133_000_000 })
                 test("M4 Windows95 rejects mismatched fixed candidate clock fast=" + fast + " hz=" + hz,
                     () => Invalid(() => (Profile(fast) with { CpuHz = hz }).ValidateCpuSelection()));
-            foreach (int mib in new[] { 8, 16, 64 })
-                test("M4 Windows95 rejects wrong installed RAM fast=" + fast + " MiB=" + mib,
+            foreach (int mib in new[] { 8, 24, 256 })
+                test("M4 Windows95 rejects unsupported installed RAM fast=" + fast + " MiB=" + mib,
                     () => Invalid(() => (Profile(fast) with { RamMiB = mib }).ValidateCpuSelection()));
             test("M4 Windows95 rejects unbound CPU/video/packet tuples fast=" + fast, () =>
             {

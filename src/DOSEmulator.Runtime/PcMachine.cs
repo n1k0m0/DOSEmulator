@@ -18,7 +18,7 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
     private readonly bool _diskWritable;
     private bool _disposed;
     /// <summary>Validated hardware profile currently instantiated by this PC.</summary>
-    public MachineProfile Profile { get; }
+    public MachineProfile Profile { get; private set; }
     /// <summary>Physical memory bus owned by this PC, including RAM, ROM and mapped devices.</summary>
     public MemoryBus Memory { get; }
     /// <summary>I/O bus owned by this PC and used by actual guest IN/OUT instructions.</summary>
@@ -83,6 +83,12 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
     public ParallelPrinterPort? Parallel { get; }
     /// <summary>Optional CT1740 MPU-UART transport, separate from FM, host MIDI and synthesis.</summary>
     public Mpu401Uart? Midi { get; }
+    private readonly Ne2000?[] _networkCards = new Ne2000?[2];
+    private readonly Rtl8029?[] _networkPciCards = new Rtl8029?[2];
+    /// <summary>Two fixed optional Ethernet slots; all card work belongs to the emulation owner.</summary>
+    public IReadOnlyList<Ne2000?> NetworkCards => Array.AsReadOnly(_networkCards);
+    /// <summary>Constructor-bound PCI wrappers for the corresponding Ethernet slots.</summary>
+    public IReadOnlyList<Rtl8029?> NetworkPciCards => Array.AsReadOnly(_networkPciCards);
     /// <summary>Reference CMOS/RTC device with carried battery state across cold hardware replacement.</summary>
     public RtcCmos Rtc { get; }
     /// <summary>AT byte/word DMA controller used by device-paced transfer requests.</summary>
@@ -136,7 +142,10 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
             profile.Gameport == AnalogGameport.ProfileId, profile.SerialPort == Uart16550.ProfileId,
             profile.ParallelPort == ParallelPrinterPort.ProfileId,
             profile.MidiInterface == Mpu401Uart.ProfileId ? (ushort)profile.MidiBasePort : (ushort)0,
-            profile.MidiInterface == Mpu401Uart.ProfileId ? (byte)profile.SoundBlasterIrq : (byte)0, profile.IsPiixIde, profile.IsPiixReset, profile.IsTrio64, profile.IsPciBiosBoard, profile.IsWindows95Board);
+            profile.MidiInterface == Mpu401Uart.ProfileId ? (byte)profile.SoundBlasterIrq : (byte)0, profile.IsPiixIde, profile.IsPiixReset, profile.IsTrio64, profile.IsPciBiosBoard, profile.IsWindows95Board,
+            profile.NetworkAdapters.Any(n => n.Model == NetworkAdapterProfile.Rtl8029Pci), profile.IsWindows95Board);
+        foreach (var nic in profile.NetworkAdapters.Where(n => n.Model == NetworkAdapterProfile.Rtl8029Pci))
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bios.AsSpan(0xe0a0 + nic.Slot * 2), (ushort)nic.IoBase);
         if (profile.IsPciBiosBoard) DOSEBios.ConfigurePciBiosInventory(bios);
         else if (profile.IsAtapi) DOSEBios.ConfigureAtapiInventory(bios);
         else if (profile.IsTrio64) DOSEBios.ConfigureTrio64Inventory(bios);
@@ -200,6 +209,20 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
         }
         Keyboard = new(Memory, high => SetIsaInterrupt(1, high), Mouse, high => SetIsaInterrupt(12, high));
         Rtc = new(Scheduler, profile.RamMiB, (byte)((geometryA?.CmosType ?? 0) << 4 | (geometryB?.CmosType ?? 0)));
+        foreach (var adapter in profile.NetworkAdapters.OrderBy(n => n.Slot))
+        {
+            int slot = adapter.Slot;
+            var nic = new Ne2000(Scheduler, (ushort)adapter.IoBase, adapter.GetMacBytes(), high => SetNetworkInterrupt(slot, high));
+            _networkCards[slot] = nic;
+            if (adapter.Model == NetworkAdapterProfile.Rtl8029Pci)
+            {
+                var pciNic = new Rtl8029(nic, Ports);
+                _networkPciCards[slot] = pciNic;
+                Pci!.RegisterFunction(0, 8 + slot, 0, pciNic);
+                Ports.MapDynamic(pciNic);
+            }
+            else Ports.Map((ushort)adapter.IoBase, 32, nic);
+        }
         Dma = new(Memory);
         if (profile.IsSb16)
         {
@@ -268,6 +291,24 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
     {
         if (PiixIrq is { } bridge) bridge.SetIsaLine(irq, high);
         else Pic.SetLine(irq, high);
+    }
+
+    /// <summary>Aggregates both physical PCI INTAs before driving their shared PIRQA; ISA cards retain separate jumper IRQs.</summary>
+    private void SetNetworkInterrupt(int slot, bool high)
+    {
+        var adapter = Profile.NetworkAdapters.Single(n => n.Slot == slot);
+        if (adapter.Model == NetworkAdapterProfile.Ne2000Isa) SetIsaInterrupt(adapter.Irq, high);
+        else PiixIrq!.SetPirq(0, Profile.NetworkAdapters.Where(n => n.Model == NetworkAdapterProfile.Rtl8029Pci)
+            .Any(n => n.Slot == slot ? high : _networkCards[n.Slot]?.InterruptAsserted == true));
+    }
+
+    /// <summary>Persists an explicit owner-side cable choice without replacing the card, its registers or other hardware.</summary>
+    public void SetNetworkCablePreference(int slot, bool connected)
+    {
+        var adapter = Profile.NetworkAdapters.SingleOrDefault(n => n.Slot == slot) ?? throw new ArgumentException("No network adapter in this slot.");
+        var replacement = adapter with { CableConnected = connected }; replacement.Validate(Profile.IsPciBiosBoard);
+        Profile = Profile with { NetworkAdapters = Profile.NetworkAdapters.Select(n => n.Slot == slot ? replacement : n).ToArray() };
+        _networkCards[slot]!.SetCableConnected(connected);
     }
 
     /// <summary>Builds the explicitly identified development test-sector PC, not a DOS installation.</summary>
@@ -360,12 +401,13 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
                 {
                     Scheduler.AdvanceCycles((uint)elements * 4, (uint)Profile.CpuHz); executed += elements; continue;
                 }
-                if (integerBatch && Cpu.TryRunDecodedBatch(Math.Min(maximum - executed, 4096), Scheduler,
-                    (uint)Profile.CpuHz, untilVirtualNanoseconds) is > 0 and var integers)
+                int integers = !integerBatch ? 0 : Cpu.TryRunDecodedBatch(Math.Min(maximum - executed, 4096), Scheduler,
+                    (uint)Profile.CpuHz, untilVirtualNanoseconds);
+                if (integers > 0)
                 {
-                    // Admission allows no intermediate external observation. The last ordinary
-                    // four-clock conversion retains the scalar scheduler's complete cache and
-                    // lets a deadline on the final element see exactly that element's CPU state.
+                    // Admission allows no intermediate external observation. Retain the exact
+                    // phase and last four-clock conversion cache so a final device deadline
+                    // observes the same completed CPU and clock state as individual steps.
                     if (integers > 1) Scheduler.AdvanceCycles((uint)(integers - 1) * 4, (uint)Profile.CpuHz);
                     Scheduler.AdvanceCycles(4, (uint)Profile.CpuHz);
                     executed += integers; continue;

@@ -312,6 +312,13 @@ public sealed partial class VgaAdapter
         result=(current&~mask)|(result&mask);
         for(int i=0;i<size;i++)WriteTrioRaw(address+i,(byte)(result>>(8*i)));
     }
+    /// <summary>Consumes a physical standard-MMIO32bpp color WORD using the shared RSF sequence; rejected offers leave byte/DWORD lanes untouched.</summary>
+    internal bool TryWriteTrioEngineColorWord(uint offset,ushort value)
+    {
+        if(!TrioEngineMmio||offset>=0x10000||(offset&3)!=0||TrioEnginePixelSize!=4||
+            (_trioEngineWords[EM]&0x200)!=0||TrioColorSlot((ushort)offset)<0)return false;
+        ClearTrioRead();WriteTrioEngineWord((ushort)offset,value,false);return true;
+    }
     /// <summary>Own lower-WORD MMIO compatibility for a final <=16-bit CPU-mono BUS32/SWP1 rectangle row; rejected offers are effect-free.</summary>
     internal bool TryWriteTrioEnginePixelWord(uint offset,ushort value)
     {

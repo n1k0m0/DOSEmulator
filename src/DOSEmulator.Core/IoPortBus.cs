@@ -17,6 +17,13 @@ public interface IIoPortDecoder : IIoPortDevice
     bool Decodes(ushort port, int width);
 }
 
+/// <summary>Pure resource advertisement used to detect overlapping PCI BARs without recursively decoding accesses.</summary>
+public interface IIoPortWindowDecoder : IIoPortDecoder
+{
+    /// <summary>Tests overlap with the programmed enabled window; never calls another decoder or mutates device state.</summary>
+    bool OverlapsWindow(ushort start, int length);
+}
+
 /// <summary>Synchronous virtual bus time consumed before the device observes an access.</summary>
 public interface IIoPortTiming
 {
@@ -62,6 +69,16 @@ public sealed class IoPortBus
     public int DynamicDecoderCount => _dynamicDecoders.Count;
     /// <summary>Checks the selected board's sole dynamic peer by identity before full state capture.</summary>
     public bool HasOnlyDynamicDecoder(IIoPortDecoder decoder) => _dynamicDecoders.Count == 1 && ReferenceEquals(_dynamicDecoders[0], decoder);
+    /// <summary>Checks the complete constructor-ordered PCI I/O peer set at snapshot boundaries.</summary>
+    public bool HasDynamicDecoders(IEnumerable<IIoPortDecoder> decoders) => _dynamicDecoders.SequenceEqual(decoders, ReferenceEqualityComparer.Instance);
+
+    /// <summary>Checks other enabled dynamic resource windows without invoking their transaction decoders.</summary>
+    public bool IsDynamicWindowAvailable(ushort start, int length, IIoPortDecoder except)
+    {
+        if (length <= 0 || start + length > 65536) return false;
+        return !_dynamicDecoders.Any(item => !ReferenceEquals(item, except) &&
+            (item is not IIoPortWindowDecoder window || window.OverlapsWindow(start, length)));
+    }
     /// <summary>Resolves only a complete fallback transaction in deterministic construction order.</summary>
     private IIoPortDevice? ResolveDynamic(ushort port, int width)
     {

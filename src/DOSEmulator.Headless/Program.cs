@@ -25,6 +25,7 @@ try
         Console.WriteLine("Storage diagnostics: --floppy-io-trace <new.jsonl> logs FIFO/result and DMA2/control bytes; --bios-trace <new.jsonl> logs actual INT13/INT15 entry registers. --memory-dump <new private.bin> saves RAM for private debugging and may contain guest OS data; never publish it. --stop-screen <text> stops on actual VGA text (ASCII approximation). --steps accepts 1..10000000000 interpreter steps.\n--scenario <json> replays {waitForScreen,text|scanCodes,insertFloppy:{drive,path,overlayPath},settleNanoseconds} steps through actual KBC/FDC. Screens must remain stable for 100 ms of virtual time by default. Media paths must be absolute; writes still require private overlays. Cannot combine with --type-file or --swap-floppy.");
         Console.WriteLine("Mouse: profile mouse=ps2-two-button enables ID00 Aux/IRQ12. Scenario steps may use mouse:{x,y,buttons}; choose waitForScreen or waitForDebug (guest E9 marker, including graphics). Positive Y points up; buttons 0..3. --mouse-io-trace <new.jsonl> logs KBC/PIC bytes and actual IRQ12 entries. Wheel and electrical serial-line timing are not implemented. The GUI accepts --scenario for private guest acceptance too.");
     Console.WriteLine("Gameport: gameport=ibm-game-control-development enables the standalone IBM analog adapter. Scenario gameport:{axOhms,ayOhms,bxOhms,byOhms,buttons} supplies external inputs: 0..100000 ohms or null for each open circuit; buttons 0..15. --gameport-io-trace <new.jsonl> observes decoded byte transfers and E9 markers. DOSEBios INT15/AH84 reads switches or bounded resistance counts; no host gamepad or MIDI endpoint is opened.");
+    Console.WriteLine("Ethernet: up to two networkAdapters in the saved hardware profile select ne2000-isa or rtl8029-pci, each with nat/host-only/bridged, persistent MAC and explicit cable. --enable-network activates configured cold-start cables. Strict snapshot loads stay disconnected unless --enable-network --reconnect-network is supplied. Bridged requires separately installed Npcap and an exact selected adapter. No host interface is opened by the hardware factory.");
     Console.WriteLine("COM1: serialPort=pc16550d-com1-development enables the virtual National PC16550D at 3F8h/IRQ4. Scenario serial:{data:[0..255],errors:PE/FE/BI,cts,dsr,ri,dcd} queues complete timed frames and pin changes. --serial-echo explicitly connects a framed virtual echo peer with CTS/DSR/DCD asserted; --serial-io-trace <new.jsonl> observes ports, TX frames, E9 and real PIC IRQ4 acknowledgements. No host COM device or network is opened.");
     Console.WriteLine("LPT1: parallelPort=ibm-printer-adapter-development enables the IBM 6361507 adapter at 378h/IRQ7 with original aliases. --parallel-sink explicitly attaches a nominal virtual raw-byte peer; --parallel-output <new.bin> captures its accepted bytes, --parallel-io-trace <new.jsonl> observes actual IO/pins/bytes/PIC IRQ7. Scenario parallel:{busyHigh,ackHigh,paperEndHigh,selectedHigh,errorHigh} drives unconnected external lines. No host printer, EPP, ECP or bidirectional mode is opened.");
         Console.WriteLine("MIDI: midiInterface=ct1740-mpu401-uart-development explicitly enables the CT1740 MPU UART at midiBasePort=768|816 (300h|330h), sharing its DSP IRQ and mixer82 bit2. --midi-output <new.bin> captures complete outgoing 31.25-kbaud bytes; --midi-io-trace <new.jsonl> observes real ports/frames/IRQ. Scenario midi:{data:[0..255]} or SendMidiInput queues outer full frames. No host MIDI, synthesizer, Intelligent Mode or raw electrical accuracy is implied.");
@@ -88,6 +89,13 @@ try
     long steps = long.Parse(Get("--steps") ?? "100000");
     if (steps is < 1 or > 10_000_000_000) throw new ArgumentException("Step count must be 1..10000000000.");
     using var machine = MachineLaunch.Open(Get);
+    using var network = new DOSEmulator.Runtime.Networking.NetworkService(machine,
+        enableHostNetworking: args.Contains("--enable-network"));
+    if (machine.IsRestoredSnapshot && args.Contains("--reconnect-network"))
+    {
+        if (!args.Contains("--enable-network")) throw new ArgumentException("--reconnect-network requires --enable-network.");
+        foreach (var adapter in machine.Profile.NetworkAdapters.Where(n => n.CableConnected)) network.SetConnected(adapter.Slot, true);
+    }
     string? midiOutputPath = Get("--midi-output");
     if (midiOutputPath is not null && machine.Midi is null) throw new ArgumentException("MIDI capture requires an explicitly selected MPU-UART profile.");
     using FileStream? midiOutput = midiOutputPath is not null ? new(midiOutputPath, FileMode.CreateNew, FileAccess.Write) : null;
@@ -353,6 +361,7 @@ try
             mediaSwapApplied = true;
         }
         if (inputStarted && sent < typing.Length && GuestKeyboard.TryInjectForBios(machine, typing[sent])) sent++;
+        network.Pump();
         int ran = machine.RunSteps((int)Math.Min(10000, steps - executed)); executed += ran;
         if (graphicsDirectory is not null && graphicsFrames.Count < 128 && machine.Video.GraphicsMode && machine.Scheduler.Now >= nextGraphicsCapture)
         {

@@ -565,6 +565,39 @@
       "callback": "() =>\n        { _event = 0; _deadline = 0; AdvancePhase(); }",
       "start": 12498,
       "end": 12622
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Ne2000.cs",
+      "owner": "DOSEmulator.Hardware.Ne2000",
+      "operation": "transmit",
+      "arguments": [],
+      "receiver": "_clock",
+      "delay": "delay",
+      "callback": "CompleteTransmit",
+      "start": 18240,
+      "end": 18303
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Ne2000.cs",
+      "owner": "DOSEmulator.Hardware.Ne2000",
+      "operation": "receive",
+      "arguments": [],
+      "receiver": "_clock",
+      "delay": "delay",
+      "callback": "CompleteReceive",
+      "start": 21612,
+      "end": 21673
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/Rtl8029.cs",
+      "owner": "DOSEmulator.Hardware.Rtl8029",
+      "operation": "autoload",
+      "arguments": [],
+      "receiver": "_nic.Clock",
+      "delay": "2_000_000",
+      "callback": "CompleteAutoload",
+      "start": 8528,
+      "end": 8599
     }
   ]
 }

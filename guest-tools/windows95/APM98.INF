@@ -1,0 +1,39 @@
+; SPDX-License-Identifier: Apache-2.0
+; Copyright 2026 Nils Kopal
+; Uses the installed Windows 98 layout and its original APM device loader.
+[Version]
+Signature="$CHICAGO$"
+Class=System
+Provider=%DOSE%
+LayoutFile=layout.inf
+SetupClass=BASE
+
+[Manufacturer]
+%DOSE%=DOSE.Models
+
+[DOSE.Models]
+%APM%=DOSE_APM,*PNP0C05
+
+[DOSE_APM]
+AddReg=APM.Properties
+CopyFiles=APM.Files
+UpdateIniFields=APM.BootDriver
+
+[APM.Properties]
+HKR,,DevLoader,,VPOWERD.VXD
+HKR,,EnumPropPages,,"sysclass.dll,APMEnumPropPages"
+HKLM,Software\Microsoft\Windows\CurrentVersion\Run,SystemTray,,"SysTray.Exe"
+
+[DestinationDirs]
+APM.Files=11
+
+[APM.Files]
+power.drv
+vpowerd.vxd
+
+[APM.BootDriver]
+system.ini,boot,drivers,,power.drv,0
+
+[Strings]
+DOSE="DOSE"
+APM="DOSE APM support for Windows 98"

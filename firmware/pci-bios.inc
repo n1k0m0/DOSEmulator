@@ -7,6 +7,10 @@
 
 %define PCI_BIOS_TOPOLOGY 039381800h
 %define PCI_BIOS_ROUTE_BYTES 48
+%ifdef DOSE_NETWORK
+    %undef PCI_BIOS_ROUTE_BYTES
+    %define PCI_BIOS_ROUTE_BYTES 80
+%endif
 
 ; One canonical twelve-dword table supplies both ROM data and the DS-independent
 ; 16-bit compatibility path. Each entry specifies its byte offset and dword value.
@@ -23,6 +27,17 @@
     %1 36, 0
     %1 40, 0
     %1 44, 0
+%ifdef DOSE_NETWORK
+    ; Own optional PCI slots 8 and 9 share the board's real PIRQA/IRQ11 wire.
+    %1 48, 000604000h
+    %1 52, 8
+    %1 56, 0
+    %1 60, 0
+    %1 64, 000604800h
+    %1 68, 8
+    %1 72, 0
+    %1 76, 0
+%endif
 %endmacro
 
 ; Emit ordinary word stores, preserving the previous word-alignment contract.
@@ -186,6 +201,9 @@ bits %1
     movzx eax, word [ss:PBASE-28]
     mov [ss:PBASE+PORDINAL], eax
     mov dword [ss:PBASE+PLEFT], 4
+%ifdef DOSE_NETWORK
+    mov dword [ss:PBASE+PLEFT], 6
+%endif
 %if %1 = 16
     mov dword [ss:PBASE+PPACK], PCI_BIOS_TOPOLOGY
 %else
@@ -195,6 +213,12 @@ bits %1
 %endif
     call %%save_cf8
 %%find_next:
+%ifdef DOSE_NETWORK
+    cmp dword [ss:PBASE+PLEFT], 2
+    jne %%network_topology_ready
+    mov dword [ss:PBASE+PPACK], 000004840h
+%%network_topology_ready:
+%endif
     movzx ebx, byte [ss:PBASE+PPACK]
     ror dword [ss:PBASE+PPACK], 8
     mov eax, ebx
@@ -342,11 +366,11 @@ bits %1
 %if %1 = 16
     movzx eax, word [es:di+2]
     movzx edx, word [es:di+4]
-    cmp ax, 0ffd0h
+    cmp ax, (010000h-PCI_BIOS_ROUTE_BYTES)
 %else
     mov eax, [es:edi+2]
     movzx edx, word [es:edi+6]
-    cmp eax, 0ffffffd0h
+    cmp eax, (0100000000h-PCI_BIOS_ROUTE_BYTES)
 %endif
     ja %%small_buffer
     mov [ss:PBASE+PDOFFSET], eax
@@ -367,8 +391,17 @@ bits %1
     jmp %%success
 
 %%set_route:
+%ifdef DOSE_NETWORK
+    cmp word [ss:PBASE-16], 0040h
+    je %%route_device_ready
+    cmp word [ss:PBASE-16], 0048h
+    je %%route_device_ready
+%endif
     cmp word [ss:PBASE-16], 0018h
     jne %%set_failed
+%ifdef DOSE_NETWORK
+%%route_device_ready:
+%endif
     cmp word [ss:PBASE-8], 00b0ah
     jne %%set_failed
     ; PIIX ELCR is external to the PIC; leave PIC modes/masks and PCI3C to caller.

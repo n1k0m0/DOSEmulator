@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Nils Kopal
 using System.Text.Json;
+using DOSEmulator.Contracts;
 using DOSEmulator.Core;
 using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
@@ -66,7 +67,7 @@ public sealed partial class PcMachine
             ? HostBridge is null || !HostBridge.HasMemoryBinding(Memory) || Pci is null ||
                 !(Profile.IsPiixIrq
                     ? PiixIrq is not null && PiixIrq.SupportsMirq == Profile.IsPiixIde && PiixIrq.HasPicBinding(Pic) &&
-                      Pci.FunctionCount == (Profile.IsTrio64 ? 4 : Profile.IsPiixIde ? 3 : 2) && Pci.HasFunction(0, 0, 0, HostBridge) && Pci.HasFunction(0, 7, 0, PiixIrq)
+                      Pci.FunctionCount == (Profile.IsTrio64 ? 4 : Profile.IsPiixIde ? 3 : 2) + _networkPciCards.Count(n => n is not null) && Pci.HasFunction(0, 0, 0, HostBridge) && Pci.HasFunction(0, 7, 0, PiixIrq)
                     : PiixIrq is null && !Pic.SupportsLevelInputs && Pci.HasOnlyFunction(0, 0, 0, HostBridge))
             : HostBridge is not null || Pci is not null || PiixIrq is not null || Pic.SupportsLevelInputs ||
                 Memory.DecodedRamBytes != Memory.Ram.Length || Memory.RamHoleLength != 0 || Memory.RamHoleStart != 0)
@@ -74,10 +75,21 @@ public sealed partial class PcMachine
         if (Ata.DmaAvailable != Profile.IsPiixIde || SecondaryAta.DmaAvailable != Profile.IsPiixIde ||
             (Profile.IsPiixIde
                 ? PiixIde is null || HostBridge is null || PiixIrq is null || Pci is null || !Pci.HasFunction(0, 7, 1, PiixIde) ||
-                  !Ports.HasOnlyDynamicDecoder(PiixIde) || !PiixIde.HasBindings(Scheduler, HostBridge, Ata, SecondaryAta, Ports) ||
+                  !Ports.HasDynamicDecoders(NetworkIoPeers()) || !PiixIde.HasBindings(Scheduler, HostBridge, Ata, SecondaryAta, Ports) ||
                   ((PiixIrq.IsaLines & 0x4000) != 0) != Ata.InterruptAsserted || ((PiixIrq.MirqAssertions & 1) != 0) != SecondaryAta.InterruptAsserted
                 : PiixIde is not null || Ports.DynamicDecoderCount != 0))
             throw new InvalidOperationException("The selected board must retain its fixed IDE, MIRQ, DMA and dynamic I/O peers.");
+        for (int slot = 0; slot < 2; slot++)
+        {
+            var profile = Profile.NetworkAdapters.SingleOrDefault(n => n.Slot == slot);
+            var nic = _networkCards[slot]; var pciNic = _networkPciCards[slot];
+            if (profile is null ? nic is not null || pciNic is not null : nic is null ||
+                !nic.HasBindings(Scheduler, (ushort)profile.IoBase, profile.GetMacBytes()) ||
+                (profile.Model == NetworkAdapterProfile.Rtl8029Pci
+                    ? pciNic is null || Pci is null || !pciNic.HasBindings(nic, Ports) || !Pci.HasFunction(0, 8 + slot, 0, pciNic)
+                    : pciNic is not null))
+                throw new InvalidOperationException("The Ethernet slot differs from its configured NIC, resources or PCI peers.");
+        }
         if (Profile.IsAtapi
             ? Atapi is null || !Atapi.HasBindings(Scheduler, OpticalDisc) ||
               !Ata.HasPacketBinding(Profile.AtapiSlot < 2 ? Atapi : null, Profile.AtapiSlot < 2 ? Profile.AtapiSlot & 1 : -1) ||
@@ -125,7 +137,15 @@ public sealed partial class PcMachine
         Add("midi", Midi); Add("opl2", Opl); Add("opl3", Opl3); Add("fm-timing", FmIoTiming);
         Add("sb2", SoundBlaster); Add("sb16", SoundBlaster16);
         Add("pci", Pci); Add("hostbridge", HostBridge); Add("piix-irq", PiixIrq); Add("piix-ide", PiixIde); Add("piix-reset", PiixReset); Add("s3", S3);
+        for (int slot = 0; slot < 2; slot++) { Add("nic" + slot, _networkCards[slot]); Add("nic" + slot + "-pci", _networkPciCards[slot]); }
         return graph;
+    }
+
+    /// <summary>Enumerates the exact constructor order of dynamically decoded PCI I/O functions.</summary>
+    private IEnumerable<IIoPortDecoder> NetworkIoPeers()
+    {
+        if (PiixIde is not null) yield return PiixIde;
+        foreach (var nic in _networkPciCards) if (nic is not null) yield return nic;
     }
 
     /// <summary>Copies all component fields and event descriptors without advancing guest time or flushing PCM.</summary>

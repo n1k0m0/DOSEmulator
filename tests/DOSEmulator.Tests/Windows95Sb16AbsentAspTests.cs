@@ -19,7 +19,7 @@ internal static class Windows95Sb16AbsentAspTests
     { if (!value) throw new InvalidOperationException(why); }
 
     /// <summary>Private real CPU/DMA/mixer graph, optionally borrowing a complete factory Windows board.</summary>
-    private sealed class Rig
+    internal sealed class Rig
     {
         /// <summary>Optional complete owner used for actual full-container instruction boundaries.</summary>
         public readonly PcMachine? Machine;

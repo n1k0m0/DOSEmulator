@@ -1,5 +1,43 @@
 # Vollständige lokale DOSE-Snapshots
 
+## C44: tatsächlicher APM-Halt und vollständige Windows-Fortsetzung
+
+APM-Verbindung und Treiberversion liegen in normalen EBDA-Bytes; CPU-Haltzustand,
+IF, PIC-/Geräteereignisse und sämtliche RAM-/Audiozustände bleiben im bestehenden
+Format. Es gibt keinen neuen Zustandsausschluss oder Ereignistyp. Strikte C44-
+Windowsvergleiche bestehen mit 64 MiB und 128 MiB sowie aus aktiver Win98-Sound-DMA.
+Der aktive Schnitt führt zwei Sekunden mit 96000 gleichen späteren Stereo-Frames
+fort; wegen HLT sind dies vier ganze Vergleiche, zusätzlich zu je18ganzen
+Leerlaufvergleichen. Alle Felder bleiben geprüft; nur die vier einzeln
+gebundenen Capture-UUIDs werden kanonisiert.
+
+Die neuen ROM-/Runtimeänderungen sind ein anderer tatsächlicher VM-Build als
+C23. Dessen eigener CLI-Schnitt wird vor Zweiganlage abgewiesen, mit dem
+bestehenden nichtnulligen CLR-Abbruch. Keine Migration und kein kontrollierter
+Exit1 werden behauptet. C44b besitzt dieselben fünf VM-DLLs wie C44; sein
+GUI-Pacing und die eigenen INF-Datendateien ändern diese Identität nicht.
+Die bereitgestellten getrennten Test-PCs sind Kaltstartzweige aus sauberen
+Mediensicherungen. Sie sind keine umgeschriebenen alten laufenden Sicherungen.
+Nachweis: `artifacts/tests/windows-apm-realtime-release-path.txt`.
+
+## C19: optionale Ethernetkarten und externe Verbindungen
+
+NE2000 ISA und RTL8029 PCI ergänzen zwei explizite Zustandstypen: nun48 Typen/955 geprüfte Member/43 Scheduleroperationen. Die40 bisherigen Callbackkörper bleiben unverändert. Ring-/Paket-RAM, Remote-DMA-Lanes, IRQ-Quellen, Fristen, Queue- und EEPROM-/Resetzustände werden vollständig gespeichert und vor Medienübernahme validiert. Profil-MAC, Ressourcen und PCI-Topologie bleiben gebunden. Host-Sockets, Named Pipes, Capturehandles und Threads gehören nicht zum Gastzustand.
+
+Ein strikter Import verbindet das externe Netzwerk nicht erneut. Der Benutzer muss die Verbindung ausdrücklich neu herstellen; DHCP und externe TCP-Gegenstellen werden nicht zurückgespult. Kabelaktionen haben eine eigene Ownergeneration. Veraltete Aktionen nach Reset/Ownerwechsel sowie Konfigurationspläne nach einem fehlgeschlagenen, bereits trennenden Verbindungsabbau werden abgewiesen.
+
+Zwei tatsächliche Windows95A-/64MiB-Fortsetzungen nach vollständigen NAT-/Host-only-TCP-/UDP-Transfers bestehen je18 ganze Zustands-/RAM-/VRAM-/Geräte-/Scheduler-/Bild-/späterePCM-/Medienvergleiche. Ein tatsächlicher FreeDOS-/8MiB-Schnitt nach Original-Crynwr-ARP besteht nach strengem Import und250000 Schritten pro Seite mit bytegleichem vollständigem Zustand und RAM. Externe Verbindungen wurden vor diesen Schnitten getrennt; aktive Netzwerk-Gerätephasen sind getrennte Komponentenfälle. Keine Felder werden ausgeschlossen.
+
+Format1 bleibt streng an die fünf tatsächlichen VM-Module gebunden. Echte C18- und C19d-CLI-Importe werden vor Zweiganlage mit dem bestehenden nichtnulligen CLR-Abbruch abgewiesen; keine Migration oder kontrollierter Exit1. Der neue Zwei-Karten-CLI-Vergleich10001 gegen10000+Capture/Load+1 besteht mit ganzem RAM/Zustand und gleichem Status/Bild. [Netzwerkvertrag](NETWORKING.md), privater Gesamtnachweis `artifacts/tests/network-release-path.txt`.
+
+## C18: konfigurierbares Windows-RAM und native Farb-WORDs
+
+Die Windows95-Profile erlauben jetzt16/32/64/128MiB. Der Loader bindet weiterhin Profil, tatsächliche RAM-Länge und vollständigen Speicherinhalt; es gibt keine verkürzte32-MiB-Prüfung für größere PCs. Auf C18 bestehen echte strikte Windows-Fortsetzungen mit128MiB in640×480×32 sowie mit64MiB bei100/133MHz in1024×768 beziehungsweise800×600 RGB565. Jeweils drei weitere80k-Schrittabschnitte ergeben fünf vollständige CPU-/RAM-/VRAM-/Geräte-/Schedulervergleiche einschließlich späterer PCM-Daten und Medien, ohne Zustandsfeldausschlüsse. Die Schnitte liegen nach natürlichem Wave-DONE; es sind keine neuen aktiven DMA-, Sample-/Mixer- oder Hostaudioabnahmen.
+
+Die zusätzliche S3-Farb-WORD-Annahme benutzt die vorhandene physische WORD-Schnittstelle und die vorhandenen RSF-/Farbregister. BYTE-/DWORD-/Read-/Packed- und Mono-Tail-Zustände bleiben erhalten.145 neue Fälle enthalten wirkliche CPU-WORDs, effektfreie Ablehnungen, rohe WORD-/BYTE-/Leselatches und drei ganze32-MiB-SnapshotStore-Fortsetzungen. Es gibt weiter46 Zustandstypen/895 Member/40 unveränderte Callbackkörper und kein neues Format. Geänderte tatsächliche VM-Module ändern weiterhin die strikte Format1-Buildidentität; ältere Container benötigen ihren passenden eingefrorenen Runtime-Stand.
+
+Die folgenden Abschnitte behalten ihre historischen Builds und Abnahmegrenzen.
+
 ## Zusätzliche echte C15-Windows-Fortsetzungen
 
 Auf den unveränderten C15-Modulen bestehen vier echte strikte SnapshotStore-Importe bei100/133MHz mit32MiB: je Desktop und Wave-DONE, zusammen72 ganze CPU-/RAM-/VRAM-/Geräte-/Schedulervergleiche. Spätere Stereo-PCM-Frames sind pro Seite960/480 bei100MHz und480/480 bei133MHz, jeweils mit gleichen Bytes und Zeitpunkten. Keine gespeicherten Zustandsfelder sind ausgeschlossen; genau die vier bereits unabhängig geprüften äußeren/inneren Capture-UUIDs werden im vollständigen Medienvergleich getrennt behandelt. Kein neuer aktiver DMA-/Ganzmix-/Hostaudio-Nachweis und keine neue CLI-Migration. Zwei tatsächliche Kaltstarts und reguläre Shutdowns zählen davon getrennt.

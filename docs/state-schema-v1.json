@@ -3568,6 +3568,18 @@
           "reason": null
         },
         {
+          "name": "_resetRamReadable",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_xbus09Control",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
           "name": "_command",
           "type": "byte",
           "mode": "value",
@@ -5318,6 +5330,18 @@
           "type": "IReadOnlyOpticalDisc?",
           "mode": "excluded",
           "reason": "owned protected optical lease, sealed separately with 2048-byte capacity"
+        },
+        {
+          "name": "_networkCards",
+          "type": "Ne2000?[]",
+          "mode": "excluded",
+          "reason": "Exact slot graph registered independently as nic0/nic1 and optional PCI wrappers; constructor bindings and all IRQs validated."
+        },
+        {
+          "name": "_networkPciCards",
+          "type": "Rtl8029?[]",
+          "mode": "excluded",
+          "reason": "Exact slot graph registered independently as nic0/nic1 and optional PCI wrappers; constructor bindings and all IRQs validated."
         }
       ],
       "sourceFiles": [
@@ -5996,6 +6020,376 @@
       "afterLoad": [
         "AfterStateRestore();"
       ]
+    },
+    "DOSEmulator.Hardware.Ne2000": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Ne2000",
+      "fields": [
+        {
+          "name": "_clock",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "Immutable factory peer/delegate or PROM MAC bound bytewise to the sealed profile and constructor graph."
+        },
+        {
+          "name": "_basePort",
+          "type": "ushort",
+          "mode": "invariant",
+          "reason": null
+        },
+        {
+          "name": "_mac",
+          "type": "byte[]",
+          "mode": "excluded",
+          "reason": "Immutable factory peer/delegate or PROM MAC bound bytewise to the sealed profile and constructor graph."
+        },
+        {
+          "name": "_interrupt",
+          "type": "Action<bool>",
+          "mode": "excluded",
+          "reason": "Immutable factory peer/delegate or PROM MAC bound bytewise to the sealed profile and constructor graph."
+        },
+        {
+          "name": "_ram",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_physicalAddress",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_multicast",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_tally",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_loopbackFifo",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_fifoCursor",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_command",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_isr",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_imr",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dataConfig",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_rxConfig",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_txConfig",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_txStatus",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_rxStatus",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pageStart",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_pageStop",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_boundary",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_currentPage",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_transmitPage",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_remoteAddress",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_remoteCount",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_transmitCount",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_remoteReadLatch",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_remoteReadValidBytes",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_remotePci",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_remoteAutoPacket",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_interruptAsserted",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_cableConnected",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_externalEnabled",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_transmitCarrierLost",
+          "type": "bool",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_autoPacketNext",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_transmitFrame",
+          "type": "byte[]",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_receiveFrame",
+          "type": "byte[]",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_receiveQueue",
+          "type": "byte[][]",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_activeTransmitConfig",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_transmitEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_receiveEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_transmitDeadline",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_receiveDeadline",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_transmitEligibleAt",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_receiveEligibleAt",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Ne2000.cs",
+        "src/DOSEmulator.Hardware/Ne2000.Validation.cs"
+      ],
+      "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.Rtl8029": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "Rtl8029",
+      "fields": [
+        {
+          "name": "_nic",
+          "type": "Ne2000",
+          "mode": "excluded",
+          "reason": "Immutable factory peer/delegate or PROM MAC bound bytewise to the sealed profile and constructor graph."
+        },
+        {
+          "name": "_ports",
+          "type": "IoPortBus",
+          "mode": "excluded",
+          "reason": "Immutable factory peer/delegate or PROM MAC bound bytewise to the sealed profile and constructor graph."
+        },
+        {
+          "name": "_config",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_eepromControl",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_configuration2",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_configuration3",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_haltClock",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_eepromShift",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_eepromOutput",
+          "type": "ushort",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_eepromBits",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_eepromOutputBits",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_autoloadEvent",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_autoloadDeadline",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/Rtl8029.cs",
+        "src/DOSEmulator.Hardware/Rtl8029.Validation.cs"
+      ],
+      "primaryParameters": []
     }
   }
 }

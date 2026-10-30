@@ -105,7 +105,8 @@ internal static partial class SnapshotValidation
                 var dsp = Node(pair.Item1, pair.Item2);
                 if (dsp.Value<bool>("_resetHigh") != (phase == PiixResetPhase.AllAsserted) ||
                     dsp.Value<long>("_commandEvent") != 0 || dsp.Value<long>("_sampleEvent") != 0 ||
-                    pair.Item1 == "sb16" && dsp.Value<byte>("_xbus05Control") != 0)
+                    pair.Item1 == "sb16" && (dsp.Value<byte>("_xbus05Control") != 0 ||
+                        dsp.Value<byte>("_xbus09Control") != 0xf8 || !dsp.Value<bool>("_resetRamReadable")))
                     throw new InvalidDataException("Held board lost its DSP reset pin or retained old DSP work.");
             }
 

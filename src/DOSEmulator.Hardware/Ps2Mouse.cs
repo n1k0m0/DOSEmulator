@@ -29,6 +29,10 @@ public sealed partial class Ps2Mouse(DeviceScheduler scheduler)
     public long PacketCount { get; private set; }
     /// <summary>Diagnostic count of command count.</summary>
     public long CommandCount { get; private set; }
+    /// <summary>Current sensor buttons, distinct from the last packet accepted by the controller.</summary>
+    public int Buttons => _buttons;
+    /// <summary>Buttons in the last accepted report; rejected controller output does not acknowledge an edge.</summary>
+    public int ReportedButtons => _reportedButtons;
     /// <summary>Checks that the persisted mouse still feeds the factory-owned keyboard controller.</summary>
     public bool HasStateOutputOwner(object owner) => ReferenceEquals(_output?.Target, owner);
     /// <summary>Connects the auxiliary device's response path and publishes any currently pending output.</summary>

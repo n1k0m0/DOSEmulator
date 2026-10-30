@@ -175,6 +175,68 @@ start:
     out dx,eax
 %endif
     xor di,di
+%ifdef DOSE_NETWORK
+    ; Only the optional network ROM assigns its two actual RTL8029 slots.
+    ; Presence and BAR values are immutable constructor inventory, not host callbacks.
+    xor esi,esi
+.network_next:
+    mov bx,si
+    add bx,bx
+    movzx ebx,word [cs:network_ports+bx]
+    test bx,bx
+    jz .network_skip
+    mov eax,esi
+    shl eax,11
+    add eax,080004000h
+    mov edi,eax
+    mov dx,0cf8h
+    out dx,eax
+    mov dx,0cfch
+    in eax,dx
+    cmp eax,0802910ech
+    jne .network_skip
+    mov eax,edi
+    add eax,10h
+    mov dx,0cf8h
+    out dx,eax
+    mov dx,0cfch
+    mov eax,ebx
+    or eax,1
+    out dx,eax
+    mov eax,edi
+    add eax,3ch
+    mov dx,0cf8h
+    out dx,eax
+    mov dx,0cfch
+    mov al,11
+    out dx,al
+    mov eax,edi
+    add eax,4
+    mov dx,0cf8h
+    out dx,eax
+    mov dx,0cfch
+    mov ax,1
+    out dx,ax
+.network_skip:
+    inc si
+    cmp si,2
+    jb .network_next
+    ; The two physical INTAs share PIRQA; enable the actual level-sensitive route.
+    mov dx,0cf8h
+    mov eax,080003860h
+    out dx,eax
+    mov dx,0cfch
+    mov al,11
+    out dx,al
+    mov dx,04d1h
+    in al,dx
+    or al,8
+    out dx,al
+    mov dx,0cf8h
+    xor eax,eax
+    out dx,eax
+    xor di,di
+%endif
     mov cx,256
 .vectors:
     mov ax,iret_stub
@@ -281,8 +343,10 @@ start:
     mov al,0xfc
 %ifdef DOSE_TRIO64_VBE
     ; Original VPICD inherits the POST mask; an installed FDC has IVT0Eh wired.
-    ; Release only IRQ6 for this Windows board, preserving the prior flags/IF.
+    ; Keep the slave cascade open for DOS drivers that unmask IRQ12 directly.
+    ; Slave sources remain masked until their drivers enable them.
     pushf
+    and al,0xfb
     cmp byte [cs:floppy_count],0
     je .pic_floppy_mask_ready
     and al,0xbf
@@ -1471,6 +1535,10 @@ int_time:
 
 ; Dispatches implemented system/memory BIOS services, including the actual protected block-move path.
 int_system:
+%ifdef DOSE_APM
+    cmp ah,0x53
+    je apm_real
+%endif
     enter_service
     and rFLAGS,0xfffe
     mov ah,rAH
@@ -1544,6 +1612,9 @@ int_system:
 .done:
     leave_service
 
+%ifdef DOSE_APM
+%include "apm-bios.inc"
+%endif
 %include "mouse-bios.inc"
 %include "memory-bios.inc"
 %include "post-bios.inc"
@@ -1602,6 +1673,10 @@ disk_routes: db 0,1,2,3
 disk_heads: db 16,16,16,16
 disk_tables: times 32 db 0
 
+%ifdef DOSE_NETWORK
+times 0xe0a0-($-$$) db 0xff
+network_ports: dw 0,0
+%endif
 times 0xe100-($-$$) db 0xff
 vga_planar_palette: times 768 db 0
 vga_indexed_palette: times 768 db 0

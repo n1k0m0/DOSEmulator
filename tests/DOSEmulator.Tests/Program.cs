@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+﻿// SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Nils Kopal
 using System.Buffers.Binary;
 using System.IO.Pipes;
@@ -10,6 +10,8 @@ using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
 
+if (args.Length == 3 && args[0] == "--network-native-check") return NetworkBackendNativeTests.Run(args[1], args[2]);
+if (args.Length == 4 && args[0] == "--network-native-peer") return NetworkBackendNativeTests.RunPeer(args[1], args[2], args[3]);
 if (args.Length == 2 && args[0] == "--opl-audit-benchmark") return OplAuditTests.Run(args[1]);
 if (args.Length == 2 && args[0] == "--cow-audit-benchmark") return CowAuditPerformanceTests.Run(args[1]);
 if (args.Length == 2 && args[0] == "--audit-cpu-benchmark") return CpuAuditTests.Benchmark(args[1]);
@@ -296,14 +298,19 @@ DosCdRomDriverTests.AddTo(Test);
 PciBiosTests.AddTo(Test);
 Windows95S3Tests.AddTo(Test);
 Windows95UndefinedOpcodeTests.AddTo(Test);
+Windows98MmxProbeTests.AddTo(Test);
 Windows95ProfileTests.AddTo(Test);
+Windows95RamProfileTests.AddTo(Test);
 Windows95S3BiosTests.AddTo(Test);
+WindowsPostCascadeTests.AddTo(Test);
 Windows95S3EngineTests.AddTo(Test);
+S3StandardMmioColorTests.AddTo(Test);
 Windows95S3MmioPixelTransferTests.AddTo(Test);
 Windows95S3WordTailTests.AddTo(Test);
 Windows95FdcEotTests.AddTo(Test);
 Windows95Sb16CopyrightTests.AddTo(Test);
 Windows95Sb16AbsentAspTests.AddTo(Test);
+Windows98Sb16ResetTests.AddTo(Test);
 Windows95S3CursorTests.AddTo(Test);
 Windows95S3EngineImportTests.AddTo(Test);
 Windows95PciPostIrqTests.AddTo(Test);
@@ -428,7 +435,13 @@ DecodedStackBatchTests.AddTo(Test);
 TlbHitSelectionTests.AddTo(Test);
 TrioEngineReadOptimizationTests.AddTo(Test);
 GuestScenarioTests.AddTo(Test);
+NetworkProfileTests.AddTo(Test);
+NetworkMenuTests.AddTo(Test);
+NetworkCardTests.AddTo(Test);
+NetworkIntegrationTests.AddTo(Test);
 MouseTests.AddTo(Test);
+MouseEdgeAdmissionTests.AddTo(Test);
+BiosApmTests.AddTo(Test);
 ResetTests.AddTo(Test);
 
 if (args.Length == 2 && args[0] == "--filter")

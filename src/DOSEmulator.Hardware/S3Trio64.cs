@@ -153,9 +153,9 @@ public sealed partial class S3Trio64 : IPciConfigurationFunction, IMemoryWordWri
         if(MemorySpaceEnabled&&_video.TrioVideoEnabled&&!_video.TryWriteTrioEngineMmio(offset,value))_video.WriteByte(offset,value);
     }
 
-    /// <summary>Accepts only the bounded lower-lane mono WORD-tail policy through the actual enabled fixed aperture; false has no effects.</summary>
+    /// <summary>Offers physical standard color WORDs and the bounded mono WORD-tail policy through the enabled fixed aperture; false has no effects.</summary>
     public bool TryWriteWord(uint offset, ushort value) => MemorySpaceEnabled && _video.TrioVideoEnabled &&
-        _video.TryWriteTrioEnginePixelWord(offset, value);
+        (_video.TryWriteTrioEngineColorWord(offset, value) || _video.TryWriteTrioEnginePixelWord(offset, value));
 
     /// <summary>Returns the full un-driven transfer value for unsupported I/O widths.</summary>
     private static uint Float(int width) => width switch { 1 => 255, 2 => 65535, 4 => uint.MaxValue, _ => throw new ArgumentOutOfRangeException(nameof(width)) };

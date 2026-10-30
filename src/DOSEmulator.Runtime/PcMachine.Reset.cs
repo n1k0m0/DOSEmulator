@@ -29,6 +29,8 @@ public sealed partial class PcMachine
             SoundBlaster16?.AssertPiixReset(Profile.SoundBlasterIrq, Profile.SoundBlasterDmaChannel, Profile.SoundBlasterDma16Channel);
             SoundBlaster?.AssertPiixReset(); Opl?.Reset(); Opl3?.Reset();
             Serial?.ApplyPiixHardReset(); Parallel?.ApplyPiixHardReset();
+            for (int slot = 0; slot < 2; slot++)
+                if (_networkPciCards[slot] is { } pciNic) pciNic.Reset(); else _networkCards[slot]?.Reset();
             Ata.AssertPiixReset(); SecondaryAta.AssertPiixReset();
             PiixIde!.ApplyPiixHardReset();
             Floppy.AssertPiixReset(); Keyboard.AssertPiixReset(); Board.ApplyPiixHardReset(); FpuError.ApplyPiixHardReset();

@@ -135,7 +135,8 @@ tvbe_set:
     out dx,ax
     mov ax,0x005d
     out dx,ax
-    mov ax,0x005e
+    mov al,0x5e
+    mov ah,[cs:si+11]           ; vertical bit10 overflows belong to this mode, not its byte pitch
     out dx,ax
     mov ax,0x0069
     out dx,ax
@@ -317,34 +318,39 @@ tvbe_controller:
     dw 32
     times 256-($-tvbe_controller) db 0
 tvbe_oem: db BIOS_NAME,' ',BIOS_VERSION,' / own Trio64 banked subset',0
-tvbe_modes: dw 0x101,0x103,0x105,0x110,0x111,0x114,0x117,0x201,0x203,0x205,0x211,0x214,0x220,0xffff
+tvbe_modes: dw 0x101,0x103,0x105,0x107,0x110,0x111,0x114,0x117,0x201,0x203,0x205,0x207,0x211,0x214,0x220,0xffff
 
-; Identifier,width,height,byte-pitch,storage-bytes,CR67,CR50,reserved,CRTC-pointer,info-pointer.
-%macro tvbe_record 9
+; Identifier,width,height,byte-pitch,storage-bytes,CR67,CR50,CR5E,CRTC-pointer,info-pointer.
+; The existing16-byte record and pointer offsets12/14 are retained.
+%macro tvbe_record 10
     dw %1,%2,%3,%4
-    db %5,%6,%7,0
-    dw %8,%9
+    db %5,%6,%7,%8
+    dw %9,%10
 %endmacro
 tvbe_records:
-    tvbe_record 0x101,640,480,640,1,0,0x40,tvbe_crtc_640,tvbe_info_640_8
-    tvbe_record 0x103,800,600,800,1,0,0x80,tvbe_crtc_800,tvbe_info_800_8
-    tvbe_record 0x105,1024,768,1024,1,0,0,tvbe_crtc_1024,tvbe_info_1024_8
-    tvbe_record 0x110,640,480,1280,2,0x30,0x50,tvbe_crtc_640,tvbe_info_640_555
-    tvbe_record 0x111,640,480,1280,2,0x50,0x50,tvbe_crtc_640,tvbe_info_640_565
-    tvbe_record 0x114,800,600,1600,2,0x50,0x90,tvbe_crtc_800,tvbe_info_800_565
-    tvbe_record 0x117,1024,768,2048,2,0x50,0x10,tvbe_crtc_1024,tvbe_info_1024_565
-    tvbe_record 0x201,640,480,640,1,0,0x40,tvbe_crtc_640,tvbe_info_640_8
-    tvbe_record 0x203,800,600,800,1,0,0x80,tvbe_crtc_800,tvbe_info_800_8
-    tvbe_record 0x205,1024,768,1024,1,0,0,tvbe_crtc_1024,tvbe_info_1024_8
-    tvbe_record 0x211,640,480,1280,2,0x50,0x50,tvbe_crtc_640,tvbe_info_640_565
-    tvbe_record 0x214,800,600,1600,2,0x50,0x90,tvbe_crtc_800,tvbe_info_800_565
-    tvbe_record 0x220,640,480,2560,4,0xd0,0x70,tvbe_crtc_640,tvbe_info_640_32
+    tvbe_record 0x101,640,480,640,1,0,0x40,0,tvbe_crtc_640,tvbe_info_640_8
+    tvbe_record 0x103,800,600,800,1,0,0x80,0,tvbe_crtc_800,tvbe_info_800_8
+    tvbe_record 0x105,1024,768,1024,1,0,0,0,tvbe_crtc_1024,tvbe_info_1024_8
+    tvbe_record 0x107,1280,1024,1280,1,0,0xc0,0x15,tvbe_crtc_1280,tvbe_info_1280_8
+    tvbe_record 0x110,640,480,1280,2,0x30,0x50,0,tvbe_crtc_640,tvbe_info_640_555
+    tvbe_record 0x111,640,480,1280,2,0x50,0x50,0,tvbe_crtc_640,tvbe_info_640_565
+    tvbe_record 0x114,800,600,1600,2,0x50,0x90,0,tvbe_crtc_800,tvbe_info_800_565
+    tvbe_record 0x117,1024,768,2048,2,0x50,0x10,0,tvbe_crtc_1024,tvbe_info_1024_565
+    tvbe_record 0x201,640,480,640,1,0,0x40,0,tvbe_crtc_640,tvbe_info_640_8
+    tvbe_record 0x203,800,600,800,1,0,0x80,0,tvbe_crtc_800,tvbe_info_800_8
+    tvbe_record 0x205,1024,768,1024,1,0,0,0,tvbe_crtc_1024,tvbe_info_1024_8
+    tvbe_record 0x207,1280,1024,1280,1,0,0xc0,0x15,tvbe_crtc_1280,tvbe_info_1280_8
+    tvbe_record 0x211,640,480,1280,2,0x50,0x50,0,tvbe_crtc_640,tvbe_info_640_565
+    tvbe_record 0x214,800,600,1600,2,0x50,0x90,0,tvbe_crtc_800,tvbe_info_800_565
+    tvbe_record 0x220,640,480,2560,4,0xd0,0x70,0,tvbe_crtc_640,tvbe_info_640_32
 tvbe_records_end:
 
 ; Primary documented addressing with own nominal noninterlaced raster tables, not calibrated S3 PLLs.
 tvbe_crtc_640: db 0x5f,0x4f,0x50,0x82,0x54,0x80,0x0b,0x3e,0,0,0,0,0,0,0,0,0xea,0x0c,0xdf,0x50,0x60,0xe7,6,0xab,0xff
 tvbe_crtc_800: db 0x7f,0x63,0x64,0x82,0x68,0x17,0x72,0xf0,0,0x60,0,0,0,0,0,0,0x58,0x0c,0x57,0x64,0x60,0x58,0x72,0xab,0xff
 tvbe_crtc_1024: db 0xa1,0x7f,0x80,0x04,0x88,0x9e,0x26,0xfd,0,0x60,0,0,0,0,0,0,0x08,0x0a,0xff,0x80,0x60,0x04,0x22,0xab,0xff
+; DE03FFh, total1064lines, blank start0400h, sync start0401h; CR5E15h supplies their bit10s.
+tvbe_crtc_1280: db 0xce,0x9f,0xa0,0x92,0xa6,0x14,0x26,0x52,0,0x40,0,0,0,0,0,0,0x01,0x04,0xff,0xa0,0x60,0x00,0x27,0xab,0xff
 
 ; VBE1.2 reports storage bits;555 therefore has16 total bits and one unused source bit.
 %macro tvbe_info 14
@@ -361,6 +367,7 @@ tvbe_crtc_1024: db 0xa1,0x7f,0x80,0x04,0x88,0x9e,0x26,0xfd,0,0x60,0,0,0,0,0,0,0x
 tvbe_info tvbe_info_640_8,640,480,640,8,4,0,0,0,0,0,0,0,0
 tvbe_info tvbe_info_800_8,800,600,800,8,4,0,0,0,0,0,0,0,0
 tvbe_info tvbe_info_1024_8,1024,768,1024,8,4,0,0,0,0,0,0,0,0
+tvbe_info tvbe_info_1280_8,1280,1024,1280,8,4,0,0,0,0,0,0,0,0
 tvbe_info tvbe_info_640_555,640,480,1280,16,6,5,10,5,5,5,0,1,15
 tvbe_info tvbe_info_640_565,640,480,1280,16,6,5,11,6,5,5,0,0,0
 tvbe_info tvbe_info_800_565,800,600,1600,16,6,5,11,6,5,5,0,0,0

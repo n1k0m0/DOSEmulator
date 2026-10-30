@@ -58,6 +58,14 @@ public sealed partial class DosWindow : SharpPixelsWindow
     private int _guestRepeatEnabled;
     private readonly RelativeMouseInput _mouseInput = new();
     private long _uiInputGeneration;
+    /// <summary>Own immutable network-status response tied to the confirmed input owner; it contains no live backend.</summary>
+    private sealed record NetworkMenuSnapshot(long Generation, JsonElement Status);
+    /// <summary>Published only after an owner-queued status request completes for the same PC generation.</summary>
+    private NetworkMenuSnapshot? _networkMenu;
+    /// <summary>Bounds asynchronous status queries while a network page is visible.</summary>
+    private int _networkQueryPending;
+    /// <summary>Next monotonic frontend status refresh; this is presentation policy, never saved guest time.</summary>
+    private long _networkRefreshAt;
     private readonly bool _freeDosAcceptance;
     private readonly string? _captureAfter;
     private readonly byte[] _automaticKeys;
@@ -72,7 +80,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
     private int GuestAreaHeight => PixelsHeight - (_showDebugOverlay ? 40 : 0);
 
     /// <summary>Reports the instantiated board and nominal clock without presenting its validation subset as a finished historical PC.</summary>
-    private static string PlatformLabel(MachineProfile? profile) => profile?.IsPciBiosBoard == true
+    private static string PlatformLabel(MachineProfile? profile) => profile?.IsWindows95Board == true
+        ? $"430FX / PIIX / S3 / P54C B5 subset / {profile.CpuHz / 1_000_000} MHz" : profile?.IsPciBiosBoard == true
         ? "430FX / PIIX / S3 / PCI BIOS subset / P54C 100 MHz" : profile?.IsTrio64 == true
         ? "430FX / PIIX / Trio64 subset / P54C 100 MHz" : profile?.IsPiixReset == true
         ? "430FX / PIIX reset subset / P54C 100 MHz" : profile?.IsPiixIde == true
@@ -88,7 +97,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
     public DosWindow(PcMachine machine, HostSettings settings, string settingsPath, string? smokeDirectory, bool freeDosAcceptance = false, string? automaticText = null, string? captureAfter = null, string? audioOutPath = null, bool audioAcceptance = false, GuestTestScenario? scenario = null, bool resourceAcceptance = false, bool nativeMouseAcceptance = false, bool storageAcceptance = false)
         : base(960, 720, DOSEIdentity.DisplayName + " - " + PlatformLabel(machine.Profile))
     {
-        _session = new(machine); _uiInputGeneration = _session.InputGeneration; _settings = settings with { MasterVolume = Math.Clamp(settings.MasterVolume, 0, 100),
+        _session = new(machine, enableHostNetworking: true); _uiInputGeneration = _session.InputGeneration; _settings = settings with { MasterVolume = Math.Clamp(settings.MasterVolume, 0, 100),
             SpeakerVolume = Math.Clamp(settings.SpeakerVolume, 0, 100), DigitalVolume = Math.Clamp(settings.DigitalVolume, 0, 100),
             FmVolume = Math.Clamp(settings.FmVolume, 0, 100) }; _settingsPath = settingsPath;
         _showDebugOverlay = LoadDebugOverlay(settingsPath);
@@ -128,7 +137,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
         {
             var hostClock = Stopwatch.StartNew();
             // A small audio lead absorbs callback/batch jitter; it does not change guest rates.
-            var pacing = new RealtimePacer(audio.Available ? 40_000_000UL : 0);
+            // Retain short disk/JIT stalls for real execution to catch up; each owner slice stays at most 20 ms.
+            var pacing = new RealtimePacer(audio.Available ? 40_000_000UL : 0, 5_000_000_000);
             var clockSync = new HostClockSynchronizer();
             var speed = new RealtimeSpeedMeter();
             // Converts the monotonic host timestamp to nanoseconds using integer arithmetic.
@@ -151,7 +161,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
                             pacing.Reset(machine.Scheduler.Now, HostNanoseconds()); speed.Reset(); previousMachine = machine;
                         }
                         var levels = Volatile.Read(ref _settings);
-                        clockSync.Update(machine, levels.SynchronizeClock, DateTime.Now, HostNanoseconds());
+                        clockSync.Update(machine, levels.SynchronizeClock, DateTime.Now, HostNanoseconds(), _session.ResumeGeneration);
                         machine.Speaker.Volume = levels.SpeakerVolume / 100.0;
                         if (machine.SoundBlaster is { } sb) sb.Volume = levels.DigitalVolume / 100.0;
                         if (machine.SoundBlaster16 is { } sb16) sb16.Volume = levels.DigitalVolume / 100.0;
@@ -163,7 +173,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
                         {
                             ulong target = pacing.Target(machine.Scheduler.Now, HostNanoseconds());
                             machine.RunSteps(200000, target);
-                            delay = pacing.DelayMilliseconds(machine.Scheduler.Now, HostNanoseconds());
+                            delay = pacing.DelayMilliseconds(machine.Scheduler.Now, HostNanoseconds(), machine.Cpu.Halted);
                         }
                         else { audio.Clear(); pacing.Reset(machine.Scheduler.Now, HostNanoseconds()); }
                         speed.Observe(machine.Scheduler.Now, HostNanoseconds(), machine.Running && machine.Fault is null);
@@ -315,6 +325,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
         var status = Volatile.Read(ref _status);
         var frame = Volatile.Read(ref _frame);
         var profile = status?.Configuration ?? new MachineProfile();
+        if ((_page == "NETWORK" || _page.StartsWith("NETWORK / ADAPTER ", StringComparison.Ordinal)) &&
+            Environment.TickCount64 >= Interlocked.Read(ref _networkRefreshAt)) RefreshNetworkStatus();
         _items = _page switch
         {
         "MAIN MENU" => ["CONTINUE", "VIDEO SETTINGS", "MACHINE / HARDWARE", "MEDIA", "REMOTE PLAY / NETWORK", "AUDIO SETTINGS", "RESET / POWER", "SAVED MACHINES", "TIME AND SPEED", "EXIT"],
@@ -333,7 +345,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         "VIDEO SETTINGS" => [$"FILTER          {_settings.Filter.ToUpperInvariant()}", $"UPSCALE         {_settings.Upscale.ToUpperInvariant()}",
             $"ASPECT          {(_settings.CorrectAspect ? "4:3" : "SOURCE PIXELS")}", $"VSYNC           {(_settings.VSync ? "ON" : "OFF")}",
             $"DEBUG OVERLAY   {(_showDebugOverlay ? "ON" : "OFF")}", $"MULTICORE VIDEO {(_parallelVideo ? "ON" : "OFF")}", "BACK"],
-        "MACHINE / HARDWARE" => [profile.IsTrio64 ? "CPU: FX/PIIX/S3 / P54C 100 MHZ (FIXED)" : profile.IsPiixReset ? "CPU: FX/PIIX RESET / P54C 100 MHZ (FIXED)" : profile.IsPiixIde ? "CPU: FX/PIIX IDE / P54C 100 MHZ (FIXED)" : profile.IsPiixIrq ? "CPU: FX/PIIX IRQ / P54C 100 MHZ (FIXED)" : profile.IsFxHost ? "CPU: 430FX HOST / P54C 100 MHZ (FIXED)" : profile.IsP54c ? "CPU: DOSE AT / P54C B5 SUBSET 90 MHZ (RESTART)" : "CPU: 486DX / 33 MHZ (RESTART)", $"RAM: {profile.RamMiB} MIB ({(profile.IsFxHost ? "FIXED HOST BOARD" : "CHANGE RESTARTS")})",
+        "MACHINE / HARDWARE" => [profile.IsWindows95Board ? $"CPU: FX/PIIX/S3 / P54C {profile.CpuHz / 1_000_000} MHZ (FIXED)" : profile.IsTrio64 ? "CPU: FX/PIIX/S3 / P54C 100 MHZ (FIXED)" : profile.IsPiixReset ? "CPU: FX/PIIX RESET / P54C 100 MHZ (FIXED)" : profile.IsPiixIde ? "CPU: FX/PIIX IDE / P54C 100 MHZ (FIXED)" : profile.IsPiixIrq ? "CPU: FX/PIIX IRQ / P54C 100 MHZ (FIXED)" : profile.IsFxHost ? "CPU: 430FX HOST / P54C 100 MHZ (FIXED)" : profile.IsP54c ? "CPU: DOSE AT / P54C B5 SUBSET 90 MHZ (RESTART)" : "CPU: 486DX / 33 MHZ (RESTART)", $"RAM: {profile.RamMiB} MIB ({(profile.GetSupportedRamMiB().Length == 1 ? "FIXED HOST BOARD" : "CHANGE RESTARTS")})",
             $"FLOPPY A: {profile.FloppyDriveA.ToUpperInvariant()} (CHANGE RESTARTS)", $"FLOPPY B: {profile.FloppyDriveB.ToUpperInvariant()} (CHANGE RESTARTS)",
             $"BOOT: {profile.BootDevice.ToUpperInvariant()} (CHANGE RESTARTS)",
             profile.SoundCard switch { "adlib-opl2-development" => "SOUND: ADLIB OPL2 MELODIC DEV (RESTART)",
@@ -366,6 +378,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
         "AUDIO SETTINGS" => [_audio?.Available == true ? "OUTPUT: WINDOWS DEFAULT / 48 KHZ STEREO" : "OUTPUT: UNAVAILABLE",
             $"MUTE            {(_settings.AudioMuted ? "ON" : "OFF")}", $"MASTER          {_settings.MasterVolume}%", $"PC SPEAKER      {_settings.SpeakerVolume}%",
             $"DIGITAL PCM     {_settings.DigitalVolume}%", $"FM SYNTH        {_settings.FmVolume}% (DEVELOPMENT)", "BACK"],
+        "NETWORK" => NetworkItems(profile),
+        "NETWORK / ADAPTER 1" or "NETWORK / ADAPTER 2" => NetworkAdapterItems(profile, _page[^1] - '1'),
         _ => ["GUEST NIC: NOT IMPLEMENTED", "REMOTE PLAY: NOT IMPLEMENTED", "BACK"]
         };
     }
@@ -548,7 +562,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
             switch (_selected)
             {
                 case 0: ChangeProfile(p => p.IsFxHost ? p : p.WithDevelopmentCpu(!p.IsP54c)); break;
-                case 1: ChangeProfile(p => { if (p.IsFxHost) return p; int[] values = [4, 8, 16]; return p with { RamMiB = values[(Array.IndexOf(values, p.RamMiB) + delta + values.Length) % values.Length] }; }); break;
+                case 1: ChangeProfile(p => { var values = p.GetSupportedRamMiB(); if (values.Length == 1) return p; return p with { RamMiB = values[(values.IndexOf(p.RamMiB) + delta + values.Length) % values.Length] }; }); break;
                 case 2: ChangeProfile(p => p with { FloppyDriveA = CycleDrive(p.FloppyDriveA) }); break;
                 case 3: ChangeProfile(p => p with { FloppyDriveB = CycleDrive(p.FloppyDriveB) }); break;
                 case 4: ChangeProfile(p => p with { BootDevice = p.BootDevice == "ide" ? "floppy-a" : "ide" }); break;
@@ -601,6 +615,13 @@ public sealed partial class DosWindow : SharpPixelsWindow
                 });
             }
         }
+        else if (_page == "NETWORK")
+        {
+            if (_selected is 0 or 1) OpenPage("NETWORK / ADAPTER " + (_selected + 1));
+            else if (_selected == 2) RefreshNetworkStatus();
+            else if (_selected == 5) OpenPage("MAIN MENU");
+        }
+        else if (_page is "NETWORK / ADAPTER 1" or "NETWORK / ADAPTER 2") ActivateNetwork(_page[^1] - '1', delta);
         else if (_page is "FLOPPY A" or "FLOPPY B")
         {
             int drive = _page == "FLOPPY A" ? 0 : 1;
@@ -623,6 +644,203 @@ public sealed partial class DosWindow : SharpPixelsWindow
             else if (_selected == 4) OpenPage("MEDIA");
         }
         else if (_selected == _items.Length - 1) OpenPage("MAIN MENU");
+    }
+
+    /// <summary>Requests metadata only on the owner queue; stale PC responses cannot populate the current network menu.</summary>
+    private void RefreshNetworkStatus()
+    {
+        if (Interlocked.CompareExchange(ref _networkQueryPending, 1, 0) != 0) return;
+        Interlocked.Exchange(ref _networkRefreshAt, Environment.TickCount64 + 2000);
+        long generation = Volatile.Read(ref _uiInputGeneration);
+        _ = _session.Enqueue(IpcProtocol.CreateRequest("GetNetworkStatus"), generation).ContinueWith(task =>
+        {
+            try
+            {
+                if (task.IsCompletedSuccessfully && task.Result.Success && _session.InputGeneration == generation)
+                {
+                    var status = JsonSerializer.SerializeToElement(task.Result.Payload, IpcProtocol.JsonOptions);
+                    Volatile.Write(ref _networkMenu, new(generation, status));
+                }
+                else if (task.IsCompletedSuccessfully && !task.Result.Success) _notices.Enqueue("NETWORK STATUS: " + task.Result.ErrorCode);
+            }
+            finally { Interlocked.Exchange(ref _networkQueryPending, 0); }
+        }, TaskScheduler.Default);
+    }
+
+    /// <summary>Returns one immutable current-owner response, without reading or invoking a backend from the UI thread.</summary>
+    private JsonElement NetworkStatus()
+    {
+        var snapshot = Volatile.Read(ref _networkMenu);
+        return snapshot is not null && snapshot.Generation == Volatile.Read(ref _uiInputGeneration) ? snapshot.Status : default;
+    }
+
+    /// <summary>Reads a bounded scalar status string; unknown or null backend fields remain visibly unavailable.</summary>
+    private static string? NetworkString(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object &&
+        value.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.String ? property.GetString() : null;
+
+    /// <summary>Reads an actual advertised backend flag without turning missing metadata into success.</summary>
+    private static bool NetworkFlag(JsonElement value, string name) => value.ValueKind == JsonValueKind.Object &&
+        value.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.True;
+
+    /// <summary>Bounds external adapter descriptions for the existing fixed-width English overlay.</summary>
+    private static string NetworkText(string value) => new string(value.Take(60).Select(character => char.IsControl(character) ? ' ' : character).ToArray()).ToUpperInvariant();
+
+    /// <summary>Names only configured guest card models, preserving the distinction between ISA and PCI.</summary>
+    private static string NetworkModel(string? model) => model switch
+    { NetworkAdapterProfile.Ne2000Isa => "NE2000 ISA", NetworkAdapterProfile.Rtl8029Pci => "RTL8029 PCI", _ => "NONE" };
+
+    /// <summary>Cycles only an explicit network string choice, independent from the existing integer resource menu helper.</summary>
+    private static string CycleNetworkValue(string[] values, string current, int delta) => values[(Array.IndexOf(values, current) + delta + values.Length) % values.Length];
+
+    /// <summary>Reads one actual slot result without accepting another card's status as the selected connection.</summary>
+    private JsonElement NetworkSlotStatus(int slot)
+    {
+        var status = NetworkStatus();
+        if (status.ValueKind == JsonValueKind.Object && status.TryGetProperty("adapters", out var values) && values.ValueKind == JsonValueKind.Array)
+            foreach (var adapter in values.EnumerateArray().Take(2))
+                if (adapter.ValueKind == JsonValueKind.Object && adapter.TryGetProperty("slot", out var number) && number.ValueKind == JsonValueKind.Number && number.TryGetInt32(out int actual) && actual == slot)
+                    return adapter;
+        return default;
+    }
+
+    /// <summary>Uses only metadata returned by GetNetworkStatus; enumeration does not connect or substitute a host interface.</summary>
+    private (string Id, string Description)[] NetworkBridges()
+    {
+        var status = NetworkStatus(); var result = new List<(string, string)>();
+        if (status.ValueKind == JsonValueKind.Object && status.TryGetProperty("bridgeAdapters", out var adapters) && adapters.ValueKind == JsonValueKind.Array)
+            foreach (var adapter in adapters.EnumerateArray().Take(64))
+            {
+                string? id = NetworkString(adapter, "id");
+                if (string.IsNullOrWhiteSpace(id) || id.Length > 512 || id != id.Trim() || id.Any(char.IsControl)) continue;
+                result.Add((id, NetworkString(adapter, "description") ?? id));
+            }
+        return result.ToArray();
+    }
+
+    /// <summary>Displays both hardware slots and real bridge availability, with remote play left as a separate feature.</summary>
+    private string[] NetworkItems(MachineProfile profile)
+    {
+        // Render the actual owner-reported cable for exactly this configured slot.
+        string Slot(int slot)
+        {
+            var adapter = profile.NetworkAdapters.FirstOrDefault(value => value.Slot == slot);
+            return $"ADAPTER {slot + 1}: {NetworkModel(adapter?.Model)}" + (adapter is null ? "" : $" / {adapter.Mode.ToUpperInvariant()} / CABLE {(NetworkFlag(NetworkSlotStatus(slot), "connected") ? "ON" : "OFF")}");
+        }
+        var status = NetworkStatus();
+        return [Slot(0), Slot(1), "REFRESH NETWORK STATUS", status.ValueKind == JsonValueKind.Undefined ? "BRIDGED: CHECKING AVAILABILITY" :
+            NetworkFlag(status, "bridgeAvailable") ? "BRIDGED: AVAILABLE" : "BRIDGED: UNAVAILABLE / NPCAP REQUIRED", "REMOTE PLAY: NOT IMPLEMENTED", "BACK"];
+    }
+
+    /// <summary>Shows editable persisted resources and separately reported live cable/backend outcomes.</summary>
+    private string[] NetworkAdapterItems(MachineProfile profile, int slot)
+    {
+        var adapter = profile.NetworkAdapters.FirstOrDefault(value => value.Slot == slot);
+        if (adapter is null) return ["MODEL: NONE (CHANGE RESTARTS)", "MODE: -", "CABLE: OFF", "MAC: CREATED WHEN ADDED", "I/O BASE: -", "IRQ: -",
+            "BRIDGE ADAPTER: -", "VIRTUAL LAN: DOSE", "STATUS: NO ADAPTER INSTALLED", "REFRESH STATUS", "BACK"];
+        var state = NetworkSlotStatus(slot); var bridges = NetworkBridges();
+        string bridge = bridges.FirstOrDefault(value => value.Id == adapter.HostAdapter).Description ?? adapter.HostAdapter ?? "NONE";
+        string connection = NetworkString(state, "error") ?? NetworkString(state, "description") ?? "CHECKING STATUS";
+        if (adapter.Mode == "bridged" && NetworkStatus().ValueKind != JsonValueKind.Undefined && !NetworkFlag(NetworkStatus(), "bridgeAvailable"))
+            connection = "BRIDGED UNAVAILABLE / NPCAP REQUIRED";
+        return [$"MODEL: {NetworkModel(adapter.Model)} (CHANGE RESTARTS)", $"MODE: {adapter.Mode.ToUpperInvariant()} (CHANGE RESTARTS)",
+            $"CABLE: {(NetworkFlag(NetworkSlotStatus(slot), "connected") ? "ON" : "OFF")}", "MAC: " + adapter.MacAddress,
+            $"I/O BASE: {adapter.IoBase:X4}H (CHANGE RESTARTS)", $"IRQ: {adapter.Irq}" + (adapter.Model == NetworkAdapterProfile.Rtl8029Pci ? " (FIXED PCI ROUTE)" : " (CHANGE RESTARTS)"),
+            "BRIDGE ADAPTER: " + NetworkText(bridge), "VIRTUAL LAN: " + NetworkText(adapter.VirtualLan), "STATUS: " + NetworkText(connection), "REFRESH STATUS", "BACK"];
+    }
+
+    /// <summary>Allocates one persistent locally administered unicast address only for a newly added guest card.</summary>
+    private static string NewNetworkMac(MachineProfile profile)
+    {
+        Span<byte> bytes = stackalloc byte[6];
+        for (int attempt = 0; attempt < 8; attempt++)
+        {
+            System.Security.Cryptography.RandomNumberGenerator.Fill(bytes); bytes[0] = (byte)((bytes[0] & 0xfc) | 2);
+            string address = string.Join(":", bytes.ToArray().Select(value => value.ToString("X2", System.Globalization.CultureInfo.InvariantCulture)));
+            if (profile.NetworkAdapters.All(value => value.MacAddress != address)) return address;
+        }
+        throw new InvalidOperationException("Could not allocate a unique guest MAC address.");
+    }
+
+    /// <summary>Replaces exactly one slot, preserving all other cards, user identities and resources.</summary>
+    private static MachineProfile WithNetwork(MachineProfile profile, int slot, NetworkAdapterProfile? adapter)
+    {
+        var current = profile.NetworkAdapters.FirstOrDefault(value => value.Slot == slot);
+        if (current == adapter) return profile;
+        var values = profile.NetworkAdapters.Where(value => value.Slot != slot).ToList();
+        if (adapter is not null) values.Add(adapter);
+        return profile with { NetworkAdapters = values.OrderBy(value => value.Slot).ToArray() };
+    }
+
+    /// <summary>Finds one complete conflict-free resource set before requesting a cold owner replacement.</summary>
+    private static MachineProfile WithNetworkModel(MachineProfile profile, int slot, int delta)
+    {
+        var current = profile.NetworkAdapters.FirstOrDefault(value => value.Slot == slot);
+        string[] models = profile.IsPciBiosBoard ? ["none", NetworkAdapterProfile.Ne2000Isa, NetworkAdapterProfile.Rtl8029Pci] : ["none", NetworkAdapterProfile.Ne2000Isa];
+        string model = CycleNetworkValue(models, current?.Model ?? "none", delta);
+        if (model == "none") return WithNetwork(profile, slot, null);
+        string mac = current?.MacAddress ?? NewNetworkMac(profile);
+        int[] bases = model == NetworkAdapterProfile.Ne2000Isa ? [0x300, 0x320] : [0x6000, 0x6020];
+        int[] irqs = model == NetworkAdapterProfile.Ne2000Isa ? [10, 9] : [11];
+        foreach (int basis in bases) foreach (int irq in irqs)
+        {
+            var adapter = (current ?? new NetworkAdapterProfile { Slot = slot, MacAddress = mac }) with
+                { Model = model, IoBase = basis, Irq = irq, CableConnected = false };
+            var requested = WithNetwork(profile, slot, adapter);
+            try { requested.Validate(); return requested; } catch (ArgumentException) { }
+        }
+        throw new ArgumentException("No free network I/O window and IRQ remain. Change the other card or sound/MPU resources first.");
+    }
+
+    /// <summary>Validates only a requested network change locally; the real owner still validates and commits its revision.</summary>
+    private void ChangeNetwork(Func<MachineProfile, MachineProfile> change)
+    {
+        try { ChangeProfile(profile => { var requested = change(profile); requested.Validate(); return requested; }); }
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException) { _notice = NetworkText(error.Message); }
+    }
+
+    /// <summary>Changes hardware through cold plans and cable state solely through the existing asynchronous owner queue.</summary>
+    private void ActivateNetwork(int slot, int delta)
+    {
+        if (_selected == 10) { OpenPage("NETWORK"); return; }
+        if (_selected == 9) { RefreshNetworkStatus(); return; }
+        if (_selected == 0) { ChangeNetwork(profile => WithNetworkModel(profile, slot, delta)); return; }
+        var profile = Volatile.Read(ref _status)?.Configuration;
+        var adapter = profile?.NetworkAdapters.FirstOrDefault(value => value.Slot == slot);
+        if (adapter is null) { _notice = "ADD A NETWORK ADAPTER FIRST"; return; }
+        if (_selected == 2)
+        {
+            bool connected = !NetworkFlag(NetworkSlotStatus(slot), "connected");
+            if (connected && adapter.Mode == "bridged" && (adapter.HostAdapter is null || !NetworkFlag(NetworkStatus(), "bridgeAvailable")))
+            { _notice = "BRIDGED UNAVAILABLE / SELECT AN AVAILABLE HOST ADAPTER"; return; }
+            Command("SetNetworkConnection", new { slot, connected });
+            Interlocked.Exchange(ref _networkRefreshAt, 0); _notice = "NETWORK CABLE CHANGE REQUESTED"; return;
+        }
+        if (_selected == 3) { _notice = "THE MAC ADDRESS IS PERSISTENT AND RETAINED IN SAVED PCS"; return; }
+        if (_selected == 7) { _notice = "HOST-ONLY GUESTS SHARE THIS VIRTUAL LAN; SET A CUSTOM NAME IN THE PC FILE"; return; }
+        if (_selected == 8) return;
+        ChangeNetwork(current =>
+        {
+            var value = current.NetworkAdapters.First(item => item.Slot == slot);
+            var changed = value;
+            if (_selected == 1)
+            {
+                string mode = CycleNetworkValue(new[] { "nat", "host-only", "bridged" }, value.Mode, delta);
+                changed = value with { Mode = mode, CableConnected = false, HostAdapter = mode == "bridged" ? value.HostAdapter : null };
+            }
+            else if (_selected == 4) changed = value with { IoBase = Cycle(value.Model == NetworkAdapterProfile.Ne2000Isa ? new[] { 0x300, 0x320 } : new[] { 0x6000, 0x6020 }, value.IoBase, delta) };
+            else if (_selected == 5 && value.Model == NetworkAdapterProfile.Ne2000Isa) changed = value with { Irq = value.Irq == 10 ? 9 : 10 };
+            else if (_selected == 6)
+            {
+                if (value.Mode != "bridged") throw new ArgumentException("Choose bridged mode before selecting a host adapter.");
+                var bridges = NetworkBridges();
+                if (bridges.Length == 0) throw new ArgumentException("Bridged networking is unavailable. Install Npcap and refresh the adapter list.");
+                int position = Array.FindIndex(bridges, item => item.Id == value.HostAdapter);
+                int next = position < 0 ? (delta < 0 ? bridges.Length - 1 : 0) : (position + delta + bridges.Length) % bridges.Length;
+                changed = value with { HostAdapter = bridges[next].Id, CableConnected = false };
+            }
+            return WithNetwork(current, slot, changed);
+        });
+        Interlocked.Exchange(ref _networkRefreshAt, 0);
     }
 
     /// <summary>Builds a revision-checked configuration plan and requests the required controlled power cycle.</summary>

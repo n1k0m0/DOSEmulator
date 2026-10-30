@@ -1,5 +1,56 @@
 # Performance: gemessene Interpreter- und Geräteoptimierungen
 
+## APM und Host-Pacing, lokaler C44/C44b vom 30. Oktober 2026
+
+Die originalen Windows-95/98-Energietreiber können über den neuen begrenzten
+[APM-BIOS-Pfad](hardware/APM-BIOS.md) eine untätige CPU mit wirklichen
+Gastbefehlen anhalten. Ein tatsächlicher emulierter Interrupt weckt sie wieder.
+Das vermeidet die bisherige Windows-Leerlaufschleife, ohne CPU-Takt,
+Instruktions-Clocks oder Gerätefristen zu verändern. Der GUI-Pacer bewahrt bis
+zu fünf Sekunden Rückstand für wirkliche Nachholarbeit und wartet bei weniger
+als einer Millisekunde offener HLT-Arbeit kurz auf dem Host. Laufende CPUs
+bekommen bei Rückstand weiterhin keine solche Wartezeit.
+
+Serielle Messungen mit dem tatsächlichen Produktions-Pacer, normalem .NET und
+60-Hz-Headless-Bildabfragen ergeben folgende begrenzte Ergebnisse. Es werden
+virtuelle Nanosekunden durch gemessene monotone Hostzeit geteilt; kein
+vorgegebener Prozentwert und keine FPS-Hochrechnung.
+
+| Tatsächliche Windows-Last | Profil | Gastzeit / Hostzeit |
+|---|---|---:|
+| 95 OEM/950a, Leerlauf nach Originaltreiber-Neustart, 10 s | 100 MHz, 64 MiB | 100,000 % |
+| 95, geöffnetes Datei-/GDI-/Wave-Testprogramm, 10 s | 100 MHz, 64 MiB | 99,992 % |
+| 98 SE, Leerlauf nach Originaltreiber-Installation, 10 s | 133 MHz, 128 MiB | 100,005 % |
+| 98 SE, geöffnetes Testprogramm mit periodischem Dateischreiben, 10 s | 133 MHz, 128 MiB | 99,998 % |
+| 98 SE, vier Sekunden ab tatsächlich aktiver SB16-DMA bis natürlichem DONE | 133 MHz, 128 MiB | 99,654 % |
+| 95, erste zehn Sekunden eines kalten Programmstarts | 100 MHz, 64 MiB | 43,564 % |
+| 98 SE, erste zehn Sekunden eines kalten Programmstarts | 133 MHz, 128 MiB | 78,936 % |
+
+Das sind verschiedene reale Lasten, keine ABBA-Zusage eines CPU-Codegewinns.
+Beim letzten Win98-Kaltstarttest verwirft der Fünf-Sekunden-Pacer keinen Anker;
+der Rückstand bleibt trotzdem zunächst bestehen. Beim Win95-Start wird die
+größere Grenze einmal überschritten. Auch ein gesonderter Win95-Bootabschnitt
+bleibt deutlich unter Echtzeit. **Allgemeines 1:1 bei Boot, Programmstart oder
+dauernder CPU-Last ist weiterhin offen.** Der Win95-Leerlauf verbraucht in seiner
+Zehn-Sekunden-Probe 437,5 ms Prozess-CPU, Win98 1125 ms; das sind keine nativen
+GUI-/GL-/Hostaudio-Messungen. Die zuvor verworfenen CPU-/I/O-/Audioprototypen
+werden nicht übernommen.
+
+Beide Windows-Versionen bestehen mit originalen S3-/SB16-Treibern, vollständigen
+1027 DAT-/512 Proofbytes, je 94620 exakten inneren RGB-Pixeln, natürlichen
+Wave-/Anwendungsschluss-APIs und regulärem Shutdown. Strikte volle C44-Fortsetzungen
+vergleichen sämtliche 64 beziehungsweise 128 MiB und Geräte-/Schedulerzustände;
+der aktive Win98-Schnitt führt zwei weitere Sekunden mit 96000 gleichen späteren
+Stereo-Frames aus. Kein neues unabhängiges Sample-/ISR-/EOI-/Mixer- oder
+Hostaudio-Oracle wird daraus abgeleitet. Nachweise und Bereitstellungsstand:
+`artifacts/tests/windows-apm-realtime-release-path.txt`.
+
+## Benutzerstarter C18 vom 29. Oktober 2026
+
+Die Prüfung des tatsächlichen `run-win95.cmd` ergab, dass dessen privater Unterstarter weiterhin den eingefrorenen V12 lud. Die später geprüften C11–C15-CPU-Pfade sowie Debuganzeige, Videoworker und Hostuhrpolitik waren dort deshalb nicht enthalten. Die reparierten privaten Windows-Starter wählen jetzt den vollständig getesteten C18 mit diesen bereits belegten Optimierungen. Die bisherigen V12-Starter und ursprünglichen Benutzerplatten bleiben als getrennte Rückfälle erhalten. Neue Funktionsnachweise bei 100/133 MHz, 64 MiB und zusätzlich 128 MiB sind in `artifacts/tests/win95-usability-release-path.txt` gebunden.
+
+C18 ergänzt RAM-Auswahl, Kalender-Fortsetzen und tatsächliche Original-S3-Farbpfade; diese Reparatur enthält keine neue vergleichende Gesamtzeitmessung. Frühere Gewinne gelten weiterhin ihren ausdrücklich benannten Lasten und Kohorten. **Ruckelfreie allgemeine Windows-Ausführung beziehungsweise 1:1 in jeder Konfiguration ist weiterhin nicht erreicht.** Die Debuganzeige ist in den reparierten Voreinstellungen ausgeschaltet; der Videoworker bleibt optional. Die stündliche Automation ist auf Benutzerwunsch pausiert.
+
 ## C15: tatsächliche Windows-Profile und verworfener Rechenprototyp
 
 Zwei neue reale OEM-/950-Windows-Kaltstarts bei100/133MHz mit jeweils32MiB bestehen mit dem unveränderten C15, Original-S3/SB16, eigenen Datei-/GDI-/Wave-APIs und regulärem Shutdown. Vier strikte volle Fortsetzungen/72 ganze Vergleiche betreffen Desktop und Wave-DONE. Diese Funktionsprüfung ist getrennt von der folgenden Zeitmessung; sie fügt keine aktiven DMA-Schnitte oder unabhängige Hostaudio-/Mixerabnahme hinzu.

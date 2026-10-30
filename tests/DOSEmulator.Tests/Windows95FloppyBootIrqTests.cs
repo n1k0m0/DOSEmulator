@@ -122,11 +122,11 @@ internal static class Windows95FloppyBootIrqTests
     /// <summary>Checks actual ICW/OCW1 writes and their ROM provenance, rather than accepting a host-created PIC mask.</summary>
     private static void CheckPost(PcMachine machine, Trace trace, int drives, bool windows)
     {
-        byte mask = windows && drives > 0 ? (byte)0xbc : (byte)0xfc;
+        byte mask = windows ? (drives > 0 ? (byte)0xb8 : (byte)0xf8) : (byte)0xfc;
         Port[] master = trace.Ports.Where(p => p.Write && p.Address == 0x21).ToArray();
         Port[] slave = trace.Ports.Where(p => p.Write && p.Address == 0xa1).ToArray();
         Check(master.Select(p => p.Value).SequenceEqual(new uint[] { 8, 4, 1, mask }),
-            "Actual POST master initialization/mask differs; installed Windows IRQ6 must be unmasked.");
+            "Actual POST mask differs; Windows cascade and installed IRQ6 must be unmasked.");
         Check(slave.Select(p => p.Value).SequenceEqual(new uint[] { 0x70, 2, 1, 0xff }),
             "The slave PIC initialization or mask changed.");
         Check(master.Concat(slave).All(p => p.Width == 1 && p.Instruction is >= 0xf0000 and <= 0xfffff),
