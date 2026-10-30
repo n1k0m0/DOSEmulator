@@ -1,5 +1,14 @@
 # DOSE – Implementierungsstand
 
+**Performance experiments after checkpoint `5c910a2`, 30 October 2026:** A private
+register/RAM JIT passes full-state differential checks and saves 22.20% in its
+own CPU/RAM loop, but needs 2.33%/16.76% more time in matched Win95/98 boot
+intervals. It is not promoted. An actual WHP virtual processor executes finite
+own RAM code correctly; a DOSE hardware-virtualization backend, its timing/device
+integration and Windows 1:1 are not implemented by this probe. C44b products and
+user launchers remain unchanged, and the automation stays paused. Details and
+scope: [measured experiments](PERFORMANCE.md#dynamic-execution-experiments-30-october-2026).
+
 **Lokaler Echtzeit-Teststand C44b vom 30. Oktober 2026:** Der neue begrenzte
 [APM-1.1-BIOS-Pfad](hardware/APM-BIOS.md) lässt originale Windows-Energietreiber
 die untätige Gast-CPU wirklich anhalten und durch tatsächliche IRQs wecken.

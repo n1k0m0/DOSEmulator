@@ -1,5 +1,54 @@
 # Performance: gemessene Interpreter- und Geräteoptimierungen
 
+## Dynamic execution experiments, 30 October 2026
+
+The private follow-up to checkpoint `5c910a2` tests generated CLR code with
+register locals, arithmetic-flag liveness and individually guarded RAM accesses.
+The existing complete code-byte/context checks, current data permissions,
+dirty-bit checks, code-write aliases, TLB history, Step checkpoints and owner
+deadlines remain mandatory. Unsupported instructions and control flow retain
+the reference paths. This experiment does not implement native block chaining
+or fault-based fastmem.
+
+| Measured workload | Change in host time |
+|---|---:|
+| Own fixed CPU/RAM loop, four serial ABBA processes | −22.20% |
+| Windows 95, actual boot interval, 100 MHz / 64 MiB, BAAB | +2.33% |
+| Windows 98 SE, actual boot interval, 133 MHz / 128 MiB, ABBA | +16.76% |
+
+Each Windows process executes 200 million warmup steps followed by four measured
+40-million-step intervals, with normal .NET tiers and the same private host
+processor affinity. These eight runs use fresh branches of the explicitly owned
+clean C44 shutdown media. They cover bounded boot progress; they do not certify
+another complete desktop/startup/shutdown or strict Windows snapshot import.
+All initial states, thirty subsequent whole CPU/RAM/VRAM/device/scheduler
+comparison boundaries, frame digests, published PCM blocks and final actual
+journals agree. No state fields are excluded. This is not another active-DMA,
+independent audio-mix, native GUI or host-audio acceptance.
+
+The generated region covers only 0.0483% of measured Win95 elements and 9.5876%
+of Win98 elements. Across warmup plus measurement it compiles 1400/5402 methods.
+Short admitted regions and compilation/cache turnover are therefore important
+follow-up targets; their individual contribution has not been isolated.
+**The prototype is not promoted.** The 480 selected existing CPU cases plus
+560 register and 280 RAM/ALU full-state differential vectors pass with forced
+generated execution; these are private executions, not new registered tests or
+a new full-suite run. The frozen C44b products and CPU sources remain unchanged.
+
+The same investigation verifies Windows Hypervisor Platform availability through
+the documented capability API and executes three finite own real-mode RAM
+programs through an actual hardware virtual processor, obtaining the expected
+counter registers and HLT exits. All private partitions are deleted. This is a
+CPU feasibility result, **not a DOSE WHPX backend or Windows performance result**.
+Device exits, the existing four-clock/REP timing contract, interrupts, historical
+CPU behavior and complete snapshots still need a separate implementation and
+validation. No Windows feature or host endpoint was enabled. API reference:
+[Microsoft WHP](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-platform/hypervisor-platform).
+
+General 1:1 remains open. Private results and exploratory exclusions are pinned by
+`artifacts/tests/jit-residency-release-path.txt`. The automation remains paused;
+existing user machines, launchers and loaded modules are unchanged.
+
 ## APM und Host-Pacing, lokaler C44/C44b vom 30. Oktober 2026
 
 Die originalen Windows-95/98-Energietreiber können über den neuen begrenzten
