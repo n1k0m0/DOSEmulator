@@ -4,6 +4,50 @@ Stand: 30. Oktober 2026. Diese Notiz ordnet öffentlich dokumentierte Techniken
 den gemessenen DOSE-Lasten zu. Sie ist ein Forschungs- und Messplan, keine
 Behauptung, dass ein neuer Pfad bereits implementiert oder abgenommen ist.
 
+## WHPX als Hardwarepfad für DOSE
+
+WHPX ist QEMUs Backend für die Windows Hypervisor Platform (WHP). Für DOSE wäre
+ein eigener WHP-Backend ein ernsthafter Weg zu mehr CPU-Durchsatz: Gastbefehle
+laufen auf einem virtuellen x86-Prozessor statt durch den C#-Decoder. Auf diesem
+Host hat ein isolierter eigener Real-Mode-RAM-Test mit `WHvRunVirtualProcessor`
+bereits erwartete Register und HLT-Exits geliefert. Das ist ein CPU-Nachweis,
+kein DOSE-Backend, Windows-Start oder 1:1-Nachweis; siehe
+`artifacts/jit-residency-20261030-5c910a2/whp-ram-run.json`.
+
+Der kleinste aussagekräftige DOSE-Versuch wäre eine **separate, wählbare
+CPU-Engine** mit genau einem virtuellen Prozessor und einer eigenen Kopie eines
+sauber heruntergefahrenen PCs:
+
+1. DOSE-RAM und ROM seitenweise als Guest Physical Address mappen; Video-MMIO
+   und nicht direkt abbildbare Gerätebereiche als Exits behandeln. Die WHP-API
+   bietet hierfür `WHvMapGpaRange` sowie Dirty-Page-Tracking. Auch bei direkt
+   gemapptem RAM müssen DOSEs Code-Aliase und Snapshot-Dirty-Grenzen stimmen.
+2. Port-I/O, MMIO, CPUID/MSR, HLT und Interruptfenster an bestehende DOSE-Geräte
+   und den PIC anbinden. Der virtuelle Prozessor wird nach jedem Exit durch den
+   Owner wieder gestartet. Zahl, Art und Dauer dieser Exits pro realem Win95/98-
+   Abschnitt sind die erste wichtige Geschwindigkeitsmessung. QEMU nennt gerade
+   nicht durchgereichte Legacy-VGA-Zugriffe als WHPX-Bremse; das S3-Fenster ist
+   daher ein eigener Schwerpunkt.
+3. Vor Snapshot oder Engine-Wechsel alle architektonischen Register,
+   x87/XSAVE-/Interruptzustände, RAM/VRAM, Geräte und DOSE-Fristen erfassen und
+   nach Rückkehr in die Software-Engine vollständig vergleichen. Die WHP-API
+   bietet Register- und VP-State-Zugriff; dessen Abbildung auf DOSEs Format
+   ist noch zu entwickeln und für 486/Pentium-Gastverhalten zu prüfen.
+4. Zeitmodell separat lösen. `WHvRunVirtualProcessor` liefert Kontrolle bei
+   Exits oder explizitem Abbruch. Die dokumentierten VP-Zähler umfassen Laufzeit,
+   Intercepts und Ereignisse, aber keinen direkten Zähler jedes ausgeführten
+   Gastbefehls. DOSEs vier Clocks pro Schritt und exakte Gerätefristen lassen
+   sich daraus nicht unmittelbar übernehmen. Ein WHPX-Echtzeitmodus bräuchte
+   deshalb einen ausdrücklich getesteten neuen Takt-/Exit-Vertrag; bloß die
+   angezeigte CPU-Frequenz zu setzen ist kein gemessener Durchsatzgewinn.
+
+**Go/No-Go:** Erst einen kurzen echten DOS-Boot, dann Original-Win95/98 mit
+S3/SB16 und das gleiche AVI wie bei C45 auf einer privaten Kopie ausführen.
+WHPX- und Softwarelauf müssen unabhängige Datei-, Bild- und Audio-Oracles
+bestehen. Zusätzlich 10- und 20-Sekunden-Abschnitte, Exits pro Sekunde,
+Exit-Zeitanteile, virtuelle Gastzeit/Hostzeit und Snapshot-Rückkehr messen.
+Ein schneller RAM-Mikrotest allein entscheidet diese Frage nicht.
+
 ## Ausgangspunkt
 
 Der eingefrorene C45 erreicht mit Produktions-Pacer bei Doom II/133 MHz 46,305 %,
@@ -75,4 +119,6 @@ Durchsatzgewinn.
 - [QEMU: TCG Instruction Counting](https://www.qemu.org/docs/master/devel/tcg-icount.html) — virtuelle Zeit und Grenze zur Zyklusgenauigkeit.
 - [DOSBox Staging: CPU](https://www.dosbox-staging.org/0.83/manual/system/cpu/) — dynamischer Kern für rechenintensive DOS-Programme.
 - [Microsoft: Windows Hypervisor Platform](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-platform/hypervisor-platform) und [CPUID-Exit](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/cpuidaccess) — Ausführung und VMM-Exits.
+- [Microsoft: GPA-Mapping](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/whvmapgparange), [Dirty-Bitmap](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/whvquerygparangedirtybitmap) und [VP-Zähler](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/whvgetvirtualprocessorcounters) — Speicher, Snapshots und Messgrenzen.
+- [QEMU: WHPX](https://www.qemu.org/docs/master/system/whpx.html) — Beschleuniger und bekannte Legacy-VGA-/PIC-Grenzen.
 - [Microsoft: .NET CPU-Profiling](https://learn.microsoft.com/en-us/dotnet/core/diagnostics/debug-highcpu) — Grenzen von `dotnet-trace` und Profiling-Alternativen.
