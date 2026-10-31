@@ -1,5 +1,252 @@
 # Performance: gemessene Interpreter- und Geräteoptimierungen
 
+## C47r2: Windows 95 driver copies, 31 October 2026
+
+Four approved safety copies now have working original RTL8029/TCP-IP drivers
+and the original APM drivers. The main copy received APM in this task; the other
+three already had it. After each real network transfer and application close,
+networking was disconnected for one stock-pacer idle sample: two host seconds
+of warmup and ten measured host seconds, 100 MHz / 64 MiB, unchanged C47r2.
+
+| Windows 95 safety copy | Simulated time / host time |
+|---|---:|
+| Main | 99.999774% |
+| APM | 100.000567% |
+| Load-test installation, idle | 99.999685% |
+| Multimedia installation, idle | 99.995268% |
+
+These are idle desktop samples, with actual APM halt behavior. They do not
+measure a running load-test program or video playback. No CPU/device clock,
+instruction work or deadline changed, and no new emulator optimization/build
+was introduced here. Differences from older installations or measurements are
+not a matched code-speedup result. Continuous 1:1 under games/video remains open.
+All four copies completed normal Windows restart and shutdown. The installed
+114-product C47r2 runtime remains byte-identical; its existing regression proof
+is retained, without a new full-suite run.
+
+See [safety copies and retained originals](SETTINGS-AND-LAUNCHERS.md#windows-95-safety-copies-31-october-2026)
+and `artifacts/tests/win95-drivers-release-path.txt`.
+
+## C47: shared launchers, settings and presentation, 30 October 2026
+
+All 13 root launchers now use one immutable current runtime, C47r2, including
+the previously measured C46 CPU/device optimizations. Selecting that runtime
+does not replace an already loaded process or install Windows guest drivers.
+The original PC disks and journals remain in place. Each of the eight Windows
+PC configuration files has a text backup; its existing non-network hardware
+and all media bindings are preserved.
+
+The GUI owner now admits host frame conversion at 30, 60 or 120 Hz (default 60),
+instead of attempting one capture after every execution batch. The first image
+of a replacement PC is forced. Old host frames are not queued for catch-up;
+guest execution, device/audio work, scheduler deadlines and reader leases are
+unchanged. This is a frontend workload bound, with permanent admission tests.
+No measured overall percentage gain is claimed for it; the headless probes
+below are not a GUI-before/after comparison. Multicore video remains optional
+and off by default, with its earlier limited pixel-conversion scope.
+
+Fresh private network-check PCs using C47's actual S3/RTL8029 drivers give these
+separate stock-pacer samples after two host seconds of warmup and ten measured
+host seconds:
+
+| Actual guest/work | Profile | Simulated time / host time |
+|---|---|---:|
+| Win95 A desktop, older network-test installation without APM | 100 MHz / 64 MiB | 77.954% |
+| Win98 SE desktop with original APM driver | 133 MHz / 128 MiB | 100.027% |
+| Win98 SE original Media Player, same own RLE8/PCM AVI | 133 MHz / 128 MiB | 43.477% |
+
+The video measurement covers 4.347979670 simulated seconds in 10.000656600 host
+seconds. Its 379 valid marker observations include 88 distinct source frames,
+indices 14 through 101; SB16 DMA is active at the observed end, unsigned 8-bit
+mono at 11025 Hz. The stock pacer reports one recovery. The application later
+reaches its natural stopped state at 18.00 seconds, closes, and Windows shuts
+down normally. Samples stay in RAM; no host audio endpoint or recording is used.
+
+These are current absolute workload samples. Different guest installations,
+warmup, phases and host conditions prevent treating their differences from
+the C46 table as another code improvement. APM permits the idle guest CPU to
+halt; it does not make a busy decoder or video codec run at 1:1. Continuous
+100% under games/video remains open. No clock or device deadline was changed.
+
+The Windows networking/continuation probes use the first C47 VM identity.
+Final C47r2 adds only the tested temporary-boot autosave detachment in Runtime;
+Contracts/Core/CPU/Hardware are byte-identical. Those earlier strict guest
+imports remain associated with their actual build. The shipped C47r2 has its
+own complete CLI save/load comparison, old-build rejection, 15275 regressions
+and six controlled native network groups. No snapshot migration is implied.
+
+See [settings/launchers](SETTINGS-AND-LAUNCHERS.md) and the private release
+evidence at `artifacts/tests/settings-network-release-path.txt`.
+
+## C46: profiled Doom II and actual Windows video, 30 October 2026
+
+C46 promotes a bounded interpreter extension, with current code/segment/address/
+permission/dirty/alias checks and the original four nominal clocks. Harmless
+operand/address/segment prefixes, FE/FF INC/DEC, F6/F7 TEST/NOT/NEG, C6/C7 stores,
+memory MOVSX/MOVZX, PUSH immediate or r/m, LEAVE and register SHLD/SHRD avoid
+repeated scalar decoding. Exact-entry backedges replay only inside the original
+scheduler budget. TEST retains its data-before-immediate TLB sequence; group-5
+PUSH retains its full checkpoint and sequential displacement-byte fetches.
+Constructing the restart record directly avoids an intermediate large copy.
+
+The explicit VGA capability permits one simple mode-0 byte store only after
+current aperture/bank/plane/raster/mask and S3 target/MMIO checks. Latches,
+revision changes, full CPU device checkpoints and all other bus paths remain.
+Both target and revision backing must be disjoint from retained code. Current
+single-page DRAM proofs still reject mappings, holes, bad extents and A20/range
+boundaries. No JIT, disk/audio worker, skipped instruction, changed CPU clock or
+altered device deadline is promoted.
+
+Passive actual-workload profiles place 97–99% of measured owner-plus-scanout
+time in execution and 1–3% in scanout. Managed stack sampling includes inlining
+and a separate gate wait; these are not exact cycle percentages. Instrumented
+opcode counts identify memory counters and SHLD/SHRD in Doom and memory TEST/
+PUSH plus 16-bit size prefixes in the original players. Instrumented passes and
+earlier CLR compiler/lease/chaining experiments remain separate diagnostics.
+
+Twelve final serial processes compare the frozen C45 with all five actual C46
+VM modules. Each uses the same private host-core-20 affinity and normal .NET
+tiers, with 200M Doom warmup steps or eight AVI virtual seconds, followed by four
+40M-step or two-virtual-second sections. All nine initial and 45 later entire
+CPU/RAM/VRAM/device/scheduler boundaries, images, timed PCM and final actual
+journals agree. This same-data diagnostic replay is not a strict cross-build
+snapshot import or format migration. Earlier prototype values are not the final
+C46 performance figures.
+
+| Matched actual workload | C45 mean host time | C46 mean host time | Less host time |
+|---|---:|---:|---:|
+| Original Doom II / 133 MHz, ABBA | 7.592371 s | 6.350515 s | 16.36% |
+| Win95 original Media Player / AVI, BAAB | 19.891461 s | 18.408317 s | 7.46% |
+| Win98 original Media Player / same AVI, ABBA | 20.588966 s | 17.434305 s | 15.32% |
+
+These are observed means for these sections. Process spread is substantial,
+especially on Win95, where one C45 run is faster than both C46 runs; these
+figures are not a guaranteed improvement for every video phase or host load.
+All individual values and phase spread remain in the private report. Private
+affinity is a measurement control, with no production setting. These relative
+results must be kept separate from the following actual unpinned stock-pacer
+probes on four fresh cold branches. Each first probe has two host seconds of
+warmup, ten measured seconds and a 60-Hz headless capture target:
+
+| Actual C46 load | Profile | Guest time / host time |
+|---|---|---:|
+| Original Doom II DEMO1, PCM/FM | 486 / 33 MHz / 8 MiB | 100.050% |
+| Same original timedemo, first measured phase | P54C / 133 MHz / 128 MiB | 100.076% |
+| Later, heavier timedemo phase, 20 host seconds | Same P54C profile | 79.690% |
+| Original Media Player, own RLE8/PCM AVI | Win95 / 100 MHz / 64 MiB | 43.547% |
+| Original Media Player, same AVI | Win98 / 133 MHz / 128 MiB | 33.486% |
+
+The later Doom result establishes that the first 100% window is not sustained
+100% across the demo. Both Windows video probes remain far below 1:1. Their
+three-row input-frame markers advance with real SB16 DMA; a stopped player or
+idle clock is not accepted as a video result. The input remains the wholly
+generated 18-second, 320×240, 20-fps MSRLE8/PCM AVI from the previous section.
+Win95 retains one stopped original player behind its active instance; Win98
+uses one original player. Natural 18-second completion and application close
+are observed in both guests. The first short Win98 completion attempt stopped
+at its host bound and was not accepted; a later complete virtual-time run proves
+the natural end. No additional cold start is counted for that repeat playback.
+
+Both Doom cuts bind 3591 independent original-WAD HUD pixels. Four actual
+same-build SnapshotStore imports retain all fields through 72 whole comparisons:
+8 MiB/8M steps per side for Doom33; 128/64/128 MiB and 40M steps per side for
+Doom133/Win95/Win98. The two video cuts have active real DMA. Later PCM is only
+hashed in RAM; there is no new independent full-mixer or native host-audio test.
+Regular Windows shutdown reaches the original safe-to-turn-off screen in both
+systems; controller exit alone is not counted as shutdown. All own owners exit.
+
+C46 passes 15252/15252 registered regressions, including 283 added cases and
+retained scalar futures. Eighteen old admission-denial expectations are updated
+to the new supported encodings, without weakening the remaining guards. Final
+builds have zero warnings/errors; source quality and state generation pass,
+with unchanged 48 types, 957 members and 43 callback bodies. The actual CLI
+compares 10001 direct steps with 10000 plus save/load plus one: whole RAM/state/
+image and 36 other report fields agree. Exactly four capture UUIDs are checked
+separately. A real old C45 import is rejected before a branch with the existing
+nonzero CLR abort; no migration or controlled exit 1 is claimed.
+
+`run-doom2-media.cmd`, `run-win95-media.cmd` and `run-win98-media.cmd` open
+separate own C46 test copies with 114 frozen products, fresh journals and the
+own movie. Existing PCs, launchers and loaded runtimes are preserved. No native
+window/input/focus/GL/audio endpoint or recording is used during preparation.
+Other codecs, Windows-native games/3D and universal 1:1 remain open. The paused
+automation remains paused; there is no new commit or push.
+Evidence: `artifacts/tests/games-media-opt-release-path.txt`.
+
+## C45: original Doom II and Windows multimedia, 30 October 2026
+
+The frozen C45 build at checkpoint `2d896b3` was additionally checked with
+original Doom II and original Windows Media Player (`mplayer.exe`). These actual
+applications do not reproduce the earlier own Win32 arithmetic-loop gains.
+
+Four genuine cold starts use fresh private branches: two DOS/Doom profiles and
+Windows 95 OEM/950 and Windows 98 SE. Doom runs its original IWAD `DEMO1` with
+`-timedemo demo1` and SB16 PCM/FM. Each active scene matches 3591 independent WAD
+HUD pixels. This unthrottled timedemo is a bounded game workload, not a measurement
+of normal interactive game FPS or a historical CPU calibration.
+
+The multimedia input is wholly generated: an 18-second, 320×240, 20-fps Microsoft
+RLE8 AVI with synthesized unsigned-8-bit mono PCM at 11025 Hz. Every one of its
+360 independently decoded RGB frames matches the generated input. The original
+guest file functions copy it from an own RO FAT12 floppy to the guest hard disk;
+the original players then actually play it with active SB16 DMA. No host audio
+endpoint, recording or WAV/PCM output file is used.
+
+Each following probe uses the production pacer, two host seconds of warmup and
+ten measured host seconds, with a 60-Hz headless-capture target and ordinary
+unpinned .NET execution. Percentages are measured guest time divided by host
+time, not application FPS:
+
+| Actual C45 workload | Profile | Guest time / host time |
+|---|---|---:|
+| Original Doom II DEMO1, PCM/FM | 486 / 33 MHz / 8 MiB | 100.083% |
+| Original Doom II DEMO1, PCM/FM | P54C / 133 MHz / 128 MiB | 46.305% |
+| Original Media Player, generated AVI | Win95 / 100 MHz / 64 MiB | 33.001% |
+| Original Media Player, same AVI | Win98 / 133 MHz / 128 MiB | 25.088% |
+
+The three lagging probes each report one pacer debt-anchor resynchronization;
+their percentages still use the entire actual measured time difference. All
+997 AVI observations have valid, agreeing three-row frame-number markers. During
+the measured intervals the observed indices advance from 43 to 109 under Win95
+and 41 to 91 under Win98. These observations establish continued rendering, not
+complete delivery of every source frame. The Win95 cut retains a second stopped
+original player behind the active instance. No native GL or host-audio result is
+inferred from the headless probes.
+
+Twelve separate serial comparison processes replay identical actual active data
+under C44b and C45. Each variant has the same private host-core-20 affinity and
+normal .NET tiers. Doom uses 200 million warmup steps and four measured
+40-million-step intervals. AVI uses eight virtual seconds of warmup and four
+measured two-virtual-second intervals, without injected input. Its five observed
+phase images differ and subsequent PCM publication and instruction counts
+continue to increase. All nine initial and 45 later whole CPU/RAM/VRAM/device/
+scheduler boundaries, scanouts, timed PCM blocks and final actual journals
+agree, without state-field exclusions. This diagnostic cross-build data replay
+is not a strict product snapshot import or a format migration.
+
+| Matched actual workload | C44b mean host time | C45 mean host time | Result |
+|---|---:|---:|---|
+| Doom II / 133 MHz, ABBA / 160M measured steps | 7.160896 s | 6.849115 s | 4.35% less host time |
+| Win95 AVI, ABBA / 8 measured virtual seconds | 15.091835 s | 15.148075 s | No demonstrated gain; mean 0.37% higher |
+| Win98 AVI, BAAB / 8 measured virtual seconds | 18.970661 s | 19.305230 s | No demonstrated gain; mean 1.76% higher |
+
+The AVI individual values and host drift remain in the private report; these
+small mean differences do not establish a general regression. Absolute rates
+from the pinned, sparsely captured comparison runs must not be substituted for
+the separate production-pacing probes. General 100% for games and multimedia
+remains open. Windows-native games, DirectX/3D, other codecs, long play sessions,
+regular game exit and new Windows shutdown acceptance are not established here.
+Earlier pending Paint and player-menu attempts remain excluded diagnostics.
+
+No product source or product binary changes in this follow-up. The accepted
+14969 C45 regressions retain their prior result; there is no new full-suite run.
+The five frozen VM modules in both frontends and the named own source files are
+rechecked. The ordinary Doom launcher selects a different CPU/Core/Runtime DLL
+set, so the numbers above describe the separate frozen C45 test branch. Personal
+game COWs and working Windows PCs remain unopened. All own controllers exit;
+that action is not a guest shutdown. Automation remains paused and no new
+commit/push is performed. Evidence: `artifacts/tests/games-multimedia-release-path.txt`.
+
 ## C45: measured Windows CPU/RAM load, 30 October 2026
 
 The guarded decoder now admits register shifts/rotates (`C0/C1/D0/D1/D2/D3`)

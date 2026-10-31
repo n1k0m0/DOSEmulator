@@ -442,8 +442,8 @@ internal static class DecodedBatchTests
             });
         }
         foreach (byte[] unsupportedValue in new byte[][]
-            { [0x6a,1], [0x8f,0xc0], [0xca,0,0], [0xff,0xd0], [0xfa], [0xfb], [0xd9,0xe8], [0x66,0x90],
-              [0xf3,0xa4], [0x0f,0xa2], [0xc7,0xc8,1,2,3,4], [0x86,5,0,0x70,0,0], [0x8d,0xc0], [0x0f,0xb6,5,0,0x70,0,0] })
+            { [0xe2,0xfe], [0x8f,0xc0], [0xca,0,0], [0xff,0xd0], [0xfa], [0xfb], [0xd9,0xe8], [0xf0,0x90],
+              [0xf3,0xa4], [0x0f,0xa2], [0xc7,0xc8,1,2,3,4], [0x86,5,0,0x70,0,0], [0x8d,0xc0], [0x0f,0xaf,5,0,0x70,0,0] })
         {
             byte[] unsupported = unsupportedValue;
             test("DecodedBatch entry gate leaves unsupported code uncached and observes later supported bytes " + Convert.ToHexString(unsupported), () =>
@@ -470,11 +470,11 @@ internal static class DecodedBatchTests
             Check(b.Cpu.GetRegister(Register.Cx) == 0x01310080 && b.Cpu.GetRegister(Register.Ax) == 0x80003000,
                 "Changed second-byte register selection reused a stale BSWAP plan.");
         });
-        test("DecodedBatch entry gate rechecks current MOVZX ModRM register versus unsupported memory form", () =>
+        test("DecodedBatch warm MOVZX rechecks the actual cold SIB memory source before returning to a register source", () =>
         {
             var a = Make(4, [0x0f,0xb6,0xc4,0x90]); var b = Make(4, [0x0f,0xb6,0xc4,0x90]); Prime(b);
             foreach (Rig r in new[] { a, b }) r.Memory.WriteByte(r.Start + 2, 4);
-            Check(b.Cpu.TryRunDecodedBatch(64) == 0, "Current MOVZX memory operand bypassed the entry gate."); Equal(a, b);
+            Check(b.Cpu.TryRunDecodedBatch(64) == 0, "Current MOVZX memory operand bypassed its current data guard."); Equal(a, b);
             foreach (Rig r in new[] { a, b }) r.Memory.WriteByte(r.Start + 2, 0xc5);
             Batch(a, b, 64, 2);
             Check(b.Cpu.GetRegister(Register.Ax) == 0x31, "Current MOVZX source-register alias used a stale plan.");

@@ -379,10 +379,10 @@ internal static class DecodedStackBatchTests
             foreach (var r in new[] { a, b }) { r.Memory.A20Enabled = false; r.Cpu.SetRegister(Register.Sp, 0x102005); }
             Rejected(a, b); Check(b.Memory.ReadDword(0x2001) == Inputs[0], "Original folded self-modifying PUSH did not occur.");
         });
-        test("DecodedStack prefixed V86 32-bit PUSH remains an actual ordinary instruction", () =>
+        test("DecodedStack prefixed V86 32-bit PUSH matches its actual ordinary instruction and SS-selected address", () =>
         {
             var a = Make(10, [0x66, 0x50]); var b = Make(10, [0x66, 0x50]); uint pointer = Pointer(b);
-            Rejected(a, b); Check(b.Memory.ReadDword(b.Cpu.GetSegmentBase(Segment.Ss) + pointer - 4) == Inputs[0], "Scalar V86 operand prefix did not store the full register.");
+            Accepted(a,b,2,3,1); Check(b.Memory.ReadDword(b.Cpu.GetSegmentBase(Segment.Ss) + pointer - 4) == Inputs[0], "V86 operand prefix did not store the full register.");
         });
         test("DecodedStack strict SnapshotStore resumes an actual saved CALL and original RET future", () =>
         {

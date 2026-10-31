@@ -94,14 +94,15 @@ public sealed partial class DosWindow : SharpPixelsWindow
     protected override bool KeyRepeatsEnabled => IsFocused && (_page.Length != 0 || Volatile.Read(ref _guestRepeatEnabled) != 0);
 
     /// <summary>Initializes DosWindow and connects the supplied dependencies before the component is used.</summary>
-    public DosWindow(PcMachine machine, HostSettings settings, string settingsPath, string? smokeDirectory, bool freeDosAcceptance = false, string? automaticText = null, string? captureAfter = null, string? audioOutPath = null, bool audioAcceptance = false, GuestTestScenario? scenario = null, bool resourceAcceptance = false, bool nativeMouseAcceptance = false, bool storageAcceptance = false)
+    public DosWindow(PcMachine machine, HostSettings settings, string settingsPath, string? smokeDirectory, bool freeDosAcceptance = false, string? automaticText = null, string? captureAfter = null, string? audioOutPath = null, bool audioAcceptance = false, GuestTestScenario? scenario = null, bool resourceAcceptance = false, bool nativeMouseAcceptance = false, bool storageAcceptance = false, string? machinePath = null)
         : base(960, 720, DOSEIdentity.DisplayName + " - " + PlatformLabel(machine.Profile))
     {
-        _session = new(machine, enableHostNetworking: true); _uiInputGeneration = _session.InputGeneration; _settings = settings with { MasterVolume = Math.Clamp(settings.MasterVolume, 0, 100),
+        _session = new(machine, enableHostNetworking: true, definitionPath: machinePath); _uiInputGeneration = _session.InputGeneration; _settings = settings with { MasterVolume = Math.Clamp(settings.MasterVolume, 0, 100),
             SpeakerVolume = Math.Clamp(settings.SpeakerVolume, 0, 100), DigitalVolume = Math.Clamp(settings.DigitalVolume, 0, 100),
             FmVolume = Math.Clamp(settings.FmVolume, 0, 100) }; _settingsPath = settingsPath;
         _showDebugOverlay = LoadDebugOverlay(settingsPath);
         _parallelVideo = LoadVideoPreference(settingsPath, "parallelVideo", false);
+        _presentationHz = LoadPresentationRate(settingsPath);
         _smokeDirectory = smokeDirectory;
         _freeDosAcceptance = freeDosAcceptance;
         _captureAfter = captureAfter;
@@ -141,6 +142,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
             var pacing = new RealtimePacer(audio.Available ? 40_000_000UL : 0, 5_000_000_000);
             var clockSync = new HostClockSynchronizer();
             var speed = new RealtimeSpeedMeter();
+            var presentation = new PresentationCadence();
             // Converts the monotonic host timestamp to nanoseconds using integer arithmetic.
             ulong HostNanoseconds() => (ulong)((UInt128)(ulong)hostClock.ElapsedTicks * 1_000_000_000 / (ulong)Stopwatch.Frequency);
             PcMachine? previousMachine = null;
@@ -153,6 +155,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
                     {
                         _session.PumpCommands();
                         var machine = _session.Machine;
+                        bool changedMachine = !ReferenceEquals(previousMachine, machine);
                         _scenario?.Pump(machine);
                         if (!ReferenceEquals(previousMachine, machine))
                         {
@@ -181,9 +184,12 @@ public sealed partial class DosWindow : SharpPixelsWindow
                         Volatile.Write(ref _guestCalendar, machine.Rtc.Calendar.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
                         Volatile.Write(ref _guestRepeatEnabled, machine.Running && machine.Fault is null && !machine.CpuResetHeld ? 1 : 0);
                         Volatile.Write(ref _status, machine.GetStatus());
-                        var renderer = Volatile.Read(ref _parallelVideo) ? _videoWorker ??= new JoinedWorker("DOSE video rows") : null;
-                        _frames.TryPublish((machine, renderer),
-                            static (surface, source) => source.machine.CaptureFrame(surface, source.renderer));
+                        if (presentation.Due(HostNanoseconds(), Volatile.Read(ref _presentationHz), changedMachine))
+                        {
+                            var renderer = Volatile.Read(ref _parallelVideo) ? _videoWorker ??= new JoinedWorker("DOSE video rows") : null;
+                            _frames.TryPublish((machine, renderer),
+                                static (surface, source) => source.machine.CaptureFrame(surface, source.renderer));
+                        }
                     }
                     _stop.Token.WaitHandle.WaitOne(delay);
                 }
@@ -199,6 +205,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
     /// <summary>Presents the most recent leased guest frame and handles UI-only overlays/settings.</summary>
     public override void OnUserUpdate(double time)
     {
+        CompleteConfiguration();
         if (_frames.AcquireLatest() is { } nextFrame)
         {
             var previousFrame = _displayFrame;
@@ -275,25 +282,29 @@ public sealed partial class DosWindow : SharpPixelsWindow
     /// <summary>Renders the active keyboard-driven overlay and its published state without mutating guest hardware.</summary>
     private void DrawMenu(MachineStatus? status)
     {
-        const int x = 126, y = 116, width = 708, height = 472;
+        const int x = SettingsMenuLayout.Left, y = SettingsMenuLayout.Top, width = SettingsMenuLayout.Width, height = SettingsMenuLayout.Height;
         DrawFilledRectangleWithAlpha(x + 8, y + 8, width, height, 0, 0, 0, 140);
         DrawFilledRectangleWithAlpha(x, y, width, height, 9, 12, 29, 246);
         DrawLine(x, y, x + width, y, Color.SlateBlue); DrawLine(x, y + height, x + width, y + height, Color.Cyan);
         DrawLine(x, y, x, y + height, Color.SlateBlue); DrawLine(x + width, y, x + width, y + height, Color.Cyan);
-        Text(x + 22, y + 24, DOSEIdentity.Name + " / " + _page, 3, Color.White);
-        Text(x + 22, y + 58, "ENTER CHANGE   LEFT/RIGHT ADJUST   ESC BACK", 1, Color.LightSteelBlue);
-        for (int i = 0; i < _items.Length; i++)
+        Text(x + 22, y + 24, DOSEIdentity.Name + " / " + _page + (_configurationDraft?.HasChanges == true ? " *" : ""), 2, Color.White);
+        Text(x + 22, y + 58, "ENTER / CLICK CHANGE   LEFT/RIGHT ADJUST   PAGE UP/DOWN SCROLL   ESC BACK", 1, Color.LightSteelBlue);
+        int first = SettingsMenuLayout.First(_items.Length, _selected);
+        for (int i = first; i < Math.Min(_items.Length, first + SettingsMenuLayout.VisibleRows); i++)
         {
-            int rowY = y + 96 + i * 33;
+            int rowY = SettingsMenuLayout.RowTop + (i - first) * SettingsMenuLayout.RowHeight;
             if (i == _selected) DrawFilledRectangleWithAlpha(x + 12, rowY - 6, width - 24, 29, 53, 51, 85, 220);
-            Text(x + 22, rowY, (i == _selected ? "> " : "  ") + _items[i], 2, i == _selected ? Color.LightGoldenrodYellow : Color.LightSteelBlue);
+            Text(x + 22, rowY, (i == _selected ? "> " : "  ") + SettingsMenuLayout.Label(_items[i]), 2, i == _selected ? Color.LightGoldenrodYellow : Color.LightSteelBlue);
         }
-        Text(x + 22, y + height - 61, _notice.Length > 100 ? _notice[..100] : _notice, 1, Color.Khaki);
+        Text(x + 22, y + height - 100, $"ROWS {first + 1}-{Math.Min(_items.Length, first + SettingsMenuLayout.VisibleRows)} / {_items.Length}   " +
+            (_configurationDraft?.HasChanges == true ? "PENDING CHANGES / APPLY TO RESTART" : ""), 1, Color.Gray);
+        if (_selected >= 0 && _selected < _items.Length) Text(x + 22, y + height - 81, _items[_selected].Length > 135 ? _items[_selected][..132] + "..." : _items[_selected], 1, Color.LightSteelBlue);
+        Text(x + 22, y + height - 61, _notice.Length > 135 ? _notice[..132] + "..." : _notice, 1, Color.Khaki);
         int? selectedSlot = _page == "HARD DISKS" && _selected < 4 ? _selected :
             _page.StartsWith("IDE ", StringComparison.Ordinal) && _page.Length == 5 ? _page[^1] - '0' : null;
         string media = selectedSlot is { } slot ? $"IDE {slot}: {status?.HardDisks?.FirstOrDefault(d => d.Slot == slot)?.Name ?? "EMPTY"}" : $"IDE: {status?.MediaName ?? "NONE"}";
         Text(x + 22, y + height - 38, media.Length > 110 ? media[..107] + "..." : media, 1, Color.LightSteelBlue);
-        Text(x + 22, y + height - 21, $"STATE: {status?.State}   PROFILE: {PlatformLabel(status?.Configuration).ToUpperInvariant()}   WINDOWS 95 PENDING", 1, Color.Gray);
+        Text(x + 22, y + height - 21, $"STATE: {status?.State}   PROFILE: {PlatformLabel(status?.Configuration).ToUpperInvariant()}", 1, Color.Gray);
     }
 
     /// <summary>Draws bounded bitmap UI text using the original project font.</summary>
@@ -316,6 +327,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
     {
         ResetKeyRepeat();
         bool wasClosed = _page.Length == 0;
+        if (page is "MACHINE / HARDWARE" or "CPU / PLATFORM" or "SOUND CARD RESOURCES" or "NETWORK" || page.StartsWith("NETWORK / ADAPTER ", StringComparison.Ordinal)) BeginConfiguration();
         _page = page; _selected = 0; _notice = ""; RebuildItems();
         if (wasClosed) { ReleaseMouse(); ReleaseGuestKeys(); Command("Pause"); _audio?.Clear(); }
     }
@@ -324,12 +336,19 @@ public sealed partial class DosWindow : SharpPixelsWindow
     {
         var status = Volatile.Read(ref _status);
         var frame = Volatile.Read(ref _frame);
-        var profile = status?.Configuration ?? new MachineProfile();
+        var profile = _configurationDraft?.Requested ?? status?.Configuration ?? new MachineProfile();
         if ((_page == "NETWORK" || _page.StartsWith("NETWORK / ADAPTER ", StringComparison.Ordinal)) &&
             Environment.TickCount64 >= Interlocked.Read(ref _networkRefreshAt)) RefreshNetworkStatus();
         _items = _page switch
         {
-        "MAIN MENU" => ["CONTINUE", "VIDEO SETTINGS", "MACHINE / HARDWARE", "MEDIA", "REMOTE PLAY / NETWORK", "AUDIO SETTINGS", "RESET / POWER", "SAVED MACHINES", "TIME AND SPEED", "EXIT"],
+        "MAIN MENU" => ["CONTINUE", "VIDEO SETTINGS", "MACHINE / HARDWARE", "MEDIA", "NETWORK ADAPTERS", "AUDIO SETTINGS", "RESET / POWER", "SAVED MACHINES", "TIME AND SPEED", "EXIT"],
+        "UNSAVED HARDWARE CHANGES" => ["APPLY CHANGES / COLD RESTART", "DISCARD CHANGES / CONTINUE", "KEEP EDITING"],
+        "CPU / PLATFORM" => ["PLATFORM: " + (profile.IsWindows95Board ? "PENTIUM PCI / 430FX + PIIX + S3" : profile.IsFxHost ? "FIXED CHIPSET TEST BOARD" : profile.IsP54c ? "PENTIUM ISA AT" : "486 ISA AT"),
+            $"CPU CLOCK: {profile.CpuHz / 1_000_000} MHZ (SUPPORTED TUPLES)", $"RAM: {profile.RamMiB} MIB", "BOARD CHANGE CAN REQUIRE NEW GUEST DRIVERS",
+            "DETACH CD MEDIA / PCI CARDS BEFORE AN ISA BOARD", "BACK"],
+        "NETWORK HELP" => ["NAT: DHCP / GATEWAY 10.0.2.2 / DNS 10.0.2.3", "ADAPTER 2 NAT USES 10.0.3.0/24",
+            "HOST-ONLY: SAME LAN NAME / DHCP / NO INTERNET", "BRIDGED: NPCAP + EXPLICIT HOST ADAPTER REQUIRED", "WINDOWS: INSTALL NIC DRIVER + TCP/IP / DHCP",
+            "WIN95 A: USE THE PROVIDED ORIGINAL RTL8029 DRIVER", "WIN98: USE ITS ORIGINAL WINDOWS DRIVER / CD", "INSERT NETWORK DRIVER DISK...", "INSERT DOSE APM POWER MANAGEMENT DISK", "BACK"],
         "TIME AND SPEED" => [$"HOST CLOCK SYNC: {(_settings.SynchronizeClock ? "ON" : "OFF")}",
             "HOST: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
             "RTC:  " + Volatile.Read(ref _guestCalendar),
@@ -344,8 +363,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
         "RESET / POWER" => ["SEND CTRL+ALT+DEL TO GUEST", "HARDWARE RESET / CPU, RAM RETAINED", "POWER CYCLE / RAM CLEARED", "BACK"],
         "VIDEO SETTINGS" => [$"FILTER          {_settings.Filter.ToUpperInvariant()}", $"UPSCALE         {_settings.Upscale.ToUpperInvariant()}",
             $"ASPECT          {(_settings.CorrectAspect ? "4:3" : "SOURCE PIXELS")}", $"VSYNC           {(_settings.VSync ? "ON" : "OFF")}",
-            $"DEBUG OVERLAY   {(_showDebugOverlay ? "ON" : "OFF")}", $"MULTICORE VIDEO {(_parallelVideo ? "ON" : "OFF")}", "BACK"],
-        "MACHINE / HARDWARE" => [profile.IsWindows95Board ? $"CPU: FX/PIIX/S3 / P54C {profile.CpuHz / 1_000_000} MHZ (FIXED)" : profile.IsTrio64 ? "CPU: FX/PIIX/S3 / P54C 100 MHZ (FIXED)" : profile.IsPiixReset ? "CPU: FX/PIIX RESET / P54C 100 MHZ (FIXED)" : profile.IsPiixIde ? "CPU: FX/PIIX IDE / P54C 100 MHZ (FIXED)" : profile.IsPiixIrq ? "CPU: FX/PIIX IRQ / P54C 100 MHZ (FIXED)" : profile.IsFxHost ? "CPU: 430FX HOST / P54C 100 MHZ (FIXED)" : profile.IsP54c ? "CPU: DOSE AT / P54C B5 SUBSET 90 MHZ (RESTART)" : "CPU: 486DX / 33 MHZ (RESTART)", $"RAM: {profile.RamMiB} MIB ({(profile.GetSupportedRamMiB().Length == 1 ? "FIXED HOST BOARD" : "CHANGE RESTARTS")})",
+            $"DEBUG OVERLAY   {(_showDebugOverlay ? "ON" : "OFF")}", $"MULTICORE VIDEO {(_parallelVideo ? "ON" : "OFF")}", $"HOST FRAME CAP  {_presentationHz} HZ (GUEST TIME UNCHANGED)", "BACK"],
+        "MACHINE / HARDWARE" => [profile.IsWindows95Board ? $"CPU: PENTIUM {profile.CpuHz / 1_000_000} MHZ / 100 OR 133 (APPLY)" : profile.IsTrio64 ? "CPU: FX/PIIX/S3 / P54C 100 MHZ (FIXED)" : profile.IsPiixReset ? "CPU: FX/PIIX RESET / P54C 100 MHZ (FIXED)" : profile.IsPiixIde ? "CPU: FX/PIIX IDE / P54C 100 MHZ (FIXED)" : profile.IsPiixIrq ? "CPU: FX/PIIX IRQ / P54C 100 MHZ (FIXED)" : profile.IsFxHost ? "CPU: 430FX HOST / P54C 100 MHZ (FIXED)" : profile.IsP54c ? "CPU: DOSE AT / P54C B5 SUBSET 90 MHZ (RESTART)" : "CPU: 486DX / 33 MHZ (RESTART)", $"RAM: {profile.RamMiB} MIB ({(profile.GetSupportedRamMiB().Length == 1 ? "FIXED HOST BOARD" : "CHANGE RESTARTS")})",
             $"FLOPPY A: {profile.FloppyDriveA.ToUpperInvariant()} (CHANGE RESTARTS)", $"FLOPPY B: {profile.FloppyDriveB.ToUpperInvariant()} (CHANGE RESTARTS)",
             $"BOOT: {profile.BootDevice.ToUpperInvariant()} (CHANGE RESTARTS)",
             profile.SoundCard switch { "adlib-opl2-development" => "SOUND: ADLIB OPL2 MELODIC DEV (RESTART)",
@@ -358,7 +377,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
             $"GAMEPORT: {(profile.Gameport == "none" ? "NONE" : "IBM ANALOG / VIRTUAL INPUT")} (RESTART)",
             $"COM1: {(profile.SerialPort == "none" ? "NONE" : "PC16550D / VIRTUAL INPUT")} (RESTART)",
             $"LPT1: {(profile.ParallelPort == "none" ? "NONE" : "IBM PRINTER / VIRTUAL PINS")} (RESTART)",
-            $"MIDI: {(profile.MidiInterface == "none" ? "NONE" : "CT1740 MPU-UART / VIRTUAL")} (RESTART)", "BACK"],
+            $"MIDI: {(profile.MidiInterface == "none" ? "NONE" : "CT1740 MPU-UART / VIRTUAL")} (RESTART)", "NETWORK ADAPTERS...", "APPLY CHANGES / COLD RESTART", "DISCARD CHANGES", "BACK"],
         "SOUND CARD RESOURCES" => profile.IsSb16
             ? [$"SB16 PORT: {profile.SoundBlasterBasePort:X3}H (CHANGE RESTARTS)",
                 $"SB16 IRQ: {profile.SoundBlasterIrq} (CHANGE RESTARTS)",
@@ -386,7 +405,12 @@ public sealed partial class DosWindow : SharpPixelsWindow
     /// <summary>Bounds and normalizes a media name for the overlay's fixed-width display.</summary>
     private static string ShortName(string? name) => name is null ? "EMPTY" : name.Length > 38 ? name[..35] + "..." : name.ToUpperInvariant();
     /// <summary>Closes the overlay and requests guest execution to resume through the command queue.</summary>
-    private void CloseMenu() { ResetKeyRepeat(true); _page = ""; Command("Resume"); }
+    private void CloseMenu()
+    {
+        if (_configurationApplying) { _notice = "WAIT FOR THE CURRENT APPLY REQUEST"; return; }
+        if (_configurationDraft?.HasChanges == true) { OpenPage("UNSAVED HARDWARE CHANGES"); return; }
+        _configurationDraft = null; ResetKeyRepeat(true); _page = ""; Command("Resume");
+    }
     /// <summary>Submits the requested operation through the component's normal command interface.</summary>
     private void Command(string command, object? payload = null)
     {
@@ -406,7 +430,19 @@ public sealed partial class DosWindow : SharpPixelsWindow
     /// <summary>Applies the selected overlay action, routing hardware/media changes through the session owner.</summary>
     private void Activate(int delta = 1)
     {
-        if (_page == "MAIN MENU")
+        if (_configurationApplying) { _notice = "APPLY IN PROGRESS"; return; }
+        if (_configurationDraft?.HasChanges == true && (_page == "RESET / POWER" || _page == "SAVED MACHINES" && _selected is 0 or 1 or 3 ||
+            _page == "MEDIA" && _selected is 1 or 2 or 5 || _page.StartsWith("IDE ", StringComparison.Ordinal) && _selected is 1 or 2 or 3 ||
+            _page == "OPTICAL DRIVE" && _selected is 1 or 2 || _page is "FLOPPY A" or "FLOPPY B" && _selected is 1 or 2 or 3 ||
+            _page == "NETWORK HELP" && _selected is 7 or 8))
+        { _notice = "APPLY OR DISCARD PENDING HARDWARE BEFORE CHANGING MEDIA OR RESTARTING"; return; }
+        if (_page == "UNSAVED HARDWARE CHANGES")
+        {
+            if (_selected == 0) ApplyConfiguration();
+            else if (_selected == 1) { DiscardConfiguration(); CloseMenu(); }
+            else OpenPage("MACHINE / HARDWARE");
+        }
+        else if (_page == "MAIN MENU")
         {
             switch (_selected)
             {
@@ -449,7 +485,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
                 case 3: _settings = _settings with { VSync = !_settings.VSync }; PresentationVSyncEnabled = _settings.VSync; break;
                 case 4: _showDebugOverlay = !_showDebugOverlay; break;
                 case 5: Volatile.Write(ref _parallelVideo, !Volatile.Read(ref _parallelVideo)); break;
-                case 6: OpenPage("MAIN MENU"); return;
+                case 6: Volatile.Write(ref _presentationHz, DosWindow.Cycle(new[] { 30, 60, 120 }, _presentationHz, delta)); break;
+                case 7: OpenPage("MAIN MENU"); return;
             }
             SaveSettings(); RebuildItems(); _notice = "APPLIED LIVE / HOST PRESENTATION ONLY";
         }
@@ -512,24 +549,24 @@ public sealed partial class DosWindow : SharpPixelsWindow
                 lock (_gate) currentName = _session.Machine.CaptureDefinition().Name;
                 string? name = StorageDialogs.AskMachineName(currentName);
                 if (name is null) return;
-                using var dialog = new SaveFileDialog { Title = "Maschine speichern", Filter = "DOS-PC (*.dospc.json)|*.dospc.json", DefaultExt = "dospc.json",
+                using var dialog = new SaveFileDialog { Title = "Save machine", Filter = "DOS-PC (*.dospc.json)|*.dospc.json", DefaultExt = "dospc.json",
                     FileName = string.Concat(name.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)) + ".dospc.json", InitialDirectory = Path.GetDirectoryName(_settingsPath) };
                 if (dialog.ShowDialog() == DialogResult.OK) { Command("SaveMachineDefinition", new { path = dialog.FileName, name }); _notice = "PC CONFIGURATION SAVE REQUESTED"; }
             }
             else if (_selected == 1)
             {
-                using var dialog = new OpenFileDialog { Title = "Maschine laden", Filter = "DOS-PC (*.dospc.json;*.json)|*.dospc.json;*.json" };
+                using var dialog = new OpenFileDialog { Title = "Load machine", Filter = "DOS-PC (*.dospc.json;*.json)|*.dospc.json;*.json" };
                 if (dialog.ShowDialog() == DialogResult.OK) { Command("LoadMachineDefinition", new { path = dialog.FileName }); CloseMenu(); }
             }
             else if (_selected == 2)
             {
-                using var dialog = new SaveFileDialog { Title = "VollstÃƒÂ¤ndigen DOSE-Snapshot anlegen (neuer Ordner)", Filter = "DOSE Snapshot (*.dossav)|*.dossav",
+                using var dialog = new SaveFileDialog { Title = "Create full DOSE snapshot (new folder)", Filter = "DOSE Snapshot (*.dossav)|*.dossav",
                     DefaultExt = "dossav", FileName = "Snapshot-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".dossav", InitialDirectory = Path.GetDirectoryName(_settingsPath) };
                 if (dialog.ShowDialog() == DialogResult.OK) { Command("CreateSnapshot", new { path = dialog.FileName }); _notice = "FULL SNAPSHOT SAVE REQUESTED"; }
             }
             else if (_selected == 3)
             {
-                using var source = new FolderBrowserDialog { Description = "DOSE-Snapshotordner (.dossav) wÃƒÂ¤hlen", UseDescriptionForTitle = true, ShowNewFolderButton = false };
+                using var source = new FolderBrowserDialog { Description = "Select DOSE snapshot folder (.dossav)", UseDescriptionForTitle = true, ShowNewFolderButton = false };
                 if (source.ShowDialog() != DialogResult.OK) return;
                 string parent = Path.GetDirectoryName(source.SelectedPath)!;
                 string destination = Path.Combine(parent, "Resume-" + Guid.NewGuid().ToString("N") + ".dosebranch");
@@ -561,7 +598,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
             }
             switch (_selected)
             {
-                case 0: ChangeProfile(p => p.IsFxHost ? p : p.WithDevelopmentCpu(!p.IsP54c)); break;
+                case 0: OpenPage("CPU / PLATFORM"); break;
                 case 1: ChangeProfile(p => { var values = p.GetSupportedRamMiB(); if (values.Length == 1) return p; return p with { RamMiB = values[(values.IndexOf(p.RamMiB) + delta + values.Length) % values.Length] }; }); break;
                 case 2: ChangeProfile(p => p with { FloppyDriveA = CycleDrive(p.FloppyDriveA) }); break;
                 case 3: ChangeProfile(p => p with { FloppyDriveB = CycleDrive(p.FloppyDriveB) }); break;
@@ -578,22 +615,36 @@ public sealed partial class DosWindow : SharpPixelsWindow
                 }); break;
                 case 6: OpenPage("SOUND CARD RESOURCES"); break;
                 case 7: ChangeProfile(p => p with { Mouse = p.Mouse == "none" ? "ps2-two-button" : "none" }); break;
-                case 8: ChangeProfile(p => p.IsTrio64 ? p : p with { VideoCard = p.IsEt4000 ? "dose-vga-development" : "et4000ax-isa-1m-development" }); break;
+                case 8:
+                    if ((_configurationDraft?.Requested ?? Volatile.Read(ref _status)?.Configuration)?.IsTrio64 == true)
+                        _notice = "THIS PCI BOARD USES S3 TRIO64 / CHANGE DISPLAY RESOLUTION INSIDE WINDOWS";
+                    else ChangeProfile(p => p with { VideoCard = p.IsEt4000 ? "dose-vga-development" : "et4000ax-isa-1m-development" });
+                    break;
                 case 9: ChangeProfile(p => p with { Gameport = p.Gameport == "none" ? "ibm-game-control-development" : "none" }); break;
                 case 10: ChangeProfile(p => p with { SerialPort = p.SerialPort == "none" ? "pc16550d-com1-development" : "none" }); break;
                 case 11: ChangeProfile(p => p with { ParallelPort = p.ParallelPort == "none" ? "ibm-printer-adapter-development" : "none" }); break;
                 case 12:
-                    if (Volatile.Read(ref _status)?.Configuration?.IsSb16 == true)
+                    if ((_configurationDraft?.Requested ?? Volatile.Read(ref _status)?.Configuration)?.IsSb16 == true)
                         ChangeProfile(p => p with { MidiInterface = p.MidiInterface == "none" ? "ct1740-mpu401-uart-development" : "none" });
                     else _notice = "SELECT SB16 CT1740 BEFORE ENABLING ITS MPU UART";
                     break;
-                case 13: OpenPage("MAIN MENU"); break;
+                case 13: OpenPage("NETWORK"); break;
+                case 14: ApplyConfiguration(); break;
+                case 15: DiscardConfiguration(); break;
+                case 16: OpenPage("MAIN MENU"); break;
             }
+        }
+        else if (_page == "CPU / PLATFORM")
+        {
+            if (_selected == 0) ChangeProfile(profile => MachineSettingsDraft.CyclePlatform(profile, delta));
+            else if (_selected == 1) ChangeProfile(profile => MachineSettingsDraft.CycleCpu(profile, delta));
+            else if (_selected == 2) ChangeProfile(profile => { var values = profile.GetSupportedRamMiB(); return profile with { RamMiB = values[(values.IndexOf(profile.RamMiB) + delta + values.Length) % values.Length] }; });
+            else if (_selected == 5) OpenPage("MACHINE / HARDWARE");
         }
         else if (_page == "SOUND CARD RESOURCES")
         {
             if (_selected == _items.Length - 1) OpenPage("MACHINE / HARDWARE");
-            else if (Volatile.Read(ref _status)?.Configuration?.IsSb16 == true && _selected < 5)
+            else if ((_configurationDraft?.Requested ?? Volatile.Read(ref _status)?.Configuration)?.IsSb16 == true && _selected < 5)
             {
                 ChangeProfile(p => _selected switch
                 {
@@ -605,7 +656,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
                     _ => p
                 });
             }
-            else if (Volatile.Read(ref _status)?.Configuration?.SoundCard is "sb2-dsp-development" or "sb2-opl2-development")
+            else if ((_configurationDraft?.Requested ?? Volatile.Read(ref _status)?.Configuration)?.SoundCard is "sb2-dsp-development" or "sb2-opl2-development")
             {
                 if (_selected == 0) ChangeProfile(p => p with { SoundBlasterBasePort = p.SoundBlasterBasePort == 0x220 ? 0x240 : 0x220 });
                 else if (_selected == 1) ChangeProfile(p =>
@@ -619,7 +670,25 @@ public sealed partial class DosWindow : SharpPixelsWindow
         {
             if (_selected is 0 or 1) OpenPage("NETWORK / ADAPTER " + (_selected + 1));
             else if (_selected == 2) RefreshNetworkStatus();
-            else if (_selected == 5) OpenPage("MAIN MENU");
+            else if (_selected == 4) OpenPage("NETWORK HELP");
+            else if (_selected == 5) ApplyConfiguration();
+            else if (_selected == 6) DiscardConfiguration();
+            else if (_selected == 7) OpenPage("MAIN MENU");
+        }
+        else if (_page == "NETWORK HELP")
+        {
+            if (_selected == 7)
+            {
+                using var disk = new OpenFileDialog { Title = "Select the NIC driver data disk for your Windows version", Filter = "Driver disk (*.img)|*.img", InitialDirectory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "driver-media")) };
+                if (disk.ShowDialog() == DialogResult.OK) Command("InsertFloppy", new { drive = 0, path = disk.FileName });
+            }
+            else if (_selected == 8)
+            {
+                string disk = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "guest-tools", "windows95", "dose-tools-apm.img"));
+                Command("InsertFloppy", new { drive = 0, path = disk });
+                _notice = "APM DATA DISK IN A: / OPEN README.TXT INSIDE WINDOWS";
+            }
+            else if (_selected == 9) OpenPage("NETWORK");
         }
         else if (_page is "NETWORK / ADAPTER 1" or "NETWORK / ADAPTER 2") ActivateNetwork(_page[^1] - '1', delta);
         else if (_page is "FLOPPY A" or "FLOPPY B")
@@ -728,7 +797,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
         }
         var status = NetworkStatus();
         return [Slot(0), Slot(1), "REFRESH NETWORK STATUS", status.ValueKind == JsonValueKind.Undefined ? "BRIDGED: CHECKING AVAILABILITY" :
-            NetworkFlag(status, "bridgeAvailable") ? "BRIDGED: AVAILABLE" : "BRIDGED: UNAVAILABLE / NPCAP REQUIRED", "REMOTE PLAY: NOT IMPLEMENTED", "BACK"];
+            NetworkFlag(status, "bridgeAvailable") ? "BRIDGED: AVAILABLE" : "BRIDGED: UNAVAILABLE / NPCAP REQUIRED", "GUEST: INSTALL NIC DRIVER + TCP/IP / DHCP",
+            "APPLY CHANGES / COLD RESTART", "DISCARD CHANGES", "BACK"];
     }
 
     /// <summary>Shows editable persisted resources and separately reported live cable/backend outcomes.</summary>
@@ -736,16 +806,17 @@ public sealed partial class DosWindow : SharpPixelsWindow
     {
         var adapter = profile.NetworkAdapters.FirstOrDefault(value => value.Slot == slot);
         if (adapter is null) return ["MODEL: NONE (CHANGE RESTARTS)", "MODE: -", "CABLE: OFF", "MAC: CREATED WHEN ADDED", "I/O BASE: -", "IRQ: -",
-            "BRIDGE ADAPTER: -", "VIRTUAL LAN: DOSE", "STATUS: NO ADAPTER INSTALLED", "REFRESH STATUS", "BACK"];
+            "BRIDGE ADAPTER: -", "VIRTUAL LAN: DOSE", "STATUS: NO ADAPTER INSTALLED", "REFRESH STATUS", "APPLY CHANGES / COLD RESTART", "DISCARD CHANGES", "BACK"];
         var state = NetworkSlotStatus(slot); var bridges = NetworkBridges();
         string bridge = bridges.FirstOrDefault(value => value.Id == adapter.HostAdapter).Description ?? adapter.HostAdapter ?? "NONE";
         string connection = NetworkString(state, "error") ?? NetworkString(state, "description") ?? "CHECKING STATUS";
         if (adapter.Mode == "bridged" && NetworkStatus().ValueKind != JsonValueKind.Undefined && !NetworkFlag(NetworkStatus(), "bridgeAvailable"))
             connection = "BRIDGED UNAVAILABLE / NPCAP REQUIRED";
         return [$"MODEL: {NetworkModel(adapter.Model)} (CHANGE RESTARTS)", $"MODE: {adapter.Mode.ToUpperInvariant()} (CHANGE RESTARTS)",
-            $"CABLE: {(NetworkFlag(NetworkSlotStatus(slot), "connected") ? "ON" : "OFF")}", "MAC: " + adapter.MacAddress,
+            $"CABLE: {(NetworkFlag(NetworkSlotStatus(slot), "connected") ? "ON" : "OFF")}", "MAC: " + adapter.MacAddress + " (EDIT)",
             $"I/O BASE: {adapter.IoBase:X4}H (CHANGE RESTARTS)", $"IRQ: {adapter.Irq}" + (adapter.Model == NetworkAdapterProfile.Rtl8029Pci ? " (FIXED PCI ROUTE)" : " (CHANGE RESTARTS)"),
-            "BRIDGE ADAPTER: " + NetworkText(bridge), "VIRTUAL LAN: " + NetworkText(adapter.VirtualLan), "STATUS: " + NetworkText(connection), "REFRESH STATUS", "BACK"];
+            "BRIDGE ADAPTER: " + bridge, "VIRTUAL LAN: " + adapter.VirtualLan + " (EDIT)", "STATUS: " + connection, "REFRESH STATUS",
+            "APPLY CHANGES / COLD RESTART", "DISCARD CHANGES", "BACK"];
     }
 
     /// <summary>Allocates one persistent locally administered unicast address only for a newly added guest card.</summary>
@@ -801,22 +872,26 @@ public sealed partial class DosWindow : SharpPixelsWindow
     /// <summary>Changes hardware through cold plans and cable state solely through the existing asynchronous owner queue.</summary>
     private void ActivateNetwork(int slot, int delta)
     {
-        if (_selected == 10) { OpenPage("NETWORK"); return; }
+        if (_selected == 12) { OpenPage("NETWORK"); return; }
+        if (_selected == 11) { DiscardConfiguration(); return; }
+        if (_selected == 10) { ApplyConfiguration(); return; }
         if (_selected == 9) { RefreshNetworkStatus(); return; }
         if (_selected == 0) { ChangeNetwork(profile => WithNetworkModel(profile, slot, delta)); return; }
-        var profile = Volatile.Read(ref _status)?.Configuration;
+        var profile = _configurationDraft?.Requested ?? Volatile.Read(ref _status)?.Configuration;
         var adapter = profile?.NetworkAdapters.FirstOrDefault(value => value.Slot == slot);
         if (adapter is null) { _notice = "ADD A NETWORK ADAPTER FIRST"; return; }
         if (_selected == 2)
         {
+            if (_configurationDraft?.HasChanges == true) { _notice = "APPLY HARDWARE CHANGES BEFORE CONNECTING THE CABLE"; return; }
             bool connected = !NetworkFlag(NetworkSlotStatus(slot), "connected");
             if (connected && adapter.Mode == "bridged" && (adapter.HostAdapter is null || !NetworkFlag(NetworkStatus(), "bridgeAvailable")))
             { _notice = "BRIDGED UNAVAILABLE / SELECT AN AVAILABLE HOST ADAPTER"; return; }
             Command("SetNetworkConnection", new { slot, connected });
+            _configurationDraft = null;
             Interlocked.Exchange(ref _networkRefreshAt, 0); _notice = "NETWORK CABLE CHANGE REQUESTED"; return;
         }
-        if (_selected == 3) { _notice = "THE MAC ADDRESS IS PERSISTENT AND RETAINED IN SAVED PCS"; return; }
-        if (_selected == 7) { _notice = "HOST-ONLY GUESTS SHARE THIS VIRTUAL LAN; SET A CUSTOM NAME IN THE PC FILE"; return; }
+        if (_selected == 3) { EditNetworkText(slot, true); return; }
+        if (_selected == 7) { EditNetworkText(slot, false); return; }
         if (_selected == 8) return;
         ChangeNetwork(current =>
         {
@@ -846,15 +921,17 @@ public sealed partial class DosWindow : SharpPixelsWindow
     /// <summary>Builds a revision-checked configuration plan and requests the required controlled power cycle.</summary>
     private void ChangeProfile(Func<MachineProfile, MachineProfile> change)
     {
-        ConfigurationPlan plan;
-        lock (_gate)
+        if (_configurationApplying) { _notice = "WAIT FOR THE CURRENT APPLY REQUEST"; return; }
+        BeginConfiguration();
+        try
         {
-            var current = _session.Machine.Profile;
+            var current = _configurationDraft!.Requested;
             var requested = change(current);
             if (requested == current) { _notice = "CONFIGURATION UNCHANGED"; return; }
-            plan = new(_session.Revision, requested, true);
+            _configurationDraft.Stage(requested);
+            _notice = "PENDING CHANGE / SELECT APPLY CHANGES TO RESTART AND SAVE";
         }
-        Command("CommitConfigurationChange", plan); Command("Pause"); _notice = "HARDWARE CHANGE REQUESTED / POWER CYCLE";
+        catch (Exception error) when (error is ArgumentException or InvalidOperationException) { _notice = error.Message; }
     }
 
     /// <summary>Requests a cold start from an explicitly chosen protected raw IDE base image.</summary>
@@ -935,6 +1012,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         var values = JsonSerializer.SerializeToNode(_settings, options)!.AsObject();
         values["showDebugOverlay"] = _showDebugOverlay;
         values["parallelVideo"] = _parallelVideo;
+        values["presentationHz"] = _presentationHz;
         File.WriteAllText(temporary, values.ToJsonString(options));
         File.Move(temporary, _settingsPath, true);
     }
@@ -951,9 +1029,12 @@ public sealed partial class DosWindow : SharpPixelsWindow
         {
             case Key.Up: _selected = (_selected + _items.Length - 1) % _items.Length; break;
             case Key.Down: _selected = (_selected + 1) % _items.Length; break;
+            case Key.PageUp: _selected = Math.Max(0, _selected - SettingsMenuLayout.VisibleRows); break;
+            case Key.PageDown: _selected = Math.Min(_items.Length - 1, _selected + SettingsMenuLayout.VisibleRows); break;
+            case Key.Home: _selected = 0; break;
             case Key.Enter: case Key.Right: Activate(); break;
             case Key.Left: Activate(-1); break;
-            case Key.Escape: if (_page == "MAIN MENU") CloseMenu(); else OpenPage("MAIN MENU"); break;
+            case Key.Escape: BackPage(); break;
         }
     }
     /// <summary>Handles local character input only under the active overlay/guest input policy.</summary>
@@ -980,6 +1061,11 @@ public sealed partial class DosWindow : SharpPixelsWindow
         int bit = button switch { OpenTK.Windowing.GraphicsLibraryFramework.MouseButton.Left => 1,
             OpenTK.Windowing.GraphicsLibraryFramework.MouseButton.Right => 2, _ => 0 };
         if (bit == 0) return;
+        if (_page.Length != 0)
+        {
+            if (bit == 1 && down && IsFocused) ClickMenu((int)(MousePosition.X * PixelsWidth / ClientSize.X), (int)(MousePosition.Y * PixelsHeight / ClientSize.Y));
+            return;
+        }
         if (down && !_mouseInput.Captured && bit == 1 && _page.Length == 0 && IsFocused &&
             Volatile.Read(ref _status)?.Configuration?.Mouse == "ps2-two-button")
         {

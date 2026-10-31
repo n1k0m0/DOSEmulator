@@ -1,5 +1,21 @@
 # Guarded decoded execution
 
+C46 adds current harmless operand/address/segment prefixes, ordinary memory
+counters/unary/TEST/stores/extensions, LEAVE and immediate/r/m PUSH, plus register
+SHLD/SHRD. Current data/stack rights, dirty state, mapping, alignment and complete
+code-page aliases still gate every operation. TEST's trailing immediate and
+group-5 PUSH's early full checkpoint retain their actual code/data TLB order.
+Bounded exact-entry loop reuse retains all original deadlines and four clocks.
+
+The explicit simple VGA capability is one owner-scoped mode-0 byte store with
+exact storage/revision effects, current board/aperture/bank/plane/raster/mask
+gates and preserved CPU checkpoints. Storage and revision aliases of code are
+rejected. Latches, arbitrary devices, other write modes and S3 MMIO retain scalar
+access. These plans are stack-scoped, with no new state fields or callbacks.
+C46 passes 15252 cases, state48/957/43, real Doom/Windows video continuations and
+the actual CLI path. General 1:1 remains open; final results and strict build
+identity are in [PERFORMANCE.md](../PERFORMANCE.md#c46-profiled-doom-ii-and-actual-windows-video-30-october-2026).
+
 C45 additionally admits prefix-free register shifts/rotates
 (`C0/C1/D0/D1/D2/D3`) and signed IMUL (`69/6B/0F AF`). Immutable plans retain
 only encoding/register/width information; CL, operands and flags are current on

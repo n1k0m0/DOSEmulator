@@ -11,14 +11,14 @@ public sealed partial class X86Cpu
     {
         public readonly Span<byte> Data;
         public readonly int DataSlot, Width, Length, CodeTouches, Operation, Register;
-        public readonly uint OldPointer, NextPointer, Target, ReturnAddress;
+        public readonly uint OldPointer, NextPointer, Target, ReturnAddress, Immediate;
 
         /// <summary>Binds one completely checked current stack range and local control-transfer result.</summary>
         public DecodedStackPlan(Span<byte> data, int dataSlot, in DecodedElement element,
             uint oldPointer, uint nextPointer, uint target, uint returnAddress)
         {
             Data = data; DataSlot = dataSlot; Width = element.Width; Length = element.Length;
-            CodeTouches = element.CodeTouches; Operation = element.Operation; Register = element.Operation & 7;
+            CodeTouches = element.CodeTouches; Operation = element.Operation; Register = element.Operation==0xff?element.Source:element.Operation & 7; Immediate = element.Immediate;
             OldPointer = oldPointer; NextPointer = nextPointer; Target = target; ReturnAddress = returnAddress;
         }
     }
@@ -28,16 +28,18 @@ public sealed partial class X86Cpu
     {
         plan = default;
         int opcode = element.Operation, width = element.Width;
-        bool push = opcode is >= 0x50 and <= 0x57 or 0x60 or 0xe8;
-        bool pop = opcode is >= 0x58 and <= 0x5f or 0x61 or 0xc2 or 0xc3;
+        bool push = opcode is >= 0x50 and <= 0x57 or 0x60 or 0x68 or 0x6a or 0xe8 or 0xff;
+        bool pop = opcode is >= 0x58 and <= 0x5f or 0x61 or 0xc2 or 0xc3 or 0xc9;
         if ((!push && !pop) || width is not (2 or 4) || wholeCode.Length != 4096) return false;
-        int length = opcode == 0xe8 ? 1 + width : opcode == 0xc2 ? 3 : 1;
-        int codeTouches = opcode is 0xe8 or 0xc2 ? 2 : 1;
-        if (element.Length != length || element.CodeTouches != codeTouches ||
-            !WithinSegment(GetSegmentCache(Segment.Cs), Eip, (uint)length)) return false;
+        int length = opcode is 0xe8 or 0x68 ? 1 + width : opcode == 0xc2 ? 3 : opcode == 0x6a ? 2 : 1;
+        int codeTouches = opcode is 0xe8 or 0xc2 or 0x68 or 0x6a ? 2 : 1;
+        int prefixes = element.Length - length;
+        if (prefixes < 0 || element.Length > 15 || opcode!=0xff && element.CodeTouches != codeTouches + prefixes ||
+            !WithinSegment(GetSegmentCache(Segment.Cs), Eip, (uint)element.Length)) return false;
+        length = element.Length;
 
         int bytes = width * (opcode is 0x60 or 0x61 ? 8 : 1);
-        uint pointer = StackPointer, mask = Mask(StackAddressWidth), next, beginning;
+        uint pointer = opcode == 0xc9 ? ReadRegister(5, StackAddressWidth) : StackPointer, mask = Mask(StackAddressWidth), next, beginning;
         if (push)
         {
             if (pointer < bytes) return false;
@@ -56,7 +58,7 @@ public sealed partial class X86Cpu
         if ((linear & 4095) + (uint)bytes > 4096 ||
             AlignmentCheckEnabled && (linear & (uint)(width - 1)) != 0 ||
             !CachedRamTranslation(linear, push, out uint physical, out int slot) ||
-            !_memory.TryGetRamSpan(physical, bytes, out var data) ||
+            !_memory.TryGetSinglePageRamSpan(physical, bytes, out var data) ||
             push && ((ReadOnlySpan<byte>)data).Overlaps(wholeCode)) return false;
 
         uint returnAddress = unchecked(Eip + (uint)length), target = 0;
@@ -88,12 +90,20 @@ public sealed partial class X86Cpu
     }
 
     /// <summary>Performs the original code/preflight/transfer TLB-hit sequence and precise stack-register commit order.</summary>
-    private void ExecuteDecodedStack(in DecodedStackPlan plan, int codeSlot)
+    private void ExecuteDecodedStack(in DecodedStackPlan plan, int codeSlot,in IntegerMemoryPlan sourcePlan)
     {
         TouchIntegerMemoryTranslation(codeSlot, plan.CodeTouches);
         _instructionBytes = plan.Length; Eip = plan.ReturnAddress;
         int opcode = plan.Operation, width = plan.Width;
-        if (opcode == 0x60)
+        if(opcode==0xff)
+        {
+            uint value;
+            if(plan.Register<0){TouchIntegerMemoryTranslation(sourcePlan.DataSlot);value=ReadIntegerMemory(sourcePlan);}
+            else value=ReadRegister(plan.Register,width);
+            TouchIntegerMemoryTranslation(plan.DataSlot);WriteDecodedStack(in plan,0,value);
+            SetStackPointer(plan.NextPointer);
+        }
+        else if (opcode == 0x60)
         {
             // CheckPushes calls ProbeStackWrites once for EACH of eight words, before any write.
             TouchIntegerMemoryTranslation(plan.DataSlot, 8);
@@ -118,10 +128,10 @@ public sealed partial class X86Cpu
                 if (register != 4) WriteRegister(register, width, value);
             }
         }
-        else if (opcode is >= 0x50 and <= 0x57 or 0xe8)
+        else if (opcode is >= 0x50 and <= 0x57 or 0x68 or 0x6a or 0xe8)
         {
             // Read PUSH ESP/SP before its decrement; CALL stores the already decoded return address.
-            uint value = opcode == 0xe8 ? plan.ReturnAddress : ReadRegister(plan.Register, width);
+            uint value = opcode == 0xe8 ? plan.ReturnAddress : opcode is 0x68 or 0x6a ? plan.Immediate : ReadRegister(plan.Register, width);
             TouchIntegerMemoryTranslation(plan.DataSlot); WriteDecodedStack(in plan, 0, value);
             SetStackPointer(plan.NextPointer);
             if (opcode == 0xe8) Eip = plan.Target;
@@ -133,6 +143,7 @@ public sealed partial class X86Cpu
             SetStackPointer(plan.NextPointer);
             // POP ESP/SP replaces the post-pop pointer at the operand width, preserving its post-add high bits when narrow.
             if (opcode is >= 0x58 and <= 0x5f) WriteRegister(plan.Register, width, value);
+            else if (opcode == 0xc9) WriteRegister(5, width, value);
             else Eip = plan.Target;
         }
     }

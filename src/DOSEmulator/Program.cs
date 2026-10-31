@@ -38,13 +38,15 @@ internal static class Program
                 try { settings = JsonSerializer.Deserialize<HostSettings>(File.ReadAllText(settingsFile), IpcProtocol.JsonOptions) ?? new(); }
                 catch (Exception ex) when (ex is JsonException or IOException) { /* Keep recoverable defaults. */ }
             }
-            using PcMachine machine = MachineLaunch.Open(Value);
+            string? machinePath = Value("--machine");
+            using PcMachine machine = Value("--remember-configuration") is { } rememberedDirectory
+                ? MachineLaunch.OpenPersistent(Value, rememberedDirectory, out machinePath) : MachineLaunch.Open(Value);
             string? acceptance = Value("--acceptance-test");
             string? storage = Value("--storage-acceptance");
             using var window = new DosWindow(machine, settings, settingsFile, storage ?? acceptance ?? Value("--smoke-test"),
                 acceptance is not null, Value("--type-file") is { } typePath ? File.ReadAllText(typePath) : null, Value("--capture-after"),
                 Value("--audio-out"), args.Contains("--audio-acceptance"), Value("--scenario") is { } scenarioPath ? GuestTestScenario.Load(scenarioPath) : null,
-                args.Contains("--sb2-resource-acceptance"), args.Contains("--mouse-native-acceptance"), storage is not null);
+                args.Contains("--sb2-resource-acceptance"), args.Contains("--mouse-native-acceptance"), storage is not null, machinePath);
             window.Run();
             return 0;
         }

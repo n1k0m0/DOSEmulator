@@ -2,8 +2,11 @@
 # Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
-param([switch]$PrepareOnly)
-. (Join-Path $PSScriptRoot 'common.ps1')
+param([switch]$PrepareOnly, [switch]$Inspect)
+. (Join-Path $PSScriptRoot 'runtime.ps1')
+$release = Get-DosRuntimeRelease -BuildIfMissing
+$exe = Join-Path $release 'net10.0-windows/DOSEmulator.exe'
+if ($Inspect) { [pscustomobject]@{variant='doom2';runtime=$release;executable=$exe;nativeWindowStarted=$false;mediaOpened=$false} | ConvertTo-Json; return }
 $playRoot=Join-Path $script:DosWorkspaceRoot 'artifacts\doom2-play'
 New-Item -ItemType Directory -Path $playRoot -Force | Out-Null
 $lock=$null
@@ -49,7 +52,6 @@ try {
     if(-not (Test-Path -LiteralPath $cow) -or (Get-DosFileHash -LiteralPath $disk).Hash -ne $state.baseSha256){throw 'Private Doom-II-Medien fehlen oder das schreibgeschuetzte Basisimage wurde veraendert.'}
     # An existing play.cow deliberately keeps the user's settings and saves.
     $profile=Join-Path $script:DosWorkspaceRoot 'profiles\virtual486-dev-v1.json'
-    $exe=Join-Path $script:DosWorkspaceRoot 'artifacts\m1-build\Release\net10.0-windows\DOSEmulator.exe'
     if($PrepareOnly){
         [pscustomobject]@{prepared=$true;disk=$disk;overlay=$cow;profile=$profile;
             command='doom2 -config doomtest.cfg -nosound';sourceImage=$state.sourceImage;sourceOverlay=$state.sourceOverlay;
@@ -58,9 +60,8 @@ try {
             nativeWindowStarted=$false;interactivePlayAccepted=$false} | ConvertTo-Json
         return
     }
-    if(-not (Test-Path -LiteralPath $exe)){& (Join-Path $PSScriptRoot 'build.ps1')}
     Write-Host 'Experimenteller Doom-II-Spieltest: MS-DOS startet mit HIMEM und 8 MiB RAM.'
     Write-Host 'Bei C:\> eingeben: doom2 -config doomtest.cfg -nosound'
     Write-Host 'Spielstaende und Einstellungen bleiben im eigenen privaten Overlay erhalten.'
-    & $exe --disk $disk --overlay $cow --profile $profile
+    & $exe --remember-configuration (Join-Path $script:DosWorkspaceRoot 'artifacts/launcher-pcs/doom2') --data-dir (Join-Path $script:DosWorkspaceRoot 'artifacts/doom2-ui') --disk $disk --overlay $cow --profile $profile
 } finally {if($lock){$lock.Dispose()}}

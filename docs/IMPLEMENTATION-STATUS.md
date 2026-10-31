@@ -1,5 +1,117 @@
 # DOSE – Implementierungsstand
 
+**Windows-95-Treiber auf genehmigten Sicherheitskopien, 31. Oktober 2026:**
+Die vier Win95-Starter für Haupt-PC, APM, Last und Multimedia öffnen jetzt
+getrennte geprüfte Kopien unter `artifacts/Windows95-Drivers-C47r2-20261031`.
+Alle vier enthalten den passenden originalen RTL8029-/950a-Treiber und Microsoft
+TCP/IP. Im Haupt-PC wurden zusätzlich die fehlenden originalen APM-Treiber von
+der Windows-CD installiert; in den anderen drei Kopien waren sie bereits korrekt.
+Die vier Original-PC-Dateien und Originaljournale bleiben nachweislich bytegleich.
+Neue IDs, unveränderte Hardware/MACs und ursprüngliche Diskettenbindungen sind
+geprüft; sämtliche bisherigen UI-Einstellungen bleiben gebunden.
+
+Vier tatsächliche C47r2-Kaltstarts, vier normale Windows-Neustarts (je POST 2,
+HardwareResetCount 0), vier vollständige UDP-/TCP-Dateibeweise und vier reguläre
+Shutdowns bestehen. Die Transfers prüfen unabhängig sämtliche 257 UDP-/1027 TCP-
+Bytes und natürliches EOF über ausschließlich kontrollierte Loopback-Gegenstellen.
+Die installierten Treiberdateien sind unabhängig aus den versiegelten FAT/COWs
+geprüft. Der Haupt-PC besteht zusätzlich einen strikten C47r2-Import mit 18 ganzen
+64-MiB-/CPU-/VRAM-/Geräte-/Scheduler-/Bild-/späteren PCM-Vergleichen.
+
+Alle vier Leerlaufproben erreichen rund 100%; durchgängiges 1:1 unter Spiele-/
+Videolast bleibt offen. Kein neuer Emulatorbuild oder Vollsuitelauf: die 114
+ausgelieferten C47r2-Produkte sind unverändert, deren 15275 Regressionen behalten
+ihren bisherigen Nachweis. Alle 13 Starter bestehen erneut den wirklichen
+Inspect-Pfad sowie den isolierten Fixturetest; nur die vier Win95-PC-Pfade ändern
+sich. Npcap fehlt weiterhin. Automation **PAUSIERT**, kein Commit/Push.
+[Kopien und Originalpfade](SETTINGS-AND-LAUNCHERS.md#windows-95-safety-copies-31-october-2026),
+[Netzwerkumfang](NETWORKING.md#windows-95-safety-copy-installations-31-october-2026),
+[Messgrenzen](PERFORMANCE.md#c47r2-windows-95-driver-copies-31-october-2026).
+Nachweis: `artifacts/tests/win95-drivers-release-path.txt`.
+
+**Gemeinsamer lokaler Stand C47r2 vom 30. Oktober 2026:** Alle 13 Root-Starter
+verwenden jetzt denselben unveränderlich abgelegten Emulator mit 114 geprüften
+Produktdateien. Bereits laufende Prozesse behalten ihren alten Satz. Die acht
+Windows-PC-Definitionen sind textuell gesichert und für RTL8029/NAT mit getrennten
+MACs vorbereitet; keine Benutzerplatte und kein Benutzerjournal wurde dazu
+geöffnet oder kopiert. Die damals noch ausstehende Gasttreiberinstallation ist
+in den oben beschriebenen genehmigten Sicherheitskopien abgeschlossen. Bridged benötigt
+weiterhin das auf diesem Host fehlende Npcap.
+
+Die englischen Einstellungsseiten scrollen und akzeptieren Klicks. Unterstützte
+CPU-/Plattformkombinationen, RAM und Geräte sind erreichbar; Hardwareänderungen
+werden als zusammenhängender Entwurf geprüft und erst mit Apply kalt gestartet.
+MAC und Host-only-LAN sind direkt editierbar. Erfolgreiche Änderungen speichern
+die gebundene PC-Datei mit Erkennung zwischenzeitlicher fremder Änderungen.
+Temporäre Boots und Snapshotimporte lösen diese Speicherbindung. Debugoverlay,
+Multicore Video und 30/60/120-Hz-Präsentation sind getrennte UI-Einstellungen.
+Die standardmäßige 60-Hz-Grenze betrifft ausschließlich die Bildumwandlung.
+
+C47r2 besteht **15275/15275 Regressionen**, darunter 23 neue Einstellungsfälle,
+ohne Buildwarnungen/Fehler; Zustand 48/957/43. 922 Code-/Projektdateien bestehen
+die Quellprüfung. Alle 13 wirklichen Starter bestehen den schreibfreien
+Inspect-Pfad. Sechs kontrollierte native Netzwerkgruppen und der tatsächliche
+CLI-Vergleich mit vollem RAM/Zustand/Bild bestehen auf dem ausgelieferten Satz.
+
+Zwei eigene C47-Windows-Kaltstarts mit Originaltreibern bestehen tatsächliche
+NAT-UDP-/TCP-Dateibeweise, zwei strikte Fortsetzungen mit 36 ganzen 64-/128-MiB-
+Vergleichen und regulären Shutdown. Die endgültige r2 ändert gegenüber diesem
+Gastsatz ausschließlich die Runtime-Speicherbindung; die vier übrigen VM-Module
+sind bytegleich. Diese Gastimporte bleiben ihrem tatsächlichen C47-Build
+zugeordnet. C47r2 weist dessen Sicherung vor Zweiganlage ab, ohne Migration.
+
+Die erneute Win98-Probe erreicht mit APM im Leerlauf 100,027%, beim wirklichen
+AVI-Abspielen 43,477%. Die ältere Win95-Netzwerk-Testinstallation ohne APM
+erreicht im Leerlauf 77,954%. Das sind getrennte Headless-Proben, keine neue
+allgemeine 1:1-, GUI- oder Hostaudio-Abnahme und kein zusätzlicher Codegewinn
+aus dem Vergleich alter Messreihen. Automation bleibt **PAUSIERT**, kein
+Commit/Push. [Bedienung](SETTINGS-AND-LAUNCHERS.md), [Netzwerk](NETWORKING.md),
+[Messgrenzen](PERFORMANCE.md#c47-shared-launchers-settings-and-presentation-30-october-2026).
+Nachweis: `artifacts/tests/settings-network-release-path.txt`.
+
+**Lokaler Spiele-/Video-Kandidat C46 vom 30. Oktober 2026:** Die aus echten
+Doom-/Media-Player-Profilen abgeleitete Decodererweiterung spart in den finalen
+Vergleichsreihen im Mittel 16.36%/7.46%/15.32% Hostzeit bei Doom133/Win95-AVI/Win98-AVI;
+insbesondere die Win95-Prozesse streuen deutlich, kein allgemeiner Gewinn je Szene.
+Ganze Zustände, RAM/VRAM, Geräte/Scheduler, Bilder, spätere PCM-Daten und Journale
+bleiben gleich. Kein JIT/zusätzlicher I/O- oder Audioworker wird übernommen.
+
+Tatsächliche C46-Lastproben: Doom33 100.05%, Doom133 zunächst 100.08%,
+im späteren schwereren Zwanzig-Sekunden-Abschnitt 79.69%; Windows-Video
+43.55%/33.49%. Durchgängiges 1:1 bleibt ausdrücklich **offen**.
+Vier Kaltstarts und vier strikte volle Fortsetzungen mit 72 ganzen Vergleichen
+bestehen, ebenso natürliche Videoenden, Anwendungsschluss und regulärer
+Windows-Shutdown. Die Messungen sind Headless-Emulationszeit, keine Spiel-FPS
+oder native GL-/Hostaudio-Abnahme.
+
+C46 besteht **15252/15252 Regressionen**, Build ohne Warnungen/Fehler; Zustand
+48/957/43 unverändert. Der ganze tatsächliche CLI-Speicher-/Ladevergleich und
+die alte Buildablehnung vor dem Medienzweig bestehen. Drei neue `*-media.cmd`-
+Starter öffnen getrennte eigene Testkopien mit 114 eingefrorenen Produkten.
+Bestehende Benutzer-PCs und Starter bleiben erhalten. Automation **PAUSIERT**,
+kein neuer Commit/Push. [Messwerte und Grenzen](PERFORMANCE.md#c46-profiled-doom-ii-and-actual-windows-video-30-october-2026).
+Nachweis: `artifacts/tests/games-media-opt-release-path.txt`.
+
+**Spiele-/Multimedia-Nachprüfung auf unverändertem C45, 30. Oktober 2026:**
+Original-Doom-II mit PCM/FM erreicht in begrenzten Zehn-Hostsekunden-Proben
+100,08% beim 486/33-MHz-/8-MiB-Profil und 46,31% beim P54C/133-MHz-/128-MiB-Profil.
+Der originale Media Player spielt dasselbe eigene RLE8-/PCM-AVI bei 33,00% unter
+Win95/100 MHz/64 MiB beziehungsweise 25,09% unter Win98/133 MHz/128 MiB; wirkliche
+Bildzähler und SB16-DMA laufen weiter. Die Werte messen virtuelle Zeit, keine
+Spiel-FPS. Vier echte Kaltstarts und zwölf getrennte serielle C44b/C45-Vergleiche
+mit neun ganzen Anfangs- und 45 späteren Zustands-/RAM-/VRAM-/Geräte-/Scheduler-/
+Bild-/PCM-/Journalvergleichen bestehen. Doom benötigt 4,35% weniger Hostzeit;
+beim AVI ist kein Vorteil belegt. Die bisherigen Rechenschleifengewinne sind
+damit keine allgemeine Spiele-/Multimedia-Zusage.
+
+Kein neuer Produktbuild oder Vollsuitelauf; die 14969 akzeptierten Regressionen
+bleiben C45 zugeordnet. Keine neue strikte Snapshotmigration, native GL-/Hostaudio-
+oder Windows-3D-Spielabnahme. Der normale Doom-Starter verwendet einen anderen
+DLL-Satz; persönliche Spiel-COWs und Windows-Arbeitsplatten bleiben ungeöffnet.
+Automation bleibt **PAUSIERT**, keine neue Commit-/Push-Aktion. Details und Grenzen:
+[tatsächliche Spiele-/Multimedia-Proben](PERFORMANCE.md#c45-original-doom-ii-and-windows-multimedia-30-october-2026).
+Nachweis: `artifacts/tests/games-multimedia-release-path.txt`.
+
 **Lokaler Last-Teststand C45 vom 30. Oktober 2026:** Register-Shifts/Rotationen
 und signed IMUL laufen zusätzlich im geprüften Decoderpfad. Der eigene gemischte
 Win32-Rechen-/RAM-Test benötigt in acht seriellen Vergleichsprozessen 27,78%

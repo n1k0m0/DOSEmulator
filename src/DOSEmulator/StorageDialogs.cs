@@ -22,7 +22,7 @@ internal static class StorageDialogs
         while (form.ShowDialog() == DialogResult.OK)
         {
             try { return RawDiskImage.SizeInBytes(size.Value, unit.SelectedIndex == 0 ? "MiB" : "GiB"); }
-            catch (ArgumentException ex) { MessageBox.Show(form, ex.Message, "Festplattengröße", MessageBoxButtons.OK, MessageBoxIcon.Information); }
+            catch (ArgumentException ex) { MessageBox.Show(form, ex.Message, "Disk size", MessageBoxButtons.OK, MessageBoxIcon.Information); }
         }
         return null;
     }
@@ -30,15 +30,15 @@ internal static class StorageDialogs
     /// <summary>Builds the actual capacity editor so the same controls can be checked without synthetic Windows input.</summary>
     private static Form CreateDiskSizeDialog(out NumericUpDown sizeControl, out ComboBox unitControl)
     {
-        var form = Dialog("Neue Festplatte", 440, 190);
-        var caption = new Label { Text = "Größe", Left = 20, Top = 22, AutoSize = true };
+        var form = Dialog("Create blank disk", 440, 190);
+        var caption = new Label { Text = "Capacity", Left = 20, Top = 22, AutoSize = true };
         var size = new NumericUpDown { Left = 20, Top = 48, Width = 180, Minimum = 1, Maximum = 131072, Value = 512, DecimalPlaces = 3 };
         var unit = new ComboBox { Left = 215, Top = 48, Width = 200, DropDownStyle = ComboBoxStyle.DropDownList };
         unit.Items.AddRange(["MiB (Megabyte, 1024 KiB)", "GiB (Gigabyte, 1024 MiB)"]); unit.SelectedIndex = 0;
         var help = new Label { Left = 20, Top = 83, Width = 395, Height = 43,
-            Text = "Leere RAW-Datei, 1 MiB bis 128 GiB.\nPartitionieren und formatieren erfolgt anschließend im Gast." };
-        var ok = new Button { Text = "Weiter", Left = 230, Top = 140, Width = 85, DialogResult = DialogResult.OK };
-        var cancel = new Button { Text = "Abbrechen", Left = 325, Top = 140, Width = 90, DialogResult = DialogResult.Cancel };
+            Text = "Blank RAW image, 1 MiB to 128 GiB.\nPartition and format the disk inside the guest." };
+        var ok = new Button { Text = "Continue", Left = 230, Top = 140, Width = 85, DialogResult = DialogResult.OK };
+        var cancel = new Button { Text = "Cancel", Left = 325, Top = 140, Width = 90, DialogResult = DialogResult.Cancel };
         form.Controls.AddRange([caption, size, unit, help, ok, cancel]); form.AcceptButton = ok; form.CancelButton = cancel;
         unit.SelectedIndexChanged += (_, _) =>
         {
@@ -61,12 +61,24 @@ internal static class StorageDialogs
     /// <summary>Builds the name editor without displaying a window or changing the saved identity.</summary>
     private static Form CreateMachineNameDialog(string current, out TextBox inputControl)
     {
-        var form = Dialog("Maschine speichern", 440, 125);
+        var form = Dialog("Save machine", 440, 125);
         var input = new TextBox { Left = 20, Top = 20, Width = 395, MaxLength = 128, Text = current };
-        var ok = new Button { Text = "Speichern", Left = 225, Top = 75, Width = 90, DialogResult = DialogResult.OK };
-        var cancel = new Button { Text = "Abbrechen", Left = 325, Top = 75, Width = 90, DialogResult = DialogResult.Cancel };
+        var ok = new Button { Text = "Save", Left = 225, Top = 75, Width = 90, DialogResult = DialogResult.OK };
+        var cancel = new Button { Text = "Cancel", Left = 325, Top = 75, Width = 90, DialogResult = DialogResult.Cancel };
         form.Controls.AddRange([input, ok, cancel]); form.AcceptButton = ok; form.CancelButton = cancel;
         inputControl = input; return form;
+    }
+
+    /// <summary>Obtains one explicit typed setting without accepting a partially entered or cancelled value.</summary>
+    public static string? AskText(string title, string prompt, string current, int maximumLength)
+    {
+        using var form = Dialog(title, 520, 160);
+        var label = new Label { Text = prompt, Left = 20, Top = 20, Width = 480, Height = 25 };
+        var input = new TextBox { Text = current, Left = 20, Top = 50, Width = 480, MaxLength = maximumLength };
+        var ok = new Button { Text = "OK", Left = 310, Top = 110, Width = 90, DialogResult = DialogResult.OK };
+        var cancel = new Button { Text = "Cancel", Left = 410, Top = 110, Width = 90, DialogResult = DialogResult.Cancel };
+        form.Controls.AddRange([label, input, ok, cancel]); form.AcceptButton = ok; form.CancelButton = cancel;
+        return form.ShowDialog() == DialogResult.OK ? input.Text : null;
     }
 
     /// <summary>Renders the real editors offscreen without activation or Windows input, and checks the actual unit-change controls.</summary>

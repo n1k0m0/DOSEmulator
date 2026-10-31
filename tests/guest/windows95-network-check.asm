@@ -1,6 +1,6 @@
 ; SPDX-License-Identifier: Apache-2.0
 ; Copyright 2026 Nils Kopal
-; Own Windows95 Winsock1.1 UDP/TCP witness. NEVER execute this PE on the host.
+; Own Windows95/98 Winsock1.1 UDP/TCP witness. NEVER execute this PE on the host.
 ; NETWORK_PORT identifies only an explicitly bound controlled host-loopback echo server.
 ; Guest destination10.0.2.2 is the configured DOSE gateway/host alias. No Internet target.
 ; C:\DOSENET.BIN is CREATE_NEW, exactly2048B. Header and all returned payload bytes persist.
@@ -65,7 +65,7 @@ entry:
     call [VA(iat_GetVersion)]
     test eax,0x80000000
     jz unsupported
-    cmp ax,4
+    cmp al,4                     ; Win95 4.0 and Win98 4.10 retain separate minor versions.
     jne unsupported
     push 0
     push 0x80

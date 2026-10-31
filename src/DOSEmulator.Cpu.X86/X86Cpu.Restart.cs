@@ -36,7 +36,7 @@ public sealed partial class X86Cpu
     private void EnsureControlCheckpoint()
     {
         if (!_checkpointProtected || _controlCheckpointSaved) return;
-        _controlCheckpoint = SaveControl() with { Ip = _checkpointIp, Flags = _checkpointFlags, Esp = _checkpointEsp };
+        _controlCheckpoint = SaveControl(_checkpointIp,_checkpointFlags,_checkpointEsp);
         _controlCheckpointSaved = true; ControlCheckpointsSaved++;
     }
     private readonly record struct SegmentCheckpoint(ushort Selector, SegmentDescriptorCache Cache);
@@ -46,7 +46,9 @@ public sealed partial class X86Cpu
     /// <summary>Captures a visible selector together with the hidden cache required for exact instruction rollback.</summary>
     private SegmentCheckpoint SaveSegment(Segment segment) => new(GetSegment(segment), GetSegmentCache(segment));
     /// <summary>Captures the control/system/segment portion of a restart checkpoint.</summary>
-    private ControlCheckpoint SaveControl() => new(_taskSwitchEpoch, Eip, Eflags, GetRegister(Register.Sp), _cpl, _interruptShadow, Halted,
+    private ControlCheckpoint SaveControl() => SaveControl(Eip,Eflags,GetRegister(Register.Sp));
+    /// <summary>Constructs the exact restart record directly, avoiding an intermediate large struct copy.</summary>
+    private ControlCheckpoint SaveControl(uint ip,uint flags,uint esp) => new(_taskSwitchEpoch, ip, flags, esp, _cpl, _interruptShadow, Halted,
         PrivilegeStackSwitches, OuterPrivilegeReturns, CallGateTransfers, Virtual8086Entries, Virtual8086Exits, SaveSegment(Segment.Es), SaveSegment(Segment.Cs), SaveSegment(Segment.Ss),
         SaveSegment(Segment.Ds), SaveSegment(Segment.Fs), SaveSegment(Segment.Gs));
     /// <summary>Restores a saved visible selector and its corresponding hidden descriptor cache.</summary>

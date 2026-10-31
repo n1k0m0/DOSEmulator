@@ -20,6 +20,7 @@ public sealed class MachineSession : IDisposable
     private long _networkGeneration = 1;
     private string _definitionId = Guid.NewGuid().ToString("N");
     private string? _definitionName;
+    private MachineDefinitionBinding? _definitionBinding;
     private readonly bool _enableHostNetworking;
     private NetworkService _network;
     // External input awaiting admission is session-owned, like _commands, not saved guest state.
@@ -33,14 +34,18 @@ public sealed class MachineSession : IDisposable
     public long InputGeneration => Interlocked.Read(ref _inputGeneration);
     /// <summary>Successful paused-to-running Resume commands, allowing frontend policy to observe transitions coalesced in one pump.</summary>
     public long ResumeGeneration => Interlocked.Read(ref _resumeGeneration);
+    /// <summary>Explicit frontend configuration destination; snapshots and ordinary headless sessions remain unbound.</summary>
+    public string? DefinitionPath => _definitionBinding?.Path;
 
     /// <summary>Initializes MachineSession and connects the supplied dependencies before the component is used.</summary>
-    public MachineSession(PcMachine machine, bool enableHostNetworking = false)
+    public MachineSession(PcMachine machine, bool enableHostNetworking = false, string? definitionPath = null)
     {
+        var definition = machine.CaptureDefinition();
+        if (definitionPath is not null) _definitionBinding = new(definitionPath, definition.Id);
         _enableHostNetworking = enableHostNetworking;
         _network = new(machine, enableHostNetworking);
         Machine = machine; Machine.HardwareResetOccurred += TrackReset;
-        var definition = machine.CaptureDefinition(); _definitionId = definition.Id; _definitionName = definition.Name;
+        _definitionId = definition.Id; _definitionName = definition.Name;
     }
     /// <summary>Invalidates the configuration revision after a real machine reset event.</summary>
     private void TrackReset()
@@ -167,6 +172,8 @@ public sealed class MachineSession : IDisposable
                     throw new ArgumentException("Property 'connected' must be a JSON boolean.");
                 try { _network.SetConnected(slot, connected.GetBoolean()); }
                 finally { _revision++; }
+                if (connected.GetBoolean() && !_network.IsConnected(slot))
+                    return new(1, request.RequestId, false, "NetworkUnavailable", new { message = _network.ConnectionError(slot) ?? "The network cable could not connect.", network = _network.GetStatus() });
                 result = _network.GetStatus(); break;
             }
             case "GetMachineDefinition": result = Machine.CaptureDefinition(_definitionName, _definitionId); break;
@@ -177,6 +184,7 @@ public sealed class MachineSession : IDisposable
                 var definition = Machine.CaptureDefinition(name ?? _definitionName, _definitionId);
                 MachineDefinitionStore.Save(path, definition); _definitionName = definition.Name;
                 Machine.SetDefinitionIdentity(definition.Id, definition.Name);
+                _definitionBinding = new(path, definition.Id);
                 result = new { path = Path.GetFullPath(path), definition }; break;
             }
             case "LoadMachineDefinition":
@@ -185,6 +193,7 @@ public sealed class MachineSession : IDisposable
                 var definition = MachineDefinitionStore.Load(path);
                 var replacement = MachineFactory.FromDefinition(definition, Machine);
                 ReplaceMachine(replacement); _definitionId = definition.Id; _definitionName = definition.Name;
+                _definitionBinding = new(path, definition.Id);
                 Machine.Running = true; result = Machine.GetStatus(); break;
             }
             case "SetHardDisk":
@@ -225,6 +234,7 @@ public sealed class MachineSession : IDisposable
                 var replacement = SnapshotStore.Load(path, destination);
                 ReplaceMachine(replacement, false);
                 var identity = replacement.CaptureDefinition(); _definitionId = identity.Id; _definitionName = identity.Name;
+                _definitionBinding = null;
                 result = Machine.GetStatus(); break;
             }
             case "CreateMediaCheckpoint":
@@ -298,7 +308,7 @@ public sealed class MachineSession : IDisposable
             {
                 // This explicit operation always boots the built-in test disk, never swaps an attached user image silently.
                 var replacement = PcMachine.CreateDemo(Machine.Profile);
-                ReplaceMachine(replacement); Machine.Running = true;
+                ReplaceMachine(replacement); Machine.Running = true; _definitionBinding = null;
                 result = Machine.GetStatus(); break;
             }
             case "PowerCycleReadOnlyDisk":
@@ -315,7 +325,7 @@ public sealed class MachineSession : IDisposable
                 var definition = Machine.CaptureDefinition(_definitionName, _definitionId);
                 definition = definition with { BuiltInTestDisk = false, HardDisks = definition.HardDisks.Where(d => d.Slot != 0).Append(new DiskAttachment(0, path, overlay)).ToArray() };
                 var replacement = MachineFactory.FromDefinition(definition, Machine);
-                ReplaceMachine(replacement); Machine.Running = true;
+                ReplaceMachine(replacement); Machine.Running = true; _definitionBinding = null;
                 result = Machine.GetStatus(); break;
             }
             case "InsertFloppy":
@@ -401,6 +411,16 @@ public sealed class MachineSession : IDisposable
                     request.Payload.Deserialize<ParallelInput>(IpcProtocol.JsonOptions) ?? throw new ArgumentException("Missing printer pin levels."));
                 result = null; break;
             default: return new(1, request.RequestId, false, "UnsupportedCommand", null);
+        }
+        if (_definitionBinding is not null && request.Command is "CommitConfigurationChange" or "SetNetworkConnection" or
+            "SetHardDisk" or "SetOpticalDisc" or "InsertFloppy" or "EjectFloppy")
+        {
+            try { _definitionBinding.Save(Machine.CaptureDefinition(_definitionName, _definitionId)); }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                return new(1, request.RequestId, false, "ConfigurationAppliedNotSaved", new
+                { applied = true, message = "The change is active, but the PC file was not saved: " + error.Message });
+            }
         }
         return new(1, request.RequestId, true, null, result);
     }

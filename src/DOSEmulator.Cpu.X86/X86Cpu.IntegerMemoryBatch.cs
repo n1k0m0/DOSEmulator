@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 Nils Kopal
 using System.Buffers.Binary;
+using DOSEmulator.Core;
 
 namespace DOSEmulator.Cpu.X86;
 
 public sealed partial class X86Cpu
 {
-    private enum IntegerMemoryKind { MoveRead, MoveWrite, AluMemory, AluRegister, Test, AluImmediate }
+    private enum IntegerMemoryKind { MoveRead, MoveWrite, AluMemory, AluRegister, Test, AluImmediate, IncDec, Unary, TestImmediate, MoveImmediate, ExtendRead }
 
     /// <summary>One stack-scoped admission result; RAM spans and translation slots are never retained in CPU or snapshot state.</summary>
     private readonly ref struct IntegerMemoryPlan
@@ -15,13 +16,16 @@ public sealed partial class X86Cpu
         public readonly IntegerMemoryKind Kind;
         public readonly uint Immediate;
         public readonly Span<byte> Data;
+        public readonly SimpleByteWritePlan DeviceStore;
+        /// <summary>Whether this instruction has the explicit one-store device capability rather than ordinary RAM.</summary>
+        public bool DeviceWrite => DeviceStore.Valid;
 
         /// <summary>Binds exactly one fully checked current RAM operand and its original instruction-fetch accounting.</summary>
         public IntegerMemoryPlan(int length, int width, int codeTouches, int dataSlot, int register, int operation,
-            IntegerMemoryKind kind, Span<byte> data, uint immediate = 0)
+            IntegerMemoryKind kind, Span<byte> data, uint immediate = 0, SimpleByteWritePlan deviceStore = default)
         {
             Length = length; Width = width; CodeTouches = codeTouches; DataSlot = dataSlot;
-            Register = register; Operation = operation; Kind = kind; Immediate = immediate; Data = data;
+            Register = register; Operation = operation; Kind = kind; Immediate = immediate; Data = data; DeviceStore = deviceStore;
         }
     }
 
@@ -74,7 +78,7 @@ public sealed partial class X86Cpu
         if ((linear & 4095) + (uint)width > 4096 ||
             AlignmentCheckEnabled && (linear & (uint)(width - 1)) != 0 ||
             !CachedRamTranslation(linear, writes, out uint physical, out int slot) ||
-            !_memory.TryGetRamSpan(physical, width, out var data)) return false;
+            !_memory.TryGetSinglePageRamSpan(physical, width, out var data)) return false;
         // Reject every alias of the current code page, including different linear PTEs and physical A20 folds.
         if (writes && ((ReadOnlySpan<byte>)data).Overlaps(wholeCodePage)) return false;
         plan = new(length, width, touches, slot, register, operation, kind, data);
@@ -155,12 +159,15 @@ public sealed partial class X86Cpu
     }
 
     /// <summary>Reads the exact width from an admitted ordinary RAM span, without any bus or additional paging operation.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     private static uint ReadIntegerMemory(in IntegerMemoryPlan plan) => plan.Width == 1 ? plan.Data[0]
         : plan.Width == 2 ? BinaryPrimitives.ReadUInt16LittleEndian(plan.Data) : BinaryPrimitives.ReadUInt32LittleEndian(plan.Data);
 
     /// <summary>Writes the exact width after admission, retaining all neighboring RAM bytes.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
     private static void WriteIntegerMemory(in IntegerMemoryPlan plan, uint value)
     {
+        if(plan.DeviceWrite){plan.DeviceStore.Store((byte)value);return;}
         Span<byte> data = plan.Data;
         if (plan.Width == 1) data[0] = (byte)value;
         else if (plan.Width == 2) BinaryPrimitives.WriteUInt16LittleEndian(data, (ushort)value);
@@ -170,11 +177,40 @@ public sealed partial class X86Cpu
     /// <summary>Executes a proved memory element; the outer batch retains first-physical, checkpoint, flag-normalization and retirement ownership.</summary>
     private void ExecutePlannedIntegerMemory(in IntegerMemoryPlan plan, int codeSlot)
     {
-        TouchIntegerMemoryTranslation(codeSlot, plan.CodeTouches);
+        // F6/F7 TEST reads its data before fetching the immediate. Preserve that
+        // precise code/data/code TLB age sequence even when both spans are plain RAM.
+        bool trailingImmediate=plan.Kind==IntegerMemoryKind.TestImmediate;
+        TouchIntegerMemoryTranslation(codeSlot, plan.CodeTouches-(trailingImmediate?1:0));
         _instructionBytes = plan.Length; Eip = unchecked(Eip + (uint)plan.Length);
         TouchIntegerMemoryTranslation(plan.DataSlot);
-        if (plan.Kind == IntegerMemoryKind.MoveRead) WriteRegister(plan.Register, plan.Width, ReadIntegerMemory(plan));
+        if(plan.DeviceWrite)EnsureControlCheckpoint();
+        if(trailingImmediate)
+        {
+            uint value=ReadIntegerMemory(plan);TouchIntegerMemoryTranslation(codeSlot);
+            Alu(4,value,plan.Immediate,plan.Width);
+        }
+        else if (plan.Kind == IntegerMemoryKind.MoveRead) WriteRegister(plan.Register, plan.Width, ReadIntegerMemory(plan));
         else if (plan.Kind == IntegerMemoryKind.MoveWrite) WriteIntegerMemory(plan, ReadRegister(plan.Register, plan.Width));
+        else if (plan.Kind == IntegerMemoryKind.MoveImmediate) WriteIntegerMemory(plan, plan.Immediate);
+        else if (plan.Kind == IntegerMemoryKind.ExtendRead)
+        {
+            uint value = ReadIntegerMemory(plan);
+            if ((plan.Operation & 16) != 0) value = unchecked((uint)Signed(value, plan.Width));
+            WriteRegister(plan.Register, plan.Operation & 7, value);
+        }
+        else if (plan.Kind == IntegerMemoryKind.Unary)
+        {
+            uint value = ReadIntegerMemory(plan);
+            uint result = plan.Operation == 2 ? ~value : Alu(5, 0, value, plan.Width);
+            TouchIntegerMemoryTranslation(plan.DataSlot); WriteIntegerMemory(plan, result);
+        }
+        else if (plan.Kind == IntegerMemoryKind.IncDec)
+        {
+            uint carry = Eflags & Carry;
+            uint result = Alu(plan.Operation, ReadIntegerMemory(plan), 1, plan.Width);
+            TouchIntegerMemoryTranslation(plan.DataSlot); WriteIntegerMemory(plan, result);
+            Eflags = (Eflags & ~Carry) | carry;
+        }
         else if (plan.Kind == IntegerMemoryKind.AluImmediate)
         {
             uint result = Alu(plan.Operation, ReadIntegerMemory(plan), plan.Immediate, plan.Width);

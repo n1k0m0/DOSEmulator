@@ -100,11 +100,12 @@ internal static class DecodedMathBatchTests
                 pair.Run([0xc0,0xec,1]); pair.Run([0xc0,0xec,0]); pair.Run([0xc0,0xec,255]);
                 pair.Run([0xd3,0xe1], 0); pair.Run([0xd3,0xe1], 255);
             });
-            test($"DecodedMath memory/prefix/observer denials {model} mode{mode}", () =>
+            test($"DecodedMath current size prefix and remaining memory LOCK REP observer guards {model} mode{mode}", () =>
             {
                 var pair = new Pair(mode, model);
                 foreach (byte[] code in new byte[][] { [0xc1,0x20,1], [0xd3,0x20], [0x69,0x00,1,0,0,0],
-                    [0x6b,0x00,255], [0x0f,0xaf,0x00], [0xf0,0xd1,0xe0], [0x66,0xd1,0xe0] }) pair.Run(code, expected: 0);
+                    [0x6b,0x00,255], [0x0f,0xaf,0x00], [0xf0,0xd1,0xe0], [0xf3,0xd1,0xe0] }) pair.Run(code, expected: 0);
+                pair.Run([0x66,0xd1,0xe0]);
                 bool observed = false; pair.Run([0xc1,0xe0,1], expected: 0, observer: (_,_) => observed = true);
                 Check(!observed, "An instruction observer was bypassed by batching.");
             });

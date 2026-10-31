@@ -1,12 +1,12 @@
 # Networking
 
-DOSE provides two optional guest Ethernet adapters: **NE2000 ISA** and **RTL8029 PCI**. Each of the two adapter slots independently selects **NAT**, **Host-only** or **Bridged**. Existing PCs retain no installed network card; adding a card leaves its cable disconnected.
+DOSE provides two optional guest Ethernet adapters: **NE2000 ISA** and **RTL8029 PCI**. Each of the two adapter slots independently selects **NAT**, **Host-only** or **Bridged**. Adding a card through the menu leaves its cable disconnected until explicitly connected. A newer emulator alone does not install the guest's network driver.
 
 ## Configure a card
 
-Open **MENU / NETWORK / ADAPTER 1** or **ADAPTER 2**. Select the model, connection mode and resources, approve the normal cold restart, then switch **CABLE** on. The menu shows the actual connection result, including an unavailable driver or failed connection. A failed bridge never falls back to NAT or another host adapter.
+Open **MENU / NETWORK ADAPTERS / ADAPTER 1** or **ADAPTER 2**. Select the model, connection mode and resources, then choose **APPLY CHANGES / COLD RESTART** and switch **CABLE** on. Changes can be combined in a validated draft or discarded. Long menu pages scroll and accept clicks. The status row shows the actual connection result, including an unavailable backend or failed connection. A failed bridge never falls back to NAT or another host adapter.
 
-Model, mode, bridge interface and resource changes use the existing configuration plan and cold restart. Cable changes run through the emulation owner's queue. Each new card receives a persistent locally administered unicast MAC address. The MAC survives saving/reopening the PC and changing its model. Custom MAC addresses and Host-only LAN names can be edited in the saved PC file while the PC is closed.
+Model, mode, bridge interface and resource changes use the existing configuration plan and cold restart. Cable changes run through the emulation owner's queue. Each new card receives a persistent locally administered unicast MAC address. The MAC survives saving/reopening the PC and changing its model. The **MAC** and **VIRTUAL LAN** menu rows open English value editors. Successful changes automatically update the bound saved PC, with conflict detection if another program edited that file. See [Settings and launchers](SETTINGS-AND-LAUNCHERS.md).
 
 | Guest card | Resources | Availability |
 |---|---|---|
@@ -37,6 +37,31 @@ For the tested original Windows 95 / 950a family, use the separate original **`w
 
 Keep downloaded manufacturer drivers private; they are not source or firmware of DOSE. Install `NETRTP.INF` and the matching `RTL8029.SYS` through Windows, then add Microsoft's TCP/IP protocol and select automatic address assignment. Restart Windows after changing the miniport. Do not mix the two SYS files solely because their INF is identical.
 
+## Windows 95 safety-copy installations, 31 October 2026
+
+The four Windows 95 root launchers now open explicitly approved safety copies
+with the matching 26624-byte original RTL8029 miniport and Microsoft's TCP/IP
+installed through normal Windows setup. DHCP and Windows logon are selected.
+The main copy also received the missing original POWER.DRV/VPOWERD.VXD APM
+drivers from the original Windows CD; those files were already correct in the
+other three copies. Their installed bytes and SYSTEM.INI entries were checked
+independently from sealed FAT/COW files.
+
+Each copy passed an actual cold boot, normal Windows restart, real Winsock NAT
+transfer and regular shutdown on the installed, unchanged C47r2 runtime. A finite
+peer on host loopback independently verifies every byte of a 257-byte UDP echo
+and 1027-byte TCP echo, including natural EOF. A separate sealed guest-file
+verifier checks the real API results, payloads and guards. The main copy also
+passes one strict C47r2 restore and 18 complete 64 MiB/state/VRAM/device/scheduler/
+frame/timed-PCM future comparisons after networking is disconnected.
+
+These are four current NAT guest installations. No Internet service or physical
+bridge was exercised. Npcap is still absent on this host. The earlier controlled
+Host-only/device/backend evidence retains its own scope. New copies keep their
+original hardware, MACs and floppy bindings, while all four source PC files and
+journals remain byte-identical. See the [copy/original mapping](SETTINGS-AND-LAUNCHERS.md#windows-95-safety-copies-31-october-2026).
+Evidence: `artifacts/tests/win95-drivers-release-path.txt`.
+
 ## Pause, reset and snapshots
 
 Only the emulation owner changes guest packet RAM, DMA latches, IRQ sources or device deadlines. Native transport workers exchange bounded owned frame copies; they never mutate guest RAM. Complete card state, including pending transmission/reception and the RTL EEPROM/autoload state, belongs to the full snapshot graph.
@@ -58,3 +83,45 @@ The frozen C19 build passes 14775 registered regressions, including 701 added si
 An actual FreeDOS boot with the original Crynwr NE2000 packet driver reads the configured MAC and exchanges a complete ARP request/reply. Two actual 100 MHz / 64 MiB Windows 95 A boots with the original RTL8029 miniport exchange every byte of 257-byte UDP and 1027-byte TCP payloads in both NAT and Host-only, including natural TCP EOF. Independently read sealed FAT/COW files bind the real guest API results and payloads; both Windows boots then perform normal shutdown.
 
 After disconnecting external networking, both Windows runs pass a strict full import and 18 complete 64 MiB/state comparisons each. The DOS cut passes a strict full import with all 8 MiB/state bytes equal after 250000 steps per side. These are completed-transfer cuts. Pending transmit/receive, DMA-lane, ring, reset, EEPROM and shared IRQ futures also have separate permanent device/integration cases. No external TCP connection is claimed to survive rewind.
+
+## C47 settings and deployment check
+
+All 13 root launchers now resolve the same immutable C47r2 runtime, including its
+pinned native dependencies. Six controlled NAT/Host-only transport groups pass
+on that installed set. Physical Bridged operation remains unavailable on this
+host without separately installed Npcap; no physical LAN or Internet test is
+claimed. See [Settings and launchers](SETTINGS-AND-LAUNCHERS.md).
+
+Two actual private cold boots on the first C47 build exercise original Windows
+95 A and Windows 98 SE RTL8029 drivers through real Windows Winsock and NAT.
+Independent sealed FAT/COW reads verify all 257 UDP and 1027 TCP payload bytes
+in both directions and natural TCP EOF. Both guests disconnect networking,
+pass one strict full import and 18 complete state/RAM/VRAM/device/scheduler/
+frame/timed-PCM comparisons each, then close applications and shut down normally.
+The Win95 continuation uses 64 MiB and 40 million steps per side; Win98 uses
+128 MiB and 320000 steps per side. These are completed-transfer cuts, without
+an external connection restored by the snapshot.
+
+Final C47r2 changes only Runtime's tested temporary-boot autosave binding relative
+to that guest build. The other four VM modules are byte-identical. Its full
+15275-case suite, six native transport groups and actual full CLI save/load
+comparison pass separately; C47 snapshots retain their C47 identity.
+
+Eight known Windows PC JSON definitions have text backups, RTL8029/NAT cables
+enabled and unique local MAC addresses. Their media bindings and other hardware
+remain unchanged. That 30 October metadata-only preparation did not install guest
+drivers or open/copy working Windows disks/journals. The subsequently approved
+31 October Windows 95 copy installations are described above; the originals
+remain unchanged. Windows 98 working media were not part of that copy upgrade.
+The private `artifacts/current/driver-media/rtl8029-win95a.img` contains the matching
+26624-byte original miniport for the tested 950a family. Select it through
+**NETWORK HELP / INSERT NIC DRIVER DISK**, then use Windows' normal driver setup.
+Do not substitute the incompatible 25088-byte package. The original Win98 driver
+works on the separate tested Win98 fixture. Driver installation in each existing
+working PC remains distinct from the proven emulator/backend behavior.
+
+An initial Win95 diagnostic used the known incompatible older miniport and is
+excluded. One initial Win98 exchange timed out at the host peer while the guest
+was paused; the final continuously serviced repeat passes on both sides. These
+diagnostics are not extra accepted boots or accepted failed-network results.
+Current release evidence: `artifacts/tests/settings-network-release-path.txt`.

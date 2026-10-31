@@ -84,6 +84,12 @@ public sealed class NetworkService : IDisposable
         ? _machine.Profile.NetworkAdapters.SingleOrDefault(n => n.Slot == slot) ?? throw new ArgumentException("No network adapter in this slot.")
         : throw new ArgumentOutOfRangeException(nameof(slot));
 
+    /// <summary>Returns the selected backend's actual state, independently from the persisted cable preference.</summary>
+    public bool IsConnected(int slot) { _ = Profile(slot); return _backends[slot]?.IsConnected == true; }
+
+    /// <summary>Retains a real connection failure for both the menu and the command response.</summary>
+    public string? ConnectionError(int slot) { _ = Profile(slot); return _errors[slot] ?? _backends[slot]?.Error; }
+
     /// <summary>Reports a failed previous generation without reconnecting it or changing the guest CPU.</summary>
     internal void RecordFailure(string message)
     {
