@@ -49,6 +49,7 @@ Windows-x64-Host mit WHP eigene kurze Gastprogramme aus: RAM/ROM, VGA-artige
 MMIO-Lese- und Schreibzugriffe, Port-I/O, `REP INSB`, A20-Aliasing,
 zeitgesteuerten PIC-IRQ und dessen `IRET`, P54C-CPUID/TSC-MSR/RDTSC,
 486-#UD, unbekannten MSR-#GP und HLT-/TSC-Snapshot mit PIC-Wecksignal.
+CPUID und RDTSC sind auch in einem 32-Bit-Protected-Mode-Gastprogramm geprüft.
 Ohne WHP meldet der Runner `SKIP`.
 
 Mit `DOSE_WHPX_BOOT_PROBE=1` läuft der eingebaute Demo-PC bis über POST und
@@ -80,7 +81,7 @@ Softwarepfads liefen nach der Integration ohne Fehler.
 
 Ein Start von Windows 95/98 über WHPX ist noch nicht freigegeben. Vorher müssen
 insbesondere weitere CPU-Zustände einschließlich APIC/XSAVE, der P54C-Vertrag
-in Protected Mode/V86, Reset-/Triple-Fault-Domänen und die Fortsetzung eines
+für Ringwechsel und V86, Reset-/Triple-Fault-Domänen und die Fortsetzung eines
 echten Windows-Gasts aus dem neuen Medien-Snapshot geprüft werden. Die WHP-Eigenschaft für eine
 eigene Prozessorfrequenz wurde auf diesem Host beim Partitionsaufbau abgewiesen;
 RDTSC/MSR melden deshalb einen eigenen nominellen Zähler aus der virtuellen

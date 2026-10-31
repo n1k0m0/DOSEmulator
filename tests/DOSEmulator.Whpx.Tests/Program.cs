@@ -208,6 +208,33 @@ using (var cpuMachine = new WhpxMappedMachine(cpuMemory, new IoPortBus(), new Pi
     Console.WriteLine("PASS: WHP CPUID and RDTSC/RDMSR/WRMSR follow the DOSE P54C identity and virtual 100-MHz clock.");
 }
 
+var protectedMemory = new MemoryBus(1 << 20);
+new byte[] {
+    0xb8, 0, 0, 0, 0, 0x0f, 0xa2, 0xa3, 0, 0x21, 0, 0,
+    0x0f, 0x31, 0xa3, 0x04, 0x21, 0, 0, 0xf4
+}.CopyTo(protectedMemory.Ram.AsSpan(0x1000));
+using (var protectedMachine = new WhpxMappedMachine(protectedMemory, new IoPortBus(), new Pic8259(),
+    new DeviceScheduler(), WhpxCpuContract.IntelP54cB5Subset, 100_000_000))
+{
+    protectedMachine.SetEntry(0, 0x1000);
+    var registers = protectedMachine.CaptureCpuState().Registers;
+    void Replace(uint name, ulong low, ulong high = 0)
+    {
+        int index = Array.FindIndex(registers, value => value.Name == name);
+        registers[index] = new WhpxRegisterState(name, low, high);
+    }
+    Replace(0x13, 0, 0xffff_ffffUL | (8UL << 32) | (0xcf9bUL << 48));
+    foreach (uint segment in new uint[] { 0x12, 0x14, 0x15 })
+        Replace(segment, 0, 0xffff_ffffUL | (0x10UL << 32) | (0xcf93UL << 48));
+    Replace(0x1c, protectedMachine.GetRegister(0x1c) | 1);
+    protectedMachine.RestoreCpuState(protectedMachine.CaptureCpuState() with { Registers = registers });
+    protectedMachine.RunUntilHalt(TimeSpan.FromSeconds(5));
+    if (BitConverter.ToUInt32(protectedMemory.Ram, 0x2100) != 1 ||
+        BitConverter.ToUInt32(protectedMemory.Ram, 0x2104) > 100_000_000)
+        throw new InvalidOperationException("WHP P54C instruction exits changed under 32-bit protected mode.");
+    Console.WriteLine("PASS: P54C CPUID and RDTSC use the same contract in 32-bit protected mode.");
+}
+
 var oldCpuMemory = new MemoryBus(1 << 20);
 oldCpuMemory.Ram[0x18] = 0x00; oldCpuMemory.Ram[0x19] = 0x30;
 new byte[] { 0x0f, 0xa2, 0xf4 }.CopyTo(oldCpuMemory.Ram.AsSpan(0x1000));
