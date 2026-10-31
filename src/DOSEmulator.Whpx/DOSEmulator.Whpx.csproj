@@ -6,5 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../DOSEmulator.Core/DOSEmulator.Core.csproj" />
+    <ProjectReference Include="../DOSEmulator.Hardware/DOSEmulator.Hardware.csproj" />
+    <ProjectReference Include="../DOSEmulator.Runtime/DOSEmulator.Runtime.csproj" />
   </ItemGroup>
 </Project>

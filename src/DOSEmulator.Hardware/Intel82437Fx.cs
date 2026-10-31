@@ -191,6 +191,10 @@ public sealed partial class Intel82437Fx : IPciConfigurationFunction, IPciConfig
     {
         byte attributes = Attributes(offset);
         uint physical = 0x000c0000 + offset;
-        if ((attributes & 2) != 0 && HasDram(physical)) _memory.Ram[physical] = value;
+        if ((attributes & 2) != 0 && HasDram(physical))
+        {
+            _memory.Ram[physical] = value;
+            _memory.NotifyPhysicalRamWrite(physical, 1);
+        }
     }
 }

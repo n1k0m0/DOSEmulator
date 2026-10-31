@@ -8,5 +8,6 @@
     <ProjectReference Include="../../src/DOSEmulator.Whpx/DOSEmulator.Whpx.csproj" />
     <ProjectReference Include="../../src/DOSEmulator.Core/DOSEmulator.Core.csproj" />
     <ProjectReference Include="../../src/DOSEmulator.Hardware/DOSEmulator.Hardware.csproj" />
+    <ProjectReference Include="../../src/DOSEmulator.Runtime/DOSEmulator.Runtime.csproj" />
   </ItemGroup>
 </Project>
