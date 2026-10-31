@@ -58,6 +58,12 @@
           "type": "List<IMemoryDecoder>",
           "mode": "excluded",
           "reason": "fixed peer registry; identities and complete no-RAM resource policy checked separately"
+        },
+        {
+          "name": "_externalRam",
+          "type": "Memory<byte>",
+          "mode": "excluded",
+          "reason": "Transient native RAM lease. CPU and devices share the same authoritative storage; detach copies the complete image before every public paused snapshot. External CPU state retains its separately typed container."
         }
       ],
       "sourceFiles": [
@@ -5342,6 +5348,18 @@
           "type": "Rtl8029?[]",
           "mode": "excluded",
           "reason": "Exact slot graph registered independently as nic0/nic1 and optional PCI wrappers; constructor bindings and all IRQs validated."
+        },
+        {
+          "name": "_externalCpuOwner",
+          "type": "bool",
+          "mode": "excluded",
+          "reason": "transient owner reservation; software snapshots retain no native CPU owner, WHPX format4 restores its separate authoritative CPU before reserving the fresh PC"
+        },
+        {
+          "name": "_externalCpuImage",
+          "type": "bool",
+          "mode": "excluded",
+          "reason": "Host-only ownership guard; native register images require the separately versioned WHPX CPU sidecar and cannot resume as a software CPU after detach."
         }
       ],
       "sourceFiles": [

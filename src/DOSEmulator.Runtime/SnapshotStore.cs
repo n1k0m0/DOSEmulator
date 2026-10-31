@@ -21,11 +21,21 @@ public sealed record SnapshotManifest(string Kind, int Version, string Id, ulong
 public static class SnapshotStore
 {
     private const string Kind = "DOSE-PC-STATE-1";
+    private const string ExternalKind = "DOSE-EXTERNAL-CPU-HARDWARE-1";
 
     /// <summary>Captures at one owner boundary, sealing media, raw RAM, raw FPU, devices and named scheduler events.</summary>
-    public static SnapshotManifest Capture(PcMachine machine, string directory)
+    public static SnapshotManifest Capture(PcMachine machine, string directory) => CaptureCore(machine, directory, false);
+
+    /// <summary>Captures device/RAM/media backing only for a separately identified native CPU sidecar.</summary>
+    internal static SnapshotManifest CaptureExternalCpu(PcMachine machine, string directory) => CaptureCore(machine, directory, true);
+
+    /// <summary>Labels the actual CPU owner so native backing cannot be loaded as a runnable software CPU.</summary>
+    private static SnapshotManifest CaptureCore(PcMachine machine, string directory, bool externalCpu)
     {
-        ArgumentNullException.ThrowIfNull(machine); machine.RequireSnapshotBoundary();
+        ArgumentNullException.ThrowIfNull(machine);
+        if (machine.HasExternalCpuOwner != externalCpu) throw new InvalidOperationException("The requested snapshot CPU owner differs.");
+        if (!externalCpu) machine.RequireSoftwareCpu();
+        machine.RequireSnapshotBoundary();
         string target = NewDirectory(directory, ".dossav");
         var state = machine.CaptureHardwareState(); SnapshotValidation.Check(state);
         if (machine.Profile.IsPiixReset) SnapshotValidation.CheckProfile(state, machine.Profile, machine.Memory.Ram.Length);
@@ -38,7 +48,7 @@ public static class SnapshotStore
             WriteBytes(Path.Combine(staging, "ram.bin"), machine.Memory.Ram);
             byte[] data = JsonSerializer.SerializeToUtf8Bytes(state, StateValues.Json);
             WriteBytes(Path.Combine(staging, "state.json"), data);
-            var manifest = new SnapshotManifest(Kind, 1, Guid.NewGuid().ToString("N"), state.Scheduler.Now,
+            var manifest = new SnapshotManifest(externalCpu ? ExternalKind : Kind, 1, Guid.NewGuid().ToString("N"), state.Scheduler.Now,
                 machine.Memory.Ram.Length, Hash(machine.Memory.Ram), data.LongLength, Hash(data),
                 HashFile(Path.Combine(staging, "media.dosemedia", "media.json")), runtime);
             WriteBytes(Path.Combine(staging, "snapshot.json"), JsonSerializer.SerializeToUtf8Bytes(manifest, StateValues.Json));
@@ -49,19 +59,27 @@ public static class SnapshotStore
 
     /// <summary>Validates protected inputs, then returns a fully restored PC on fresh branch journals; failures never touch the old PC.</summary>
     public static PcMachine Load(string directory, string branchDirectory)
+        => LoadCore(directory, branchDirectory, false);
+
+    /// <summary>Loads native CPU backing only after the outer WHPX container validated its independent sidecar.</summary>
+    internal static PcMachine LoadExternalCpu(string directory, string branchDirectory)
+        => LoadCore(directory, branchDirectory, true);
+
+    /// <summary>Normalizes malformed numeric data before staging either explicitly identified owner kind.</summary>
+    private static PcMachine LoadCore(string directory, string branchDirectory, bool externalCpu)
     {
-        try { return LoadChecked(directory, branchDirectory); }
+        try { return LoadChecked(directory, branchDirectory, externalCpu); }
         catch (Exception error) when (error is FormatException or OverflowException)
         { throw new InvalidDataException("Snapshot numeric values are outside their supported representation.", error); }
     }
 
     /// <summary>Parses and stages an import while keeping every old-machine mutation outside the operation.</summary>
-    private static PcMachine LoadChecked(string directory, string branchDirectory)
+    private static PcMachine LoadChecked(string directory, string branchDirectory, bool externalCpu)
     {
         string source = Path.GetFullPath(directory), branch = NewDirectory(branchDirectory, ".dosebranch");
         using var manifestFile = Open(Path.Combine(source, "snapshot.json"));
         var manifest = Read<SnapshotManifest>(manifestFile, 65536);
-        if (manifest.Kind != Kind || manifest.Version != 1 || !Guid.TryParseExact(manifest.Id, "N", out _) ||
+        if (manifest.Kind != (externalCpu ? ExternalKind : Kind) || manifest.Version != 1 || !Guid.TryParseExact(manifest.Id, "N", out _) ||
             manifest.RamBytes is < 1048576 or > 268435456 || manifest.StateBytes is < 1 or > 67108864 || manifest.Runtime is null ||
             !SameRuntime(manifest.Runtime, RuntimeIdentity()))
             throw new InvalidDataException("Unsupported snapshot format or different runtime build.");

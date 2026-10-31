@@ -11,13 +11,13 @@ public sealed partial class X86Cpu
     private enum DecodedIntegerKind
     {
         Nop, MoveImmediate, MoveRegister, AluRegister, AluImmediate, TestRegister, TestImmediate,
-        UnaryRegister, ShiftRegister, DoubleShiftRegister, MultiplyImmediate, MultiplyRegister, IncDec, Exchange, EffectiveAddress, SignExtend, Flag, Bswap, MoveExtend, SetCondition, Branch, Memory, Stack
+        UnaryRegister, ShiftRegister, DoubleShiftRegister, MultiplyImmediate, MultiplyRegister, IncDec, Exchange, EffectiveAddress, SignExtend, Flag, Bswap, MoveExtend, SetCondition, Branch, Memory, Stack, MoveSegment, MultiplyWide, NearIndirect
     }
 
     private readonly record struct DecodedAddress(int Basis, int Index, int Shift, uint Displacement, Segment Segment, bool Narrow);
     private readonly record struct DecodedElement(DecodedIntegerKind Kind, int Length, int Width, int CodeTouches,
         int Destination = 0, int Source = 0, int Operation = 0, uint Immediate = 0,
-        DecodedAddress Address = default, IntegerMemoryKind MemoryKind = default, byte PrefixState = 0);
+        DecodedAddress Address = default, IntegerMemoryKind MemoryKind = default, byte PrefixState = 0, bool ControlCheckpoint = false);
     private readonly record struct DecodedBlockKey(uint Ip, uint Physical, bool Code32, bool Protected, bool Vm,
         ushort Selector, SegmentDescriptorCache Code);
 
@@ -41,6 +41,9 @@ public sealed partial class X86Cpu
     {
         private readonly Dictionary<ulong, DecodedBlockEntry> _blocks = new(new DecodedIndexComparer());
         private readonly Queue<ulong> _order = [];
+        // No decoder callbacks/reentrancy exist here. This owner-only scratch holds
+        // encoding values, never CPU references; every retained plan is a fresh copy.
+        private readonly DecodedElement[] _decodeScratch = new DecodedElement[64];
         // Private host diagnostics only. No caller uses these to change guest execution,
         // and neither the cache nor these counters are CPU instance/snapshot members.
         private long _hits, _misses, _contextReplacements, _byteReplacements, _evictions;
@@ -63,7 +66,7 @@ public sealed partial class X86Cpu
                 if (entry.Key != key) _contextReplacements++;
                 else _byteReplacements++;
             }
-            var block = DecodeIntegerBlock(source, key.Ip, key.Code32, key.Code);
+            var block = DecodeIntegerBlock(source, key.Ip, key.Code32, key.Code, _decodeScratch);
             if (!exists)
             {
                 if (_blocks.Count == 4096) { _blocks.Remove(_order.Dequeue()); _evictions++; }
@@ -123,6 +126,12 @@ public sealed partial class X86Cpu
             scoped IntegerMemoryPlan memoryPlan = default;
             if (element.Kind == DecodedIntegerKind.Memory && !AdmitDecodedMemory(element, wholeCode, out memoryPlan)) break;
             scoped DecodedStackPlan stackPlan = default;
+            uint indirectTarget = 0;
+            if(element.Kind==DecodedIntegerKind.NearIndirect)
+            {
+                if(!AdmitDecodedNear(element,wholeCode,out memoryPlan,out indirectTarget))break;
+                if(element.Operation==0xff02 && !TryAdmitDecodedStack(element,wholeCode,out stackPlan))break;
+            }
             if(element.Kind==DecodedIntegerKind.Stack && element.Operation==0xff && element.Source<0 &&
                 !AdmitDecodedMemory(element,wholeCode,out memoryPlan))break;
             if (element.Kind == DecodedIntegerKind.Stack && !TryAdmitDecodedStack(element, wholeCode, out stackPlan)) break;
@@ -153,11 +162,13 @@ public sealed partial class X86Cpu
             }
             lastIp = Eip; lastFlags = Eflags; lastEsp = GetRegister(Register.Sp);
             _controlCheckpointSaved=false;
-            if(memoryPlan.DeviceWrite || element.Kind==DecodedIntegerKind.Stack && element.Operation==0xff)
+            bool controlCheckpoint = element.ControlCheckpoint;
+            if(memoryPlan.DeviceWrite || controlCheckpoint)
             {_checkpointIp=lastIp;_checkpointFlags=lastFlags;_checkpointEsp=lastEsp;}
-            if(element.Kind==DecodedIntegerKind.Stack && element.Operation==0xff)EnsureControlCheckpoint();
+            if(controlCheckpoint)EnsureControlCheckpoint();
             _firstInstructionPhysical = (physical & ~4095u) | (unchecked(code.Base + Eip) & 4095);
-            if (element.Kind == DecodedIntegerKind.Memory) ExecutePlannedIntegerMemory(in memoryPlan, codeSlot);
+            if(element.Kind==DecodedIntegerKind.NearIndirect)ExecuteDecodedNear(element,in memoryPlan,in stackPlan,indirectTarget,codeSlot);
+            else if (element.Kind == DecodedIntegerKind.Memory) ExecutePlannedIntegerMemory(in memoryPlan, codeSlot);
             else if (element.Kind == DecodedIntegerKind.Stack) ExecuteDecodedStack(in stackPlan, codeSlot,in memoryPlan);
             else
             {
@@ -196,7 +207,8 @@ public sealed partial class X86Cpu
         if (bytes.IsEmpty) return false;
         byte opcode = bytes[0]; int width = operand32 ? 4 : 2;
         if (opcode is >= 0x40 and <= 0x4f or >= 0x90 and <= 0x99 or 0x9e or 0x9f or 0xf5 or 0xf8 or 0xf9 or 0xfc or 0xfd) return true;
-        if (opcode is >= 0x50 and <= 0x5f or 0x60 or 0x61 or 0xc3 or 0xc9) return true;
+        if (opcode is >= 0x50 and <= 0x5f or 0x60 or 0x61 or 0xc3 or 0xc9 or 0x06 or 0x0e or 0x16 or 0x1e) return true;
+        if (opcode==0xc8)return bytes.Length>=4 && (bytes[3]&31)==0;
         if (opcode is 0x68 or 0x6a) return bytes.Length >= 1 + (opcode == 0x6a ? 1 : width);
         if (opcode == 0xc2) return bytes.Length >= 3;
         if (opcode == 0xe8) return bytes.Length >= 1 + width;
@@ -212,7 +224,7 @@ public sealed partial class X86Cpu
         {
             if (bytes.Length < 2) return false;
             byte second = bytes[1];
-            if (second is >= 0xc8 and <= 0xcf) return true; // Retain the existing 32-bit effect in every admitted code-default mode.
+            if (second is >= 0xc8 and <= 0xcf or 0xa0 or 0xa8) return true; // Retain the existing 32-bit effect in every admitted code-default mode.
             if (second is >= 0x80 and <= 0x8f) return bytes.Length >= 2 + width;
             if(second is 0xa4 or 0xa5 or 0xac or 0xad)
                 return bytes.Length>=((second&1)==0?4:3) && bytes[2]>=0xc0;
@@ -226,8 +238,9 @@ public sealed partial class X86Cpu
         if (opcode is 0xc0 or 0xc1 or 0xd0 or 0xd1 or 0xd2 or 0xd3)
             return modrm >= 0xc0 && bytes.Length >= (opcode is 0xc0 or 0xc1 ? 3 : 2);
         if (opcode is >= 0x88 and <= 0x8b or 0x84 or 0x85) return true;
-        if (opcode is 0xf6 or 0xf7) return (modrm & 0x38) is 0 or 16 or 24;
-        if (opcode is 0xfe or 0xff) return (modrm & 0x38) <= 8 || opcode==0xff && (modrm & 0x38)==48;
+        if (opcode==0x8c)return (modrm&0x38)<=40;
+        if (opcode is 0xf6 or 0xf7) return (modrm & 0x38) is 0 or 16 or 24 || modrm>=0xc0 && (modrm&0x38) is 32 or 40;
+        if (opcode is 0xfe or 0xff) return (modrm & 0x38) <= 8 || opcode==0xff && (modrm & 0x38) is 16 or 32 or 48;
         if (opcode is 0x86 or 0x87) return modrm >= 0xc0;
         if (opcode == 0x8d) return modrm < 0xc0;
         if (opcode is 0xc6 or 0xc7)
@@ -250,7 +263,7 @@ public sealed partial class X86Cpu
     private bool AdmitDecodedMemory(in DecodedElement element, ReadOnlySpan<byte> wholeCode, out IntegerMemoryPlan plan)
     {
         plan = default;
-        bool write = element.MemoryKind is IntegerMemoryKind.MoveWrite or IntegerMemoryKind.MoveImmediate or IntegerMemoryKind.IncDec or IntegerMemoryKind.Unary ||
+        bool write = element.MemoryKind is IntegerMemoryKind.MoveWrite or IntegerMemoryKind.MoveImmediate or IntegerMemoryKind.SegmentWrite or IntegerMemoryKind.IncDec or IntegerMemoryKind.Unary ||
             element.MemoryKind is IntegerMemoryKind.AluMemory or IntegerMemoryKind.AluImmediate && element.Operation != 7;
         uint offset = DecodedOffset(element.Address);
         Segment segment = element.Address.Segment;
@@ -279,6 +292,8 @@ public sealed partial class X86Cpu
         switch (element.Kind)
         {
             case DecodedIntegerKind.Nop: break;
+            case DecodedIntegerKind.MoveSegment: WriteRegister(destination,width,GetSegment((Segment)source)); break;
+            case DecodedIntegerKind.MultiplyWide: ExecuteDecodedWideMultiply(element); break;
             case DecodedIntegerKind.MoveImmediate: WriteRegister(destination, width, element.Immediate); break;
             case DecodedIntegerKind.MoveRegister: WriteRegister(destination, width, ReadRegister(source, width)); break;
             case DecodedIntegerKind.AluRegister:
@@ -320,7 +335,7 @@ public sealed partial class X86Cpu
                 long product = left * right;
                 WriteRegister(destination, width, unchecked((uint)product));
                 bool overflow = product != Signed(unchecked((uint)product), width);
-                SetFlag(Carry, overflow); SetFlag(Overflow, overflow);
+                SetCarryOverflow(overflow);
                 break;
             case DecodedIntegerKind.IncDec:
                 uint carry = Eflags & Carry;
@@ -360,19 +375,19 @@ public sealed partial class X86Cpu
     }
 
     /// <summary>Copies at most 64 complete same-page instructions and ends before unsupported bytes or after one near branch.</summary>
-    private static DecodedBlock DecodeIntegerBlock(ReadOnlySpan<byte> source, uint ip, bool code32, in SegmentDescriptorCache code)
+    private static DecodedBlock DecodeIntegerBlock(ReadOnlySpan<byte> source, uint ip, bool code32, in SegmentDescriptorCache code, Span<DecodedElement> elements)
     {
-        var elements = new List<DecodedElement>(64); int used = 0;
-        while (elements.Count < 64 && used < source.Length && TryDecodeInteger(source[used..], code32, out var element) &&
+        int count = 0, used = 0;
+        while (count < elements.Length && used < source.Length && TryDecodeInteger(source[used..], code32, out var element) &&
             WithinSegment(code, unchecked(ip + (uint)used), (uint)element.Length))
         {
-            elements.Add(element); used += element.Length;
-            if (element.Kind == DecodedIntegerKind.Branch ||
+            elements[count++] = element; used += element.Length;
+            if (element.Kind is DecodedIntegerKind.Branch or DecodedIntegerKind.NearIndirect ||
                 element.Kind == DecodedIntegerKind.Stack && element.Operation is 0xe8 or 0xc2 or 0xc3) break;
         }
         // Empty/unsupported plans also guard every potentially inspected x86 instruction byte.
         int guarded = used == 0 ? Math.Min(15, source.Length) : used;
-        return new(source[..guarded].ToArray(), elements.ToArray());
+        return new(source[..guarded].ToArray(), elements[..count].ToArray());
     }
 
     /// <summary>Reads a complete immediate from known code storage without executing a fetch or mutating any CPU state.</summary>
@@ -390,7 +405,7 @@ public sealed partial class X86Cpu
         var address = element.Address;
         if (state >> 2 is int segment && segment != 0) address = address with { Segment = (Segment)(segment - 1) };
         element = element with { Length = element.Length + prefixes, CodeTouches = element.CodeTouches + prefixes,
-            PrefixState = state, Address = address };
+            PrefixState = state, Address = address, ControlCheckpoint = RequiresDecodedControlCheckpoint(element) };
         return true;
     }
 
@@ -421,6 +436,37 @@ public sealed partial class X86Cpu
         if (bytes.IsEmpty) return false;
         byte opcode = bytes[0]; int width = operand32 ? 4 : 2;
         if (opcode == 0x90) { element = new(DecodedIntegerKind.Nop, 1, width, 1); return true; }
+        if (opcode is 0x06 or 0x0e or 0x16 or 0x1e)
+        { element=new(DecodedIntegerKind.Stack,1,width,1,Source:opcode>>3,Operation:opcode);return true; }
+        if(opcode==0xc8)
+        {
+            if(bytes.Length<4 || (bytes[3]&31)!=0)return false;
+            element=new(DecodedIntegerKind.Stack,4,width,3,Operation:0xc8,Immediate:DecodeImmediate(bytes[1..],2));return true;
+        }
+        if(opcode==0x8c)
+        {
+            if(bytes.Length<2 || (bytes[1]&0x38)>40)return false;
+            int segment=(bytes[1]>>3)&7;
+            if(bytes[1]>=0xc0)element=new(DecodedIntegerKind.MoveSegment,2,width,2,bytes[1]&7,segment);
+            else
+            {
+                if(!DecodeAddress(bytes,address32,out var segmentAddress,out int segmentLength,out int segmentTouches))return false;
+                element=new(DecodedIntegerKind.Memory,segmentLength,2,segmentTouches,Source:segment,Address:segmentAddress,MemoryKind:IntegerMemoryKind.SegmentWrite);
+            }
+            return true;
+        }
+        if(opcode==0xff && bytes.Length>=2 && (bytes[1]&0x38) is 16 or 32)
+        {
+            int operation=(bytes[1]&0x38)==16?0xff02:0xff04;
+            if(bytes[1]>=0xc0)element=new(DecodedIntegerKind.NearIndirect,2,width,2,Source:bytes[1]&7,Operation:operation);
+            else
+            {
+                if(!DecodeAddress(bytes,address32,out var nearAddress,out int nearLength,out int nearTouches))return false;
+                element=new(DecodedIntegerKind.NearIndirect,nearLength,width,nearLength,Source:-1,Operation:operation,
+                    Address:nearAddress,MemoryKind:IntegerMemoryKind.MoveRead);
+            }
+            return true;
+        }
         if (opcode is 0xc0 or 0xc1 or 0xd0 or 0xd1 or 0xd2 or 0xd3)
         {
             bool immediate = opcode is 0xc0 or 0xc1;
@@ -484,6 +530,8 @@ public sealed partial class X86Cpu
                     Immediate:DecodeImmediate(bytes[testLength..],groupWidth),Address:testAddress,MemoryKind:IntegerMemoryKind.TestImmediate);
                 return true;
             }
+            if(groupOperation is 4 or 5 && bytes[1]>=0xc0)
+            { element=new(DecodedIntegerKind.MultiplyWide,2,groupWidth,2,Source:bytes[1]&7,Operation:groupOperation);return true; }
             if (groupOperation is not (2 or 3)) return false;
             if (bytes[1] >= 0xc0)
                 element = new(DecodedIntegerKind.UnaryRegister, 2, groupWidth, 2, bytes[1] & 7, Operation: groupOperation);
@@ -554,6 +602,8 @@ public sealed partial class X86Cpu
         {
             if (bytes.Length < 2) return false;
             byte second = bytes[1];
+            if(second is 0xa0 or 0xa8)
+            {element=new(DecodedIntegerKind.Stack,2,width,2,Source:second==0xa0?4:5,Operation:0xf00|second);return true;}
             if (second is >= 0xc8 and <= 0xcf)
             { element = new(DecodedIntegerKind.Bswap, 2, 4, 2, second & 7); return true; }
             if (second is >= 0x80 and <= 0x8f)

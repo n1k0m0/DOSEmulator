@@ -31,6 +31,7 @@ try
         Console.WriteLine("MIDI: midiInterface=ct1740-mpu401-uart-development explicitly enables the CT1740 MPU UART at midiBasePort=768|816 (300h|330h), sharing its DSP IRQ and mixer82 bit2. --midi-output <new.bin> captures complete outgoing 31.25-kbaud bytes; --midi-io-trace <new.jsonl> observes real ports/frames/IRQ. Scenario midi:{data:[0..255]} or SendMidiInput queues outer full frames. No host MIDI, synthesizer, Intelligent Mode or raw electrical accuracy is implied.");
         Console.WriteLine("ATAPI: --profile profiles/dose-430fx-piix-s3-atapi-dev-v1.json [--cdrom <read-only cooked.iso>] installs one SFF-8020i 1995 PIO CD-ROM target at the profile's reserved IDE slot. Empty tray is valid. ISO blocks are 2048 bytes; no COW, host optical device, DMA, overlap or CD audio playback. Saved PCs preserve opticalDiscs separately from hardDisks. Native original CD-driver/MSCDEX and Windows acceptance remain separate.");
         Console.WriteLine("Full snapshots: --save-snapshot <new.dossav> seals CPU/raw FPU/RAM/devices/scheduler and all media at the final owner boundary; --load-snapshot <existing.dossav> --snapshot-branch <new.dosebranch> resumes on independent journals. Requires the identical VM build and unchanged protected base images. No host devices or already emitted output queues are saved.");
+        Console.WriteLine("Experimental WHPX: --engine whpx --whpx-seconds <0.01..3600> runs a separate P54C CPU with a 1:1 active host clock and offline DOSE devices. --capture-whpx-snapshot <new.whpxsav> and --load-whpx-snapshot <saved.whpxsav> --snapshot-branch <new.dosebranch> use native format 4, with no software/native CPU migration. Clock percentage alone does not verify game or video throughput. Existing launchers retain the software engine.");
         Console.WriteLine("Media checkpoints: --capture-media <new.dosemedia> captures all file-backed media after the run at one owner-thread boundary. --branch-media <checkpoint.dosemedia> --output <new.dosebranch> checks dependencies and creates independent writable journals plus branch.dospc.json for a cold start. CPU/RAM/devices/scheduler are not saved; this is not a running-state snapshot. Originals and existing targets are never overwritten.");
         Console.WriteLine("ADC diagnostics: --adc-test-signal midpoint|ramp chooses a deterministic virtual input (default unconnected midpoint). --adc-trace <new.jsonl> logs actual conversions and DMA results. No host microphone is opened.");
         Console.WriteLine("SB2 resources: profile soundBlasterBasePort=544|576 (220h|240h), soundBlasterIrq=3|5|7|9, soundBlasterDmaChannel=1. Hardware changes require a power cycle. --audio-irq-trace <new.jsonl> logs actual CPU entries at the selected DSP vector. The GUI offers SOUND CARD RESOURCES; the shown BLASTER value must be set in DOS by the user.");
@@ -85,6 +86,11 @@ try
         Console.WriteLine(JsonSerializer.Serialize(new { createdMediaBranch = Path.GetFullPath(destination),
             machineFile = Path.Combine(Path.GetFullPath(destination), "branch.dospc.json"), definition, coldStartRequired = true }, IpcProtocol.JsonOptions));
         return 0;
+    }
+    if (Get("--engine") is { } engine && engine != "software")
+    {
+        if (engine != "whpx") throw new ArgumentException("--engine requires software or whpx.");
+        return WhpxHeadless.Run(args, Get);
     }
     long steps = long.Parse(Get("--steps") ?? "100000");
     if (steps is < 1 or > 10_000_000_000) throw new ArgumentException("Step count must be 1..10000000000.");

@@ -1,5 +1,161 @@
 # Performance: gemessene Interpreter- und Geräteoptimierungen
 
+## C51: explicit WHPX with C50, 31 October 2026
+
+The local native candidate merges WHPX with the retained C50 software paths.
+Its clock follows complete active host-monotonic time at factor 1, including
+I/O emulation, pixel conversion and callbacks. Pauses contribute no time;
+HLT waits for the original device deadlines. Clock following alone is not a
+game/video throughput result, so actual guest progress is measured separately.
+
+| Actual own safety copy and active work | Clock / host time | Independent guest progress |
+|---|---:|---|
+| Doom II, P54C/133 MHz, 128 MiB, 20 seconds | 99.959% | 698/700 expected original DEMO1 tics, 99.714%; 441000 stereo DSP components |
+| Windows 95 OEM/950, 100 MHz, 64 MiB, 10 seconds | 99.945% | 201 distinct AVI source frames, 19..219; 110250 mono DSP samples |
+| Windows 98 SE, 133 MHz, 128 MiB, 10 seconds | 99.899% | 200 distinct AVI source frames, 21..220; 110250 mono DSP samples |
+
+The own movie is the same complete 498496-byte, 320×240 RLE8/PCM source:
+360 frames in 18 seconds, 20 fps and unsigned-8 mono at 11025 Hz. Both original
+players reach natural 18.00-second completion, close, and Windows reaches its
+regular safe-to-turn-off screen. All movie bytes are independently verified
+from the sealed own FAT journals. Doom's progress is bound to its unique full
+original demo buffer and actual reader instructions; it returns naturally to
+DOS. Published stereo output is checked only in RAM, with no host endpoint.
+
+The Win95 row requires an explicitly separate compatibility safety generation.
+Unchanged OEM/950 fails native startup: the real driver calibration divides
+10000000000 by a zero elapsed-time delta. Only the author's
+[patcher9x v0.9.91](https://github.com/JHRobotics/patcher9x) speed category was
+executed inside that additional guest. Its log and an independent full-file
+comparison identify two changed PDRs, ESDI_506 and SCSIPORT. VMM32, WIN.COM,
+the AVI and the original generation remain intact. The Win98 row needs no
+such patch. This does not establish unmodified Win95 native compatibility.
+
+All three final active native snapshots import with initially identical whole
+RAM, native CPU and hardware state, then continue real playback/game work.
+The Doom continuation advances 175/175 expected tics over five seconds. A
+separate serial Win98 restored sample advances 101 distinct source frames
+over five seconds and transfers 55125 samples. One earlier restored ten-second
+clock measurement overlapped an audit and is diagnostic only. Native future
+execution follows wall time rather than deterministic software step counts;
+no whole-future byte-equality claim is made.
+
+The implementation removes repeated kernel register roundtrips for scalar I/O,
+shares authoritative native RAM with the real devices, retains valid deadline
+timers across short exits, and batches three current-code-verified graphics
+loop families. Up to 32 iterations preserve actual RAM lookups, device writes,
+registers, defined flags and partial restart boundaries. Guard rejection and
+native scalar fallback retain aliases, debug, descriptors and pending events.
+Actual native tests include 112 whole CPU/RAM/VGA pair comparisons and 71 pure
+guard rejections. Rejected timer-spin, frequency-cap and write-only-mapping
+experiments remain private and are not part of the candidate.
+
+These finite workload samples are close to the 1:1 target, not a universal
+100% guarantee or an equal-work speedup factor versus earlier scenes. Native
+P54C execution is not a measured 133-MHz hardware instruction-retirement rate.
+The experimental headless path is explicit; the 114 C50 products and 13 root
+launchers remain selected. Native GUI/host audio acceptance and the full 486
+native discovery contract remain open. See [WHPX contract](WHPX-ENGINE.md) and
+`artifacts/tests/whpx-c50-release-path.txt`. All work is local; automation stays
+paused.
+
+## C50: profiled game/video execution and bounded decode storage, 31 October 2026
+
+C50 combines the profiled selector reads/pushes, nesting-zero ENTER, register
+MUL/IMUL and current near indirect CALL/JMP with a single arithmetic-flags
+commit. An encoding-only checkpoint classification avoids repeating the same
+classification during execution. A fixed 64-element owner-only scratch buffer
+replaces the temporary list allocated at every decode miss. Each retained plan
+still receives its own exact-length immutable copy; the cache limit remains
+4096. Live bytes, context, rights, dirty state, aliases, translation/checkpoint
+order, deadlines and four nominal clocks per actual element remain checked.
+
+The final comparison uses the actual five C47r2 and five C50 modules, normal
+.NET tiering, two opposite ABBA/BAAB cohorts per workload, and one executing
+owner at a time. Doom warms for 400 million instructions before four equal
+40-million-instruction sections. Each video warms for eight simulated seconds
+before four equal two-second sections of the same original Media Player and
+own 320×240 RLE8/PCM AVI. Initial, warmed and all measured whole guest boundaries,
+RAM/VRAM, frames, timed PCM and final journals agree. Restoring those private
+diagnostic data is not a cross-build product snapshot import or migration.
+
+| Same measured work, both orders combined | C47r2 host time | C50 host time | Less host time | Less allocated bytes |
+|---|---:|---:|---:|---:|
+| Doom II, P54C/133 MHz | 8.674594 s | 8.490961 s | 2.12% | 78.95% |
+| Windows 95 video, 100 MHz | 26.752096 s | 25.363378 s | 5.19% | 91.26% |
+| Windows 98 SE video, 133 MHz | 33.477811 s | 32.423976 s | 3.15% | 68.69% |
+
+Per-order gains are 2.43/1.86%, 7.83/2.98% and 4.33/2.17%; process-CPU savings
+are 2.17/4.88/2.88%. These limited samples do not establish a universal factor.
+The allocation column measures all actual in-phase host allocations, rather
+than retained RAM. Expensive verification garbage is collected and allowed to
+settle outside timing; legitimate in-phase allocation, GC and pause time remain
+included and recorded. JIT compilation deltas and every phase remain in the
+private report. Core-20 affinity belongs only to this comparison harness.
+
+The earlier plan-hoist, front-cache, descriptor/RAM/TLB experiments, stack
+scratch, 8192-entry cache, short and natural-GC cohorts remain separately
+recorded. Mixed or negative results were not promoted, and their larger
+exploratory percentages are not substituted for the final table. No extra
+disk/audio worker, host endpoint, guest-clock change or omitted work is used.
+
+C50 passes **15444/15444** registered regressions, including 169 new groups,
+with zero build warnings/errors. Independent BigInteger flags expectations cover
+12288 vectors; the new workload cases check numeric effects, faults, purity,
+aliases, operand/stack widths and complete scalar futures. Fourteen further
+cases check retained plans after long, short and empty scratch reuse in both
+CPU models and seven contexts. Source quality passes 927 code/project files;
+the state schema remains 48 types / 957 members / 43 callback bodies.
+The actual CLI retains whole RAM/state/image equality for 10001 direct steps
+versus 10000 + save/load + 1; a real old C47r2 cut is rejected before branching
+with the existing nonzero CLR abort. No migration or controlled exit 1 is claimed.
+
+Four fresh own cold starts reach the original DOS/Doom II or Windows/Media
+Player. The Windows guests retain their original S3/SB16 drivers. Four final
+strict same-build active continuations pass
+72 whole CPU/RAM/VRAM/device/scheduler comparisons, without CPU instruction or
+interrupt observers. RAM sizes are 8/128/64/128 MiB. Per-side step counts are
+8/40/40/40 million; the actual later 46560/58080/76800/57600 stereo PCM frames
+agree in bytes and timestamps. Four individually checked capture UUIDs per
+continuation alone are canonicalized; no guest fields are excluded. This is
+not a new independent synthesis, ISR/EOI/IRET, host-audio or native-GL test.
+
+| Fresh actual guest/work, stock pacer | Simulated time / host time |
+|---|---:|
+| Doom II, 486/33 MHz, 10 measured host seconds | 100.050% |
+| Doom II, P54C/133 MHz, initial 10 seconds | 99.465% |
+| Same Doom II, later fighting scene, 20 seconds | 98.150% |
+| Windows 95, active own AVI, 100 MHz / 64 MiB | 60.111% |
+| Windows 98 SE, active own AVI, 133 MHz / 128 MiB | 44.887% |
+
+The first and video samples follow two host seconds of normal pacing warmup.
+The later Doom sample has no additional warmup. Real game scenes and active
+sound are checked at both ends. Win95 has 389 valid in-window movie-marker
+observations and 121 distinct frames (207–327); Win98 has 396 and 89 (64–154).
+Both still have active unsigned-8-bit mono 11025-Hz SB16 DMA at the measured end.
+The AVI source is 320×240, 360 frames / 18 seconds / 498496 bytes. These are
+headless 60-Hz capture measurements; different phases, warmup and current host
+conditions prevent using differences from earlier absolute tables as a code
+gain. The equal-work table above supplies that comparison.
+
+Both players subsequently stop naturally at 18.00 seconds, close, and Windows
+reaches its regular safe-to-turn-off screen. Each final own sealed journal
+independently contains the complete 498496-byte AVI with the expected SHA256.
+The 114-product local C50 runtime is selected for all 13 launchers; C47r2 stays
+intact and existing running processes retain their loaded files. Personal
+Windows PCs and game journals were not opened for these tests.
+
+One stopped Win95 space-key attempt, its three-comparison idle continuation and
+constant-frame-zero pacing are explicitly preliminary and excluded from the
+final active matrix. The first active marker-calibration pass is also separate;
+final timing requires current playing-frame calibration, progressing markers
+and active DMA. Finite virtual PS/2/KBC actions are separate from the deferred
+native mouse/input acceptance.
+
+Universal 1:1 under game/video load remains **open**. The gains are useful but
+do not close the busy-video CPU deficit. Final evidence:
+`artifacts/tests/games-media-followup-release-path.txt`.
+
 ## C47r2: Windows 95 driver copies, 31 October 2026
 
 Four approved safety copies now have working original RTL8029/TCP-IP drivers

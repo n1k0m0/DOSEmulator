@@ -1,5 +1,23 @@
 # Vollständige lokale DOSE-Snapshots
 
+## C50: Decoderpuffer und unveränderte Zustandsgrenzen
+
+Der 64-Element-Decoderpuffer gehört ausschließlich zum abgeleiteten, an die CPU
+schwach gebundenen Hostcache. Jeder gespeicherte Befehlsplan erhält eine eigene
+Kopie. Puffer, Pläne und Diagnosezähler werden nicht zu Gastzustand; der geprüfte
+Graph bleibt bei 48 Typen, 957 Mitgliedern und 43 Ereigniskörpern. Alle ursprünglichen
+Byte-/Kontext-/Rechte-/Dirty-/Alias- und Gerätefristprüfungen bleiben wirksam.
+
+Format 1 prüft weiterhin die fünf tatsächlichen VM-Module. Der wirkliche eigene
+C47r2-CLI-Schnitt wird vor Zweiganlage mit dem bestehenden nichtnulligen
+CLR-Abbruch abgewiesen. Der neue CLI-Vergleich mit 10001 Direktschritten gegen
+10000 plus Speichern/Laden plus einen Schritt ergibt identischen gesamten RAM,
+Zustand und Bild. Es gibt keine Migration und keinen zugesicherten Exit 1.
+Die alte unveränderliche Laufzeit bleibt für ihre alten Sicherungen erhalten.
+Private Vergleichskapseln mit geprüft unveränderten Daten sind ausdrücklich
+keine zusätzlichen strikten Produktimporte. Aktuelle Gastnachweise und Grenzen:
+[C50-Leistungsnachweis](PERFORMANCE.md#c50-profiled-gamevideo-execution-and-bounded-decode-storage-31-october-2026).
+
 ## C44: tatsächlicher APM-Halt und vollständige Windows-Fortsetzung
 
 APM-Verbindung und Treiberversion liegen in normalen EBDA-Bytes; CPU-Haltzustand,
@@ -197,3 +215,14 @@ Der [8942er-P54C-PC-Nachweis](hardware/P54C-PC.md) ergÃ¤nzt erstmals volle Pro
 Der [SFF-8020i-Teilumfang](hardware/ATAPI-CDROM.md) ergänzt genau ein festes Controllerkind und einen separat versiegelten 2048-Byte-ISO-Anker. Aktuell 46 Typen/874 Mitglieder/40 Ereignisse; alle 39 vorherigen Callbackkörper bleiben gleich. Tatsächliche volle Schnitte nach zehn CDB-Bytes und bei Data-In-Offset128, originale DOS-/EMM386-Zukunft und frühe Ablehnung von 55 beschädigten Containern/110 direkten und Owner-Versuchen sind separat nachgewiesen. 27 positive Phasen-/Medienkontrollen erhalten legitime leere READs, zukünftige Fehler und terminale Cursor.
 
 `HasDisc`, Blockzahl, IDE-Platz, Auswahl, Resetbild, CDB-/Daten-/Sense-/UA-Zustände und der eine zukünftige Phasecallback werden vor jeder Medienöffnung geprüft. Ein installiertes leeres Laufwerk bleibt ein Gerät. Die ISO wird nicht als HDD/COW ausgegeben. Format 1 ist weiter streng an die fünf tatsächlichen VM-Module gebunden; alte 11312er-Sicherungen werden nicht migriert. Vollständige ATAPI-/Originaltreiber-/MSCDEX-/Win95-Abnahme bleibt offen.
+
+
+## Experimental WHPX format 4, 31 October 2026
+
+The local C51 native backend has a separate `.whpxsav` CPU sidecar and explicitly
+external-CPU hardware backing. Actual WHPX/five-VM module identities, policy,
+register topology and media are validated before branching. Software format 1
+cannot load that backing, and no native/software engine migration is supported.
+Full imported RAM/CPU/devices are checked at a stopped boundary. Subsequent native
+execution follows active host time and is not an instruction-count-deterministic
+future replay. See [WHPX contract and qualification](WHPX-ENGINE.md).

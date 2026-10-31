@@ -7,7 +7,7 @@ namespace DOSEmulator.Cpu.X86;
 
 public sealed partial class X86Cpu
 {
-    private enum IntegerMemoryKind { MoveRead, MoveWrite, AluMemory, AluRegister, Test, AluImmediate, IncDec, Unary, TestImmediate, MoveImmediate, ExtendRead }
+    private enum IntegerMemoryKind { MoveRead, MoveWrite, AluMemory, AluRegister, Test, AluImmediate, IncDec, Unary, TestImmediate, MoveImmediate, ExtendRead, SegmentWrite }
 
     /// <summary>One stack-scoped admission result; RAM spans and translation slots are never retained in CPU or snapshot state.</summary>
     private readonly ref struct IntegerMemoryPlan
@@ -191,6 +191,7 @@ public sealed partial class X86Cpu
         }
         else if (plan.Kind == IntegerMemoryKind.MoveRead) WriteRegister(plan.Register, plan.Width, ReadIntegerMemory(plan));
         else if (plan.Kind == IntegerMemoryKind.MoveWrite) WriteIntegerMemory(plan, ReadRegister(plan.Register, plan.Width));
+        else if(plan.Kind==IntegerMemoryKind.SegmentWrite)WriteIntegerMemory(plan,GetSegment((Segment)plan.Register));
         else if (plan.Kind == IntegerMemoryKind.MoveImmediate) WriteIntegerMemory(plan, plan.Immediate);
         else if (plan.Kind == IntegerMemoryKind.ExtendRead)
         {

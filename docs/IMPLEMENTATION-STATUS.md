@@ -1,5 +1,68 @@
 # DOSE – Implementierungsstand
 
+**Lokaler C51-WHPX-Kandidat, 31. Oktober 2026:** WHPX ist mit C50 zusammengeführt,
+mit gemeinsamem nativem RAM, vollständiger aktiver 1:1-Wanduhr und getrenntem
+nativem Snapshotformat 4. Die 114 ausgewählten C50-Produkte und die Starter
+bleiben erhalten. 15467 gemeinsame Regressionen bestehen; zusätzliche echte
+WHP-Prüfungen decken unter anderem HLT/IRQ, DMA-RAM-Kohärenz, Import, beide
+ES/REP-Reihenfolgen, CR4.TSD, skalare Ports und vollständige Grafikloop-Zustände ab.
+Die eigene Win98-AVI erreicht 99,90% Zeitrate bei tatsächlichen Bildnummern und
+110250 Audiosamples in zehn Sekunden, mit aktivem Import und regulärem Shutdown.
+Doom erreicht im aktuellen nativen 20-Sekunden-Fall 698/700 Spielticks (99,71%)
+bei 99,96% Zeitrate. Das unveränderte Win95/950 scheitert nativ reproduzierbar an
+einer zu schnellen Treiberkalibrierung mit Division durch Zeitdelta null.
+Kein Zeitfaktor verdeckt dies. Auf einer weiteren eigenen Kopie wurde ausschließlich
+der CPU-Kompatibilitätspatch von patcher9x in zwei PDR-Dateien angewandt; VMM32, WIN.COM,
+AVI und die ursprüngliche Generation bleiben erhalten. Diese Kopie erreicht
+800×600 und 99,94% Zeitrate bei echten 20 AVI-Bildern/s, 110250 Audiosamples in
+zehn Sekunden, aktivem Import und regulärem Shutdown. **Universelle 100%,
+unverändertes Win95-WHPX und native GUI-Abnahme bleiben offen.** Endgültiger
+Gesamtbuild ohne Warnungen/Fehler, 122 private Kandidatenprodukte, 950 geprüfte
+Code-/Projektdateien, Zustand 48/960/43. Der echte native CLI lädt ohne erneuten
+POST; ein älterer nativer Schnitt wird mit Exit 1 vor Zweiganlage abgewiesen.
+Nur lokal; Automation weiter pausiert.
+[Vertrag und Grenzen](WHPX-ENGINE.md), privater Zeiger
+`artifacts/tests/whpx-c50-work-path.txt`.
+
+
+**Gemeinsamer lokaler Stand C50, 31. Oktober 2026:** Die 13 Root-Starter
+verwenden beim nächsten Start den geprüften Satz `c50-20261031-games-media`
+mit 114 Produktdateien. Bereits laufende Prozesse behalten ihre bisherige
+Laufzeit. C47r2 bleibt unverändert für Rückkehr und dessen ältere Speicherstände
+erhalten; die Benutzer-PCs, installierten Treiberkopien und persönlichen
+Spieljournale wurden für diese Optimierung nicht geöffnet oder geändert.
+
+Die profilierten CPU-/Decoderoptimierungen und ein wiederverwendbarer,
+begrenzter Decoderpuffer sparen in den endgültigen gleichwertigen Vergleichen
+2,12% Doom-II-, 5,19% Win95-Video- und 3,15% Win98-Video-Hostzeit. Die während
+derselben Arbeit neu angeforderten Hostbytes sinken um 78,95/91,26/68,69%.
+Beide Messreihenfolgen, alle Einzelwerte und die vollständige Gastgleichheit
+sind erhalten. Es gibt keinen zusätzlichen Disk-/Audioworker, keine andere
+CPUHz-/Vier-Takte-Abrechnung und keine übersprungene Gerätearbeit.
+
+Tatsächliche neue Lastproben: Doom33 100,05%; Doom133 zunächst 99,46%, in einer
+späteren Kampfszene über 20 Hostsekunden 98,15%; die laufende eigene AVI erreicht
+unter Win95/100 MHz 60,11% und Win98/133 MHz 44,89%. Das durchgängige **100%-Ziel
+unter Last bleibt offen**. Frühere absolute Messwerte anderer Phasen und
+Hostbedingungen werden nicht als zusätzlicher Codegewinn ausgegeben.
+
+Vier endgültige Kaltstarts und vier strikte aktive Fortsetzungen bestehen
+72 ganze CPU-/RAM-/VRAM-/Geräte-/Scheduler-/Bild-/spätere PCM-Vergleiche.
+Beide Windows-Videos erreichen ihr natürliches Ende bei 18 Sekunden, schließen
+und Windows fährt regulär herunter. Die vollständige eigene 498496-Byte-AVI
+ist aus beiden versiegelten FAT/COWs unabhängig geprüft. Gestoppte beziehungsweise
+noch nicht passend kalibrierte Player-Vorläufe sind ausdrücklich ausgeschlossen.
+
+**15444/15444 Regressionen**, 169 neue Gruppen, 0 Buildwarnungen/Fehler;
+927 geprüfte Code-/Projektdateien, Zustand 48/957/43. Der tatsächliche CLI-Pfad
+prüft vollen RAM/Zustand/Bild sowie die alte Buildablehnung vor Zweiganlage.
+Format 1 bleibt strikt ohne Migration. Native Bedien-/GL-/Hostaudioabnahme und
+die weiteren M4–M8-Kriterien bleiben offen. Automation **PAUSIERT**; nur der
+anfangs beauftragte Commit/Push `77b76e5` ist ausgeführt, diese Optimierung bleibt
+lokal. [Messungen und Grenzen](PERFORMANCE.md#c50-profiled-gamevideo-execution-and-bounded-decode-storage-31-october-2026),
+[Decodervertrag](hardware/DECODED-EXECUTION.md), [Speicherstände](SNAPSHOTS.md).
+Nachweis: `artifacts/tests/games-media-followup-release-path.txt`.
+
 **Windows-95-Treiber auf genehmigten Sicherheitskopien, 31. Oktober 2026:**
 Die vier Win95-Starter für Haupt-PC, APM, Last und Multimedia öffnen jetzt
 getrennte geprüfte Kopien unter `artifacts/Windows95-Drivers-C47r2-20261031`.

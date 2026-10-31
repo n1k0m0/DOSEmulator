@@ -320,6 +320,7 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
     /// <summary>Retains an ordinary-step control for deterministic comparison of the deadline-bounded integer execution path.</summary>
     public int RunSteps(int maximum, ulong? untilVirtualNanoseconds, bool integerBatch)
     {
+        RequireSoftwareCpu();
         if (_executing) throw new InvalidOperationException("The PC owner cannot reenter execution.");
         _executing = true;
         try { return RunStepsCore(maximum, untilVirtualNanoseconds, integerBatch); }

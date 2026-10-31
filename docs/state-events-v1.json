@@ -196,7 +196,7 @@
       "arguments": [],
       "receiver": "scheduler",
       "delay": "delay",
-      "callback": "() => { InterruptPulses++; irqPulse(); if (_running) Schedule(); }",
+      "callback": "() =>\n        {\n            _event = 0;\n            InterruptPulses++;\n            irqPulse();\n            if (_running && _mode != 0) Schedule();\n        }",
       "start": 5591,
       "end": 5689
     },

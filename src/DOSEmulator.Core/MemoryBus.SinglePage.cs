@@ -14,6 +14,6 @@ public sealed partial class MemoryBus
         if((uint)(length-1)>=4096)return false;
         uint physical=Translate(address);
         if((physical&4095)+(uint)length>4096 || (ulong)physical+(uint)length>DecodedRamBytes || _mappedRamPages[physical>>12])return false;
-        bytes=Ram.AsSpan((int)physical,length);return true;
+        bytes=PhysicalRam.Slice((int)physical,length);return true;
     }
 }

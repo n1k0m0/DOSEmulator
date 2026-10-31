@@ -58,7 +58,7 @@ public sealed partial class PcMachine
     /// <summary>Rejects reentrant capture during CPU execution, device callbacks, or after media disposal.</summary>
     internal void RequireSnapshotBoundary()
     {
-        if (_disposed || _executing || Scheduler.IsDispatching) throw new InvalidOperationException("Snapshots require a stopped owner instruction boundary.");
+        if (_disposed || _executing || Scheduler.IsDispatching || Memory.HasExternalRam) throw new InvalidOperationException("Snapshots require a stopped owner instruction boundary with coherent RAM.");
         if (Profile.IsP54c
             ? Cpu.Model != X86CpuModel.IntelP54cB5Subset || !Cpu.UsesTimestampClock(Scheduler, (uint)Profile.CpuHz)
             : Cpu.Model != X86CpuModel.Intel486Dx || Cpu.HasTimeStampCounter || Cpu.TimestampFrequency != 0)
@@ -165,6 +165,7 @@ public sealed partial class PcMachine
     /// <summary>Rehydrates only a freshly constructed PC; callers adopt it after the complete import succeeds.</summary>
     internal void RestoreHardwareState(HardwareState state, byte[] ram)
     {
+        RequireSoftwareCpu();
         RequireSnapshotBoundary();
         if (state.ParallelSink) (Parallel ?? throw new InvalidDataException("Missing snapshot LPT1.")).ConnectPrinter();
         if (state.SerialEcho) ConnectSerialEcho();

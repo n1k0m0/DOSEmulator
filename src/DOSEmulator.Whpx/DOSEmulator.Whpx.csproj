@@ -1,0 +1,12 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Copyright 2026 Nils Kopal -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../DOSEmulator.Core/DOSEmulator.Core.csproj" />
+    <ProjectReference Include="../DOSEmulator.Hardware/DOSEmulator.Hardware.csproj" />
+    <ProjectReference Include="../DOSEmulator.Runtime/DOSEmulator.Runtime.csproj" />
+  </ItemGroup>
+</Project>

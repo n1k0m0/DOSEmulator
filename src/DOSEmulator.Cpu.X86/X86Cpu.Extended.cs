@@ -45,7 +45,7 @@ public sealed partial class X86Cpu
                 byte m = FetchByte(); Operand rm = DecodeOperand(m); long a = Signed(Read(rm, w), w);
                 long b = opcode == 0x6b ? (sbyte)FetchByte() : Signed(Immediate(w), w);
                 long result = a * b; WriteRegister((m >> 3) & 7, w, unchecked((uint)result));
-                bool overflow = result != Signed(unchecked((uint)result), w); SetFlag(Carry, overflow); SetFlag(Overflow, overflow); return true;
+                bool overflow = result != Signed(unchecked((uint)result), w); SetCarryOverflow(overflow); return true;
             }
             case 0x9a:
             {
@@ -194,7 +194,7 @@ public sealed partial class X86Cpu
             }
             if (width == 1) WriteRegister(0, 2, (uint)product);
             else { WriteRegister(0, width, (uint)product); WriteRegister(2, width, (uint)(product >> (width * 8))); }
-            SetFlag(Carry, overflow); SetFlag(Overflow, overflow); return;
+            SetCarryOverflow(overflow); return;
         }
         if (operation is 6 or 7)
         {
@@ -247,7 +247,7 @@ public sealed partial class X86Cpu
             {
                 byte m = FetchByte(); Operand rm = DecodeOperand(m); int reg = (m >> 3) & 7;
                 long result = Signed(ReadRegister(reg, w), w) * Signed(Read(rm, w), w); WriteRegister(reg, w, (uint)result);
-                bool overflow = result != Signed((uint)result, w); SetFlag(Carry, overflow); SetFlag(Overflow, overflow); return;
+                bool overflow = result != Signed((uint)result, w); SetCarryOverflow(overflow); return;
             }
             case 0xb2: LoadFarPointer(Segment.Ss, w); return;
             case 0xb4: LoadFarPointer(Segment.Fs, w); return;

@@ -18,7 +18,7 @@ public sealed partial class X86Cpu
             uint oldPointer, uint nextPointer, uint target, uint returnAddress)
         {
             Data = data; DataSlot = dataSlot; Width = element.Width; Length = element.Length;
-            CodeTouches = element.CodeTouches; Operation = element.Operation; Register = element.Operation==0xff?element.Source:element.Operation & 7; Immediate = element.Immediate;
+            CodeTouches = element.CodeTouches; Operation = element.Operation; Register = element.Operation==0xff || IsDecodedSegmentPush(element.Operation)?element.Source:element.Operation & 7; Immediate = element.Immediate;
             OldPointer = oldPointer; NextPointer = nextPointer; Target = target; ReturnAddress = returnAddress;
         }
     }
@@ -28,13 +28,13 @@ public sealed partial class X86Cpu
     {
         plan = default;
         int opcode = element.Operation, width = element.Width;
-        bool push = opcode is >= 0x50 and <= 0x57 or 0x60 or 0x68 or 0x6a or 0xe8 or 0xff;
+        bool push = opcode is >= 0x50 and <= 0x57 or 0x60 or 0x68 or 0x6a or 0xe8 or 0xff or 0xff02 or 0xc8 || IsDecodedSegmentPush(opcode);
         bool pop = opcode is >= 0x58 and <= 0x5f or 0x61 or 0xc2 or 0xc3 or 0xc9;
         if ((!push && !pop) || width is not (2 or 4) || wholeCode.Length != 4096) return false;
-        int length = opcode is 0xe8 or 0x68 ? 1 + width : opcode == 0xc2 ? 3 : opcode == 0x6a ? 2 : 1;
-        int codeTouches = opcode is 0xe8 or 0xc2 or 0x68 or 0x6a ? 2 : 1;
+        int length = opcode is 0xe8 or 0x68 ? 1 + width : opcode==0xc8?4:opcode is 0xfa0 or 0xfa8?2:opcode == 0xc2 ? 3 : opcode == 0x6a ? 2 : 1;
+        int codeTouches = opcode==0xc8?3:opcode is 0xe8 or 0xc2 or 0x68 or 0x6a or 0xfa0 or 0xfa8 ? 2 : 1;
         int prefixes = element.Length - length;
-        if (prefixes < 0 || element.Length > 15 || opcode!=0xff && element.CodeTouches != codeTouches + prefixes ||
+        if (prefixes < 0 || element.Length > 15 || opcode is not (0xff or 0xff02) && element.CodeTouches != codeTouches + prefixes ||
             !WithinSegment(GetSegmentCache(Segment.Cs), Eip, (uint)element.Length)) return false;
         length = element.Length;
 
@@ -62,6 +62,11 @@ public sealed partial class X86Cpu
             push && ((ReadOnlySpan<byte>)data).Overlaps(wholeCode)) return false;
 
         uint returnAddress = unchecked(Eip + (uint)length), target = 0;
+        if(opcode==0xc8)
+        {
+            target=next;next=unchecked(next-(element.Immediate&65535))&mask;
+            if(!SafeRepSegment(Segment.Ss,next,1,true))return false;
+        }
         if (opcode == 0xe8) target = unchecked(returnAddress + element.Immediate);
         else if (opcode is 0xc2 or 0xc3)
         {
@@ -95,7 +100,14 @@ public sealed partial class X86Cpu
         TouchIntegerMemoryTranslation(codeSlot, plan.CodeTouches);
         _instructionBytes = plan.Length; Eip = plan.ReturnAddress;
         int opcode = plan.Operation, width = plan.Width;
-        if(opcode==0xff)
+        if(IsDecodedSegmentPush(opcode))
+        {TouchIntegerMemoryTranslation(plan.DataSlot);WriteDecodedStack(in plan,0,GetSegment((Segment)plan.Register));SetStackPointer(plan.NextPointer);}
+        else if(opcode==0xc8)
+        {
+            uint saved=ReadRegister(5,width);TouchIntegerMemoryTranslation(plan.DataSlot);WriteDecodedStack(in plan,0,saved);
+            SetStackPointer(plan.Target);WriteRegister(5,width,plan.Target);SetStackPointer(plan.NextPointer);
+        }
+        else if(opcode==0xff)
         {
             uint value;
             if(plan.Register<0){TouchIntegerMemoryTranslation(sourcePlan.DataSlot);value=ReadIntegerMemory(sourcePlan);}

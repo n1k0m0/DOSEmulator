@@ -6,6 +6,12 @@ disks and UI preferences. A new runtime is copied into a new immutable version
 directory and verified before that pointer changes. An already running emulator
 continues to use its original files; close and reopen it to use the new version.
 
+The selected local runtime is **C50, 31 October 2026**, with 114 verified
+products and the measured CPU/game/video optimizations. All PC/media/UI bindings
+below are retained. C47r2 remains available for rollback and its earlier saved
+states; format 1 does not migrate those states into the new VM identity.
+See [C50 workload measurements](PERFORMANCE.md#c50-profiled-gamevideo-execution-and-bounded-decode-storage-31-october-2026).
+
 `scripts/test-launchers.ps1` checks all launchers using an isolated fake workspace.
 Passing `-Inspect` to a root launcher reports its selected runtime, PC and settings
 directory without opening guest media or a native window.
@@ -47,7 +53,7 @@ prefixes, original configurations/journals and exact installed driver bytes are
 verified. The original floppy bindings and existing frontend settings directories
 are preserved. Hardware and MAC addresses are unchanged; the copies have new PC IDs.
 
-All 13 launchers still use the same C47r2 emulator. Their `-Inspect` checks and
+At the driver-installation checkpoint, all 13 launchers used C47r2. Their `-Inspect` checks and
 the isolated launcher fixture pass with the new paths, without opening a native
 window. Windows 98 and Doom working media were not opened for this upgrade.
 Private evidence: `artifacts/tests/win95-drivers-release-path.txt`.

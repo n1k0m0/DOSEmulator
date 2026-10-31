@@ -3,6 +3,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup><ProjectReference Include="../../src/DOSEmulator.Runtime/DOSEmulator.Runtime.csproj" />
+    <ProjectReference Include="../../src/DOSEmulator.Whpx/DOSEmulator.Whpx.csproj" />
     <Compile Include="../../src/SharpPixels/GpuSourceRevision.cs" Link="Host/GpuSourceRevision.cs" />
     <Compile Include="../../src/SharpPixels/KeyRepeatClock.cs" Link="Host/KeyRepeatClock.cs" />
     <EmbeddedResource Include="../../artifacts/drivers/DOSECD.SYS" LogicalName="DOSECD.SYS" />

@@ -300,8 +300,12 @@ public sealed partial class X86Cpu
         {
             result = operation switch { 1 => a | b, 4 => a & b, 6 => a ^ b, _ => throw new InvalidOperationException() };
         }
-        Eflags = (Eflags & ~(Carry | Overflow | Auxiliary)) | flags | 2;
-        SetSzp(result, width);
+        // Every path already masks result to its operand width. Commit the exact
+        // arithmetic flag set once, retaining all unrelated flags.
+        if (result == 0) flags |= Zero;
+        if ((result & sign) != 0) flags |= Sign;
+        if ((System.Numerics.BitOperations.PopCount(result & 0xff) & 1) == 0) flags |= Parity;
+        Eflags = (Eflags & ~(Carry | Overflow | Auxiliary | Zero | Sign | Parity)) | flags | 2;
         return result;
     }
 

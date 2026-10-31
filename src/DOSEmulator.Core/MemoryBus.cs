@@ -31,6 +31,15 @@ public sealed partial class MemoryBus
     private readonly Mapping?[] _devicePages;
     /// <summary>Installed RAM storage; normal bus accesses still give mapped devices precedence over these bytes.</summary>
     public byte[] Ram { get; }
+    /// <summary>Optional owner-side notification for RAM that a device may have changed while an external CPU is stopped.</summary>
+    public event Action<uint, int>? PhysicalRamWrite;
+    /// <summary>Marks a direct RAM store by a mapped device such as PAM shadow memory.</summary>
+    public void NotifyPhysicalRamWrite(uint address, int length)
+    {
+        if (length <= 0 || (ulong)address + (uint)length > (ulong)Ram.Length)
+            throw new ArgumentOutOfRangeException(nameof(length));
+        PhysicalRamWrite?.Invoke(address, length);
+    }
     private uint _ramHoleStart, _ramHoleLength;
     /// <summary>Decoded DRAM extent, bounded by installed storage; mapped devices retain their normal precedence.</summary>
     public uint DecodedRamBytes { get; private set; }
@@ -119,6 +128,10 @@ public sealed partial class MemoryBus
     /// <summary>Number of installed ranges, allowing the PC to reject extra custom mappings before capture.</summary>
     public int StateMappingCount => _mappings.Count;
 
+    /// <summary>Fixed physical windows for an external execution engine. The returned view does not read devices.</summary>
+    public IReadOnlyList<(uint Start, uint Length, IMemoryDevice Device)> PhysicalMappings =>
+        _mappings.Select(m => (m.Start, m.Length, m.Device)).ToArray();
+
     /// <summary>Describes the factory memory map and immutable ROM bytes without bus reads or side effects.</summary>
     public string StateMap(Func<object, string> owner) => string.Join(";", _mappings.Select(m =>
         $"{m.Start:X8}:{m.Length:X8}:" + (m.Device is RomDevice rom ? "rom/" + rom.StateIdentity :
@@ -132,7 +145,7 @@ public sealed partial class MemoryBus
     public byte ReadByte(uint address)
     {
         address = Translate(address);
-        if (address < DecodedRamBytes && !_mappedRamPages[address >> 12]) return Ram[address];
+        if (address < DecodedRamBytes && !_mappedRamPages[address >> 12]) return ReadRamByte(address);
         return ReadMappedByte(address);
     }
 
@@ -145,7 +158,7 @@ public sealed partial class MemoryBus
             if (address >= map.Start && (ulong)address < (ulong)map.Start + map.Length)
                 return map.Device.ReadByte(address - map.Start);
         if (ResolveDynamic(address) is { } dynamic) return dynamic.ReadDecodedByte(address);
-        return address < DecodedRamBytes && !InRamHole(address) ? Ram[address] : (byte)0xff;
+        return address < DecodedRamBytes && !InRamHole(address) ? ReadRamByte(address) : (byte)0xff;
     }
 
     /// <summary>Writes one physical byte after A20 folding without writing through a device or open-bus mapping.</summary>
@@ -153,7 +166,7 @@ public sealed partial class MemoryBus
     public void WriteByte(uint address, byte value)
     {
         address = Translate(address);
-        if (address < DecodedRamBytes && !_mappedRamPages[address >> 12]) { Ram[address] = value; return; }
+        if (address < DecodedRamBytes && !_mappedRamPages[address >> 12]) { WriteRamByte(address, value); PhysicalRamWrite?.Invoke(address, 1); return; }
         WriteMappedByte(address, value);
     }
 
@@ -169,7 +182,7 @@ public sealed partial class MemoryBus
                 return;
             }
         if (ResolveDynamic(address) is { } dynamic) { dynamic.WriteDecodedByte(address, value); return; }
-        if (address < DecodedRamBytes && !InRamHole(address)) Ram[address] = value;
+        if (address < DecodedRamBytes && !InRamHole(address)) { WriteRamByte(address, value); PhysicalRamWrite?.Invoke(address, 1); }
     }
 
     /// <summary>Checks a contiguous plain-RAM range including A20 folding, device boundaries and address wrap.</summary>
@@ -195,11 +208,19 @@ public sealed partial class MemoryBus
             !A20Enabled && (address >> 20) != (unchecked(address + (uint)length - 1) >> 20)) return false;
         for (uint page = physical >> 12; page <= (physical + (uint)length - 1) >> 12; page++)
             if (_mappedRamPages[page]) return false;
-        bytes = Ram.AsSpan((int)physical, length); return true;
+        bytes = PhysicalRam.Slice((int)physical, length); PhysicalRamWrite?.Invoke(physical, length); return true;
     }
 
     /// <summary>Grants owner-thread physical DRAM without CPU A20 folding or device callbacks; only the named mapping may expose its own RAM backing.</summary>
     public bool TryGetPhysicalRamSpan(uint address, int length, IMemoryDevice? permittedMapping, out Span<byte> bytes)
+    {
+        bytes = default;
+        if (!TryGetReadOnlyPhysicalRamSpan(address, length, permittedMapping, out _)) return false;
+        bytes = PhysicalRam.Slice((int)address, length); PhysicalRamWrite?.Invoke(address, length); return true;
+    }
+
+    /// <summary>Classifies physical DRAM without claiming a device write or changing any RAM/observer state.</summary>
+    public bool TryGetReadOnlyPhysicalRamSpan(uint address, int length, IMemoryDevice? permittedMapping, out ReadOnlySpan<byte> bytes)
     {
         bytes = default;
         if (length <= 0) return false;
@@ -211,7 +232,7 @@ public sealed partial class MemoryBus
             if ((ulong)address < (ulong)mapping.Start + mapping.Length && mapping.Start < end &&
                 !ReferenceEquals(mapping.Device, permittedMapping))
                 return false;
-        bytes = Ram.AsSpan((int)address, length); return true;
+        bytes = PhysicalRam.Slice((int)address, length); return true;
     }
 
     /// <summary>Inspects contiguous RAM or immutable ROM code without contacting devices; never grants writable ROM storage.</summary>
@@ -243,7 +264,7 @@ public sealed partial class MemoryBus
         address = Translate(address);
         if (address < DecodedRamBytes && !_mappedRamPages[address >> 12])
         {
-            value = Ram[address];
+            value = ReadRamByte(address);
             return true;
         }
         value = 0;
@@ -252,13 +273,13 @@ public sealed partial class MemoryBus
 
     /// <summary>Reads a little-endian word through a checked contiguous-RAM path or the ordered byte bus.</summary>
     public ushort ReadWord(uint address) => TryRamRange(address, 2, out int offset)
-        ? BinaryPrimitives.ReadUInt16LittleEndian(Ram.AsSpan(offset, 2))
+        ? BinaryPrimitives.ReadUInt16LittleEndian(PhysicalRam.Slice(offset, 2))
         : (ushort)(ReadByte(address) | ReadByte(unchecked(address + 1)) << 8);
     /// <summary>Non-invasive RAM/ROM inspection; refuses devices with read side effects.</summary>
     public bool TryPeekByte(uint address, out byte value)
     {
         address = Translate(address);
-        if (address < DecodedRamBytes && !_mappedRamPages[address >> 12]) { value = Ram[address]; return true; }
+        if (address < DecodedRamBytes && !_mappedRamPages[address >> 12]) { value = ReadRamByte(address); return true; }
         foreach (var map in _mappings)
             if (address >= map.Start && (ulong)address < (ulong)map.Start + map.Length)
             {
@@ -267,12 +288,12 @@ public sealed partial class MemoryBus
                 value = 0; return false;
             }
         if (ResolveDynamic(address) is not null) { value = 0; return false; }
-        value = address < DecodedRamBytes && !InRamHole(address) ? Ram[address] : (byte)0xff;
+        value = address < DecodedRamBytes && !InRamHole(address) ? ReadRamByte(address) : (byte)0xff;
         return true;
     }
     /// <summary>Reads a little-endian doubleword without bypassing A20, mapping or range boundaries.</summary>
     public uint ReadDword(uint address) => TryRamRange(address, 4, out int offset)
-        ? BinaryPrimitives.ReadUInt32LittleEndian(Ram.AsSpan(offset, 4))
+        ? BinaryPrimitives.ReadUInt32LittleEndian(PhysicalRam.Slice(offset, 4))
         : (uint)ReadByte(address) | (uint)ReadByte(unchecked(address + 1)) << 8 |
           (uint)ReadByte(unchecked(address + 2)) << 16 | (uint)ReadByte(unchecked(address + 3)) << 24;
     /// <summary>Offers an aligned word only to one complete fixed mapping, retaining ordered byte effects on decline or at boundaries.</summary>
@@ -293,7 +314,7 @@ public sealed partial class MemoryBus
     /// <summary>Writes a little-endian word through checked RAM, an accepting fixed device, or the original ordered byte bus.</summary>
     public void WriteWord(uint address, ushort value)
     {
-        if (TryRamRange(address, 2, out int offset)) { BinaryPrimitives.WriteUInt16LittleEndian(Ram.AsSpan(offset, 2), value); return; }
+        if (TryRamRange(address, 2, out int offset)) { BinaryPrimitives.WriteUInt16LittleEndian(PhysicalRam.Slice(offset, 2), value); PhysicalRamWrite?.Invoke((uint)offset, 2); return; }
         if (TryWriteMappedWord(address, value)) return;
         WriteByte(address, (byte)value);
         WriteByte(unchecked(address + 1), (byte)(value >> 8));
@@ -301,7 +322,7 @@ public sealed partial class MemoryBus
     /// <summary>Writes a little-endian doubleword while retaining ordered device-byte effects at any boundary.</summary>
     public void WriteDword(uint address, uint value)
     {
-        if (TryRamRange(address, 4, out int offset)) { BinaryPrimitives.WriteUInt32LittleEndian(Ram.AsSpan(offset, 4), value); return; }
+        if (TryRamRange(address, 4, out int offset)) { BinaryPrimitives.WriteUInt32LittleEndian(PhysicalRam.Slice(offset, 4), value); PhysicalRamWrite?.Invoke((uint)offset, 4); return; }
         WriteByte(address, (byte)value);
         WriteByte(unchecked(address + 1), (byte)(value >> 8));
         WriteByte(unchecked(address + 2), (byte)(value >> 16));

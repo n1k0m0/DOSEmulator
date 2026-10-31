@@ -1,5 +1,30 @@
 # Guarded decoded execution
 
+C50 adds current segment-selector reads, selector PUSH, ENTER with zero masked
+nesting, register single-operand MUL/IMUL and near indirect CALL/JMP. Memory
+selector stores remain words; operand width and SS addressing remain independent.
+Indirect sources precede stack writes and retain the original eager group-5
+checkpoint and exact code/data TLB touch order. Invalid targets, cold mappings,
+code aliases, nonzero nesting and unsupported far/segment-changing operations
+keep their scalar fallbacks. Arithmetic commits the same flags once, including
+the existing policy for undefined bits. No lazy flags or authoritative state is
+added. The encoding-dependent checkpoint bit is immutable derived plan data.
+
+The cache reuses one owner-only 64-element scratch array when decoding, copying
+only the populated prefix into every retained immutable plan. It has no live
+CPU reference, RAM span or callback and stays outside the serialized graph.
+The 4096-entry bound and all current-byte/context/access guards remain intact.
+Fourteen complete scalar-future tests exercise retained long plans after short
+and empty decodes, including ownership and fixed bounds. A stack-buffer probe
+and a larger-cache probe had mixed workload results and are not integrated.
+
+The final 15444-case suite, unchanged state48/957/43, actual CLI checks and
+matched complete game/video data are documented in
+[the C50 performance report](../PERFORMANCE.md#c50-profiled-gamevideo-execution-and-bounded-decode-storage-31-october-2026).
+Measured whole-work gains are limited; universal 1:1 remains open. Format 1
+continues to bind the actual five VM modules, including rebuilt module identity
+metadata. No older product snapshot is silently accepted or rewritten.
+
 C46 adds current harmless operand/address/segment prefixes, ordinary memory
 counters/unary/TEST/stores/extensions, LEAVE and immediate/r/m PUSH, plus register
 SHLD/SHRD. Current data/stack rights, dirty state, mapping, alignment and complete

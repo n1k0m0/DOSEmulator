@@ -72,7 +72,13 @@ public sealed partial class Pit8254 : IScheduledStateObject
             case "event0":
             {
                 if (payload.Length != 0) throw new InvalidDataException("Scheduled operation shape differs.");
-                return () => { InterruptPulses++; irqPulse(); if (_running) Schedule(); };
+                return () =>
+                        {
+                            _event = 0;
+                            InterruptPulses++;
+                            irqPulse();
+                            if (_running && _mode != 0) Schedule();
+                        };
             }
             default: throw new InvalidDataException("Unknown scheduled operation.");
         }
