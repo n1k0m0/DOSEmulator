@@ -27,6 +27,8 @@ public sealed class WhpxMappedMachine : IDisposable
         WhpxNative.PendingInterruption, WhpxNative.InterruptState, WhpxNative.PendingEvent,
         WhpxNative.DeliverabilityNotifications
     ];
+    /// <summary>Services the owning board reset edges before another native opcode; true inhibits fetch while RESET is held.</summary>
+    internal Func<bool>? ServiceHardwareBoundary { get; set; }
     private readonly IoPortBus _ports;
     private readonly MemoryBus _bus;
     private readonly Pic8259 _pic;
@@ -177,18 +179,45 @@ public sealed class WhpxMappedMachine : IDisposable
     {
         EnsureStopped();
         if (_realtimeWindow) throw new InvalidOperationException("WHP real-time execution is already active.");
-        _clock.Begin(_scheduler.Now); _realtimeWindow = true; _busWritesOnly = busWritesOnly;
+        if (!_clock.Active) _clock.Begin(_scheduler.Now); _realtimeWindow = true; _busWritesOnly = busWritesOnly;
         try { _memory.ActivateSharedRam(); _memory.Refresh(); }
         catch { _memory.DeactivateSharedRam(); _realtimeWindow = false; _clock.End(); throw; }
     }
 
     /// <summary>Freezes elapsed time at an explicit owner pause; loading later establishes a fresh host origin.</summary>
-    internal void EndRealtimeWindow()
+    internal void EndRealtimeWindow(bool retain = false)
     {
         EnsureStopped();
         if (!_realtimeWindow) throw new InvalidOperationException("WHP has no active real-time window.");
+        _realtimeWindow = false;
+        if (!retain) { _memory.DeactivateSharedRam(); _clock.End(); }
+    }
+
+    /// <summary>Excludes explicit UI pause/checkpoint time and publishes the complete managed RAM mirror.</summary>
+    internal void PauseRealtime()
+    {
+        EnsureStopped();
+        if (_realtimeWindow) throw new InvalidOperationException("Pause requires a completed native slice.");
+        if (_clock.Active) { SynchronizeClock(null); _clock.End(); }
         _memory.DeactivateSharedRam();
-        _realtimeWindow = false; _clock.End();
+    }
+    /// <summary>Reports the real selector and instruction pointer at a stopped native exit.</summary>
+    internal string Position => $"{(ReadRegister(WhpxNative.Cs).High >> 32) & 0xffff:X4}:{ReadRegister(WhpxNative.Rip).Low:X8}";
+    /// <summary>Resets the native CPU at a completed exit while preserving mapped RAM and powered devices.</summary>
+    internal void ResetProcessor(bool init = false)
+    {
+        uint[] retainedNames = init ? SavedRegisters.Where(n => n >= 0x1000 && n <= 0x1019).ToArray() : [];
+        var retained = new WhpxNative.RegisterValue[retainedNames.Length];
+        ulong cr0 = init ? (ReadRegister(0x1c).Low & 0x60000000) | 0x10 : 0x60000010;
+        if (init) WhpxNative.Check(WhpxNative.WHvGetVirtualProcessorRegisters(_partition, 0, retainedNames, (uint)retainedNames.Length, retained), "retain INIT x87");
+        WhpxNative.Check(WhpxNative.WHvDeleteVirtualProcessor(_partition, 0), "reset native VP"); _vp = false;
+        WhpxNative.Check(WhpxNative.WHvCreateVirtualProcessor(_partition, 0, 0), "recreate native VP"); _vp = true;
+        uint[] names = [WhpxNative.Cs, WhpxNative.Rip, WhpxNative.Rflags, WhpxNative.Rdx, 0x1c];
+        WhpxNative.RegisterValue[] values = [new(0xf0000, 0xffffUL | (0xf000UL << 32) | (0x9bUL << 48)), new(0xfff0), new(2), new(0x524), new(cr0)];
+        WhpxNative.Check(WhpxNative.WHvSetVirtualProcessorRegisters(_partition, 0, names, (uint)names.Length, values), "native reset vector");
+        if (init) WhpxNative.Check(WhpxNative.WHvSetVirtualProcessorRegisters(_partition, 0, retainedNames, (uint)retainedNames.Length, retained), "restore INIT x87");
+        _halted = false; _interruptWindowArmed = false;
+        if (!init && _nominalCpuHz != 0) _tscEpochTicks = _scheduler.ClockTicks(_nominalCpuHz);
     }
 
     /// <summary>Advances every due event using whole active wall time, including expensive exits and memory reconciliation.</summary>
@@ -237,8 +266,10 @@ public sealed class WhpxMappedMachine : IDisposable
                 if (deadline.IsCancellationRequested) throw new TimeoutException("WHP mapped execution timed out.");
                 SynchronizeClock(virtualDeadline);
                 _memory.Refresh();
+                bool resetHeld = ServiceHardwareBoundary?.Invoke() == true;
                 if (virtualDeadline is { } reached && _scheduler.Now >= reached)
                     return new(io, mmio, interrupts, exits, ReadRegister(WhpxNative.Rip).Low, _scheduler.Now);
+                if (resetHeld) { _deadlineTimer.WaitHalted(100_000); continue; }
                 if (_halted)
                 {
                     if (TryInjectPic()) { interrupts++; _halted = false; }
@@ -593,6 +624,13 @@ public sealed class WhpxMappedMachine : IDisposable
         if (_running) throw new InvalidOperationException("WHP owner state is accessible only while stopped.");
     }
 
+    /// <summary>Admits device-only frontend input between completed slices while keeping native RAM and active clock ownership.</summary>
+    internal void RequireDeviceBoundary()
+    {
+        EnsureStopped();
+        if (_realtimeWindow || _scheduler.IsDispatching) throw new InvalidOperationException("WHP device input requires a completed owner slice outside device callbacks.");
+    }
+
     /// <summary>Rejects a whole-machine capture or disposal inside an active window whose bus-writes-only observers share live native RAM.</summary>
     internal void RequireCheckpointBoundary()
     {
@@ -604,7 +642,7 @@ public sealed class WhpxMappedMachine : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        RequireCheckpointBoundary();
+        PauseRealtime(); RequireCheckpointBoundary();
         _disposed = true;
         _deadlineTimer.Dispose();
         _emulator.Dispose();

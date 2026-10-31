@@ -1,5 +1,21 @@
 # Realtime execution and host calendar
 
+## C52r1: native GUI RTC input at the CPU-owner boundary
+
+The GUI passes its explicit wall-clock input through MachineSession. The
+software path keeps PcMachine.SetCalendar's existing full-boundary checks.
+WHPX uses a stopped native device boundary between complete slices, retaining
+shared RAM and the continuous active host-time origin. RTC input does not
+publish a full RAM mirror or alter CPU/device time. Native observations and
+device callbacks reject the input before either RTC or policy history changes.
+Native snapshot guards still require coherent complete RAM.
+
+This repairs the published C52 GUI's first periodic correction after about one
+second. The old compiled owner check omitted the frontend clock call and missed
+the failure; its replacement includes periodic corrections and the selected
+host-calendar behavior after pause/resume and native load. Deterministic core
+execution and strict loaders continue to read no host wall clock themselves.
+
 ## C44/C44b: original Windows idle driver and bounded host recovery
 
 The limited [APM 1.1 CPU-idle BIOS](hardware/APM-BIOS.md) lets the original

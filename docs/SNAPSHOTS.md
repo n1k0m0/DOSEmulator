@@ -1,5 +1,28 @@
 # Vollständige lokale DOSE-Snapshots
 
+## C53: native continuation during an actual CD copy
+
+A real Windows 98 Explorer copy restores through the strict common native
+loader with identical entire 128-MiB RAM, native CPU, devices and scheduler,
+then finishes the copy and reaches regular shutdown. No state fields are
+excluded. The C53 journal change alters the actual Hardware DLL identity;
+older build snapshots still require their retained matching runtime. Journal
+and snapshot formats are unchanged, with no migration. See
+[the copy and durability qualification](hardware/DISK-JOURNAL.md).
+
+## C52: GUI engine selection and native snapshots
+
+The GUI uses `.whpxsav` with WHPX and `.dossav` with the software engine. The
+common owner validates a native load before replacing its current PC. Failed
+loads retain the current owner; successful loads advance input generations and
+use the selected host-clock restore policy. Cold engine switching starts a new
+CPU context and does not migrate an active Windows session. Shut down Windows
+first. Native format 4 remains bound to the actual WHPX DLL and five VM modules;
+C51 and earlier C52 candidate snapshots are rejected when those bytes differ.
+The compiled GUI-owner check covers full native capture/load, failure retention,
+pause, reset and both cold switches without creating a host window. See
+[WHPX operation and limits](WHPX-ENGINE.md).
+
 ## C50: Decoderpuffer und unveränderte Zustandsgrenzen
 
 Der 64-Element-Decoderpuffer gehört ausschließlich zum abgeleiteten, an die CPU

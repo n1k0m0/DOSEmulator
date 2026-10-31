@@ -2,7 +2,7 @@
 # Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$SourceDirectory, [Parameter(Mandatory)][ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$')][string]$Version)
+param([Parameter(Mandatory)][string]$SourceDirectory, [Parameter(Mandatory)][ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9-]{0,63}$')][string]$Version, [string]$LauncherBindingsPath)
 . (Join-Path $PSScriptRoot 'common.ps1')
 $source = Resolve-DosPath -Path $SourceDirectory
 $current = Join-Path $script:DosWorkspaceRoot 'artifacts/current'
@@ -22,13 +22,20 @@ foreach ($file in Get-ChildItem -LiteralPath $source -Recurse -File) {
     $products[$relative.Replace('\','/')] = $hash
 }
 $modules = [ordered]@{}
-foreach ($name in @('DOSEmulator.Contracts','DOSEmulator.Core','DOSEmulator.Cpu.X86','DOSEmulator.Hardware','DOSEmulator.Runtime')) {
+$moduleNames = @('DOSEmulator.Contracts','DOSEmulator.Core','DOSEmulator.Cpu.X86','DOSEmulator.Hardware','DOSEmulator.Runtime')
+if ($products['net10.0/DOSEmulator.Whpx.dll'] -and $products['net10.0-windows/DOSEmulator.Whpx.dll']) { $moduleNames += 'DOSEmulator.Whpx' }
+foreach ($name in $moduleNames) {
     $a = $products['net10.0/' + $name + '.dll']; $b = $products['net10.0-windows/' + $name + '.dll']
     if (-not $a -or $a -cne $b) { throw ('Frontend VM modules differ: ' + $name) }
     $modules[$name] = $a
 }
 $manifest = [ordered]@{ schemaVersion=1; version=$Version; modules=$modules; products=$products; selectedUtc=[DateTime]::UtcNow.ToString('o') }
-$text = $manifest | ConvertTo-Json -Depth 6
+if ($LauncherBindingsPath) {
+    $bindings = Get-Content -LiteralPath (Resolve-DosPath -Path $LauncherBindingsPath) -Raw | ConvertFrom-Json
+    if ($bindings.schemaVersion -ne 1 -or -not $bindings.machines) { throw 'Invalid launcher bindings.' }
+    $manifest['launcherMachines'] = $bindings.machines
+}
+$text = $manifest | ConvertTo-Json -Depth 8
 [IO.File]::WriteAllText((Join-Path $target 'products.json'), $text)
 $temporary = Join-Path $current ('current-' + [guid]::NewGuid().ToString('N') + '.tmp')
 [IO.File]::WriteAllText($temporary, $text)

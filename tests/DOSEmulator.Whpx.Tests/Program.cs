@@ -510,6 +510,7 @@ using (var resumedSleeper = new WhpxMappedMachine(sleepMemory, resumedSleepPorts
     Console.WriteLine("PASS: WHP HLT state and written P54C TSC epoch survive a stopped checkpoint and PIC wakeup.");
 }
 
+NativeTopologyChecks.Run();
 NativeRealtimeChecks.Run();
 
 if (Environment.GetEnvironmentVariable("DOSE_WHPX_BOOT_PROBE") == "1")

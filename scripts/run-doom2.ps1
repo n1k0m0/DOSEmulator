@@ -2,11 +2,12 @@
 # Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
-param([switch]$PrepareOnly, [switch]$Inspect)
+param([switch]$PrepareOnly, [switch]$Inspect, [ValidateSet('whpx','software')][string]$Engine = 'whpx')
+$engineOption = if ($PSBoundParameters.ContainsKey('Engine')) { '--engine' } else { '--default-engine' }
 . (Join-Path $PSScriptRoot 'runtime.ps1')
 $release = Get-DosRuntimeRelease -BuildIfMissing
 $exe = Join-Path $release 'net10.0-windows/DOSEmulator.exe'
-if ($Inspect) { [pscustomobject]@{variant='doom2';runtime=$release;executable=$exe;nativeWindowStarted=$false;mediaOpened=$false} | ConvertTo-Json; return }
+if ($Inspect) { [pscustomobject]@{variant='doom2';runtime=$release;engine=$Engine;executable=$exe;nativeWindowStarted=$false;mediaOpened=$false} | ConvertTo-Json; return }
 $playRoot=Join-Path $script:DosWorkspaceRoot 'artifacts\doom2-play'
 New-Item -ItemType Directory -Path $playRoot -Force | Out-Null
 $lock=$null
@@ -63,5 +64,5 @@ try {
     Write-Host 'Experimenteller Doom-II-Spieltest: MS-DOS startet mit HIMEM und 8 MiB RAM.'
     Write-Host 'Bei C:\> eingeben: doom2 -config doomtest.cfg -nosound'
     Write-Host 'Spielstaende und Einstellungen bleiben im eigenen privaten Overlay erhalten.'
-    & $exe --remember-configuration (Join-Path $script:DosWorkspaceRoot 'artifacts/launcher-pcs/doom2') --data-dir (Join-Path $script:DosWorkspaceRoot 'artifacts/doom2-ui') --disk $disk --overlay $cow --profile $profile
+    & $exe $engineOption $Engine --remember-configuration (Join-Path $script:DosWorkspaceRoot 'artifacts/launcher-pcs/doom2') --data-dir (Join-Path $script:DosWorkspaceRoot 'artifacts/doom2-ui') --disk $disk --overlay $cow --profile $profile
 } finally {if($lock){$lock.Dispose()}}

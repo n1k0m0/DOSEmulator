@@ -59,6 +59,7 @@ var tests = new List<(string Name, Func<Task> Run)>();
 void Test(string name, Action action) => tests.Add((name, () => { action(); return Task.CompletedTask; }));
 // Registers one named asynchronous regression in the surrounding runner.
 void AsyncTest(string name, Func<Task> action) => tests.Add((name, action));
+CowDurabilityTests.AddTo(Test);
 // Compares expected and actual regression values using their normal equality contract.
 static void Equal<T>(T expected, T actual) { if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new Exception($"Expected {expected}, got {actual}."); }
 // Requires a regression condition to hold before the test continues.

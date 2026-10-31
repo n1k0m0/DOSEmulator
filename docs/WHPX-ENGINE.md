@@ -1,9 +1,124 @@
-# WHPX integration with C50 — local C51 candidate
+# WHPX GUI and launchers — C53r1
 
-The native backend is merged locally with C50. The selected 114-file C50 runtime
-and all existing launchers retain their software CPU. WHPX currently has an
-explicit experimental headless entry point; native GUI/input/GL/host-audio
-acceptance is open. No existing user disk or original media is replaced.
+## C53r1: legacy DOS startup media ownership
+
+Checking the reported `run-doom2.cmd` HIMEM stall exposed a separate, reproducible
+frontend boot error. The legacy 486-to-Pentium startup conversion prepared a new
+PC but retained the old PC until the window closed. Writable HDD/floppy leases
+therefore remained pending. The reproduced error occurs on the BIOS disk read,
+before HIMEM; it is not evidence that HIMEM itself deadlocked. A direct native
+8-MiB DOS boot completes the unchanged HIMEM `/TESTMEM:ON` scan.
+
+The actual entry point now releases the old PC after successful preparation,
+before the new PC can execute. Failed preparation retains the old media; the
+original saved definition and disk paths stay unchanged. The compiled GUI-owner
+check covers active HDD/floppy leases, preserved definition/RAM and failed
+preparation without a host window. Private DOS evidence:
+`artifacts/tests/whpx-himem-release-path.txt`.
+
+The corrected compiled entry-point helper boots the original own 8-MiB DOS
+fixture through the common native owner, periodic clock corrections and joined
+scanout. HIMEM finishes its full test, the prompt accepts a real keyboard ECHO,
+and original Doom II reaches 320×200 graphics with `-nosound`. Its normal quit
+returns to DOS and a second ECHO succeeds. A separate 486/33-MHz software control
+also finishes HIMEM and reaches the prompt. The reported earlier stopped HIMEM
+state was unavailable; the reproduced lease error and these positive checks are
+distinct findings. No new game throughput, sound or native host-input claim is
+made from this short regression.
+
+Only the GUI DLL/PDB change from C53. All six execution modules and the common
+test DLL are byte-identical, retaining the accepted 15,471 common regressions
+and 54 native groups. Snapshot identity is unchanged. The earlier Windows
+journal and periodic-clock corrections remain included.
+
+## C53: Windows 98 CD copy
+
+The Windows sector journal uses synchronous write-through before acknowledging
+each record, avoiding the redundant full-file flush that blocked the observed
+Explorer copy. The actual copy completes and all 3,533 file contents match the
+CD independently. A full active-copy native snapshot restores and continues to
+completion and regular shutdown. No disk worker or different virtual device
+deadline is introduced. See [durability and qualification](hardware/DISK-JOURNAL.md).
+The C52r1 clock fix below is retained. Existing Windows disks and the eight
+launcher PC bindings are unchanged; reopen the launcher to use the new runtime.
+
+## C52r1: periodic GUI clock correction
+
+The first C52 GUI release could stop after roughly one second with
+`Snapshots require a stopped owner instruction boundary with coherent RAM.`
+The periodic frontend clock policy called the software full-snapshot boundary
+while WHPX intentionally retained native RAM. Its earlier owner qualification
+omitted that periodic frontend call. The exact failure is reproduced on the
+published C52 DLLs.
+
+Clock input now goes through MachineSession and the active CPU owner. WHPX
+accepts RTC-only input between completed native slices, without pausing the
+active clock or copying/detaching RAM. It rejects input inside observations,
+native execution and device callbacks. Full snapshot guards remain unchanged.
+The GUI regression runs through multiple real periodic corrections, pause,
+resume and restore. Error status retains the actual engine; the generic error
+banner says **EMULATION STOPPED** rather than labeling every fault an unsupported
+CPU instruction. Evidence: `artifacts/tests/whpx-clock-fix-release-path.txt`.
+All 15470 common regressions and 54 native groups pass. A fresh own Windows 98
+branch with the media launcher's 100-MHz/128-MiB hardware profile reaches Explorer
+and regular shutdown with 78 real frontend calendar corrections. Its first
+daylight-saving confirmation is acknowledged inside the guest. Current user
+Windows journals are not opened or replaced. The older C52 runtime remains
+available; snapshot identities remain strict without migration.
+
+The C51 merge checkpoint was committed and pushed as `6d33114`. The subsequent
+C52 GUI integration remains local. The GUI and all 13 root launchers now support
+WHPX, with an explicit software fallback. Original media and previous runtimes
+remain available. Native input, OpenGL and physical host-audio acceptance remain
+separate from the managed owner tests and headless guest stills.
+The selected runtime is `c53r1-20261031-dos-startup`, with 124 verified products.
+
+## GUI and launcher selection
+
+The title/footer identify the actual CPU engine. Open **TIME AND SPEED** with
+Ctrl+Alt+F10 and select **CPU ENGINE** to cold-start the other engine. Shut down
+Windows before a cold engine switch. The selection is saved in that frontend's
+settings. Launchers default to WHPX when no engine preference is saved;
+`-Engine whpx` or `-Engine software` explicitly overrides the saved choice.
+The GUI executable accepts `--engine` and `--default-engine` equivalents.
+No silent software fallback substitutes for an unavailable WHP platform.
+
+The full native frontend requires a Pentium profile. Legacy 486 launcher
+configurations are cold-opened with the supported Pentium/90-MHz ISA profile;
+the original 486 definition is retained and detached from automatic saving.
+The startup notice reports this conversion. Choose software to use the 486
+configuration. The native backend does not pretend to implement an unqualified
+486 ID-flag/CPUID discovery path.
+
+The eight Windows launchers use separate copies inside
+`artifacts/Windows-WHPX-C52-20261031`. All source journals were copied under
+read locks that deny concurrent writes. The Windows 95 copies retain the two
+previously qualified speed-patched PDRs. Their installed network stack also
+requires the author's **speedndis** category: an actual guest invocation of
+patcher9x changes 18 bytes in the exact known NDIS.VXD revision. The same
+hash-guarded effect is applied only to the other three additional copies.
+The older installations remain intact. Win98 needs no such new patch.
+The earlier C51 video copy had no active NIC, so its qualification did not
+cover this NDIS startup path. Guest networking configurations are retained;
+headless GUI-owner checks do not activate host network endpoints.
+
+The common MachineSession queue owns native execution, input generations,
+media/hardware replacement, reset and snapshots. A replacement is validated
+before releasing the old native partition. Suspension retains CPU state and
+powered devices for rollback if activation fails. Native status supplies the
+real CS:RIP and marks instruction retirement counts unavailable.
+
+Short GUI slices retain authoritative shared RAM and a continuous active
+host-time origin. Joined scanout conversion runs inside that origin. Menu pause,
+checkpoint capture and disposal reconcile the complete managed RAM mirror;
+there is no 128-MiB roundtrip after every GUI slice. Existing GPU reader leases
+still extend beyond the later upload. Shutdown stops the emulation worker
+before native resources, video workers and host audio are released.
+
+The snapshot dialogs use `.whpxsav` for WHPX and `.dossav` for software.
+Cross-engine or old-build CPU migration is unsupported. Legacy instruction-based
+acceptance scripts require the software engine; `--gui-engine-check` exercises
+the compiled native owner and menu without constructing a host window.
 
 ## Clock and ownership
 
@@ -87,7 +202,42 @@ Its full-PC entry currently requires P54C and offline devices. Unsupported
 software-step/network combinations fail explicitly. The 486 ID-flag/CPUID
 discovery gap remains unadmitted for full DOS4GW PCs.
 
-## Actual qualification and limits
+## C52 GUI qualification
+
+The real common owner passes persistent-RAM pacing, pause, complete native
+snapshot/load, failed-load preservation, native hardware reset and both cold
+engine switches. The compiled menu is checked without constructing a native
+window. These checks do not establish host input, GPU presentation or physical
+audio acceptance.
+
+All eight new Windows copies reach actual Explorer desktops and regular
+safe-to-turn-off screens through that owner. Win98's initial clock-settings
+dialogs and the load copy's saved **Restart** action required explicit guest
+interaction; earlier observations are diagnostic, not clean shutdowns.
+Final target journals retain every byte of their read-locked source prefixes.
+The three exact Win95 compatibility files are independently checked in each
+new Win95 copy. Original installations and personal game journals are retained.
+
+The native suite passes 54 groups, including three new full-RAM A20-transition
+checks at 8/64/128 MiB. Mapping changes replace only changed GPA runs; bounded
+mapping-plan/transition caches retain unchanged mappings. This addresses the
+observed long XMS/A20 boot phase. No equal-work speedup percentage or new
+game/video throughput claim follows from these launcher checks.
+
+The 15467 common regressions ran on byte-identical five VM modules, with
+unchanged common test sources. Native reference metadata changes the test
+assembly identity, so test-DLL byte equality is not claimed. The final whole-
+solution build has zero warnings/errors. Quality checks cover 954 code/project
+files, including 499 C# files; state generation remains 48 components,
+960 reviewed members and 43 callbacks. C51 workload measurements below retain
+their earlier build and fixture scope. The recurring job stays paused.
+Private evidence: `artifacts/tests/whpx-gui-release-path.txt`.
+
+## Archived C51 qualification and limits
+
+This section records C51 before GUI integration and launcher selection. Its
+statements about selected C50 products and then-local work are historical;
+the current C52 selection is described above.
 
 The common C51 VM build passes 15467/15467 registered software regressions,
 23 new groups over C50. Native tests use the real installed WHP API: complete

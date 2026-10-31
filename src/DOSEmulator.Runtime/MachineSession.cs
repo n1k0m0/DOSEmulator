@@ -23,6 +23,25 @@ public sealed class MachineSession : IDisposable
     private MachineDefinitionBinding? _definitionBinding;
     private readonly bool _enableHostNetworking;
     private NetworkService _network;
+    private IMachineExecutionFactory? _executionFactory;
+    private IMachineExecution? _execution;
+    private readonly Func<string, IMachineExecutionFactory?>? _executionResolver;
+    /// <summary>Explicit CPU backend, independent of the PC's nominal hardware clock.</summary>
+    public string CpuEngine => _executionFactory?.Engine ?? "software";
+    /// <summary>Whether the current graph has a separate native register owner.</summary>
+    public bool UsesExternalCpu => _execution is not null;
+    /// <summary>Reads status from the active CPU owner at a stopped emulation boundary.</summary>
+    public MachineStatus GetStatus() => _execution?.GetStatus() ?? Machine.GetStatus();
+    /// <summary>Runs a native slice and its joined presentation; software pacing remains with its established frontend.</summary>
+    public void RunRealtime(TimeSpan duration, Action observe, CancellationToken cancellation = default) =>
+        (_execution ?? throw new InvalidOperationException("No native CPU owner.")).RunRealtime(duration, observe, cancellation);
+    /// <summary>Routes explicit frontend calendar input through the active CPU owner's stopped device boundary.</summary>
+    public void SetCalendar(DateTime calendar)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_execution is { } execution) execution.SetCalendar(calendar);
+        else Machine.SetCalendar(calendar);
+    }
     // External input awaiting admission is session-owned, like _commands, not saved guest state.
     private readonly Queue<RelativeMouseInput.Input> _pendingMouse = new();
     private const int PendingMouseLimit = 128;
@@ -38,14 +57,22 @@ public sealed class MachineSession : IDisposable
     public string? DefinitionPath => _definitionBinding?.Path;
 
     /// <summary>Initializes MachineSession and connects the supplied dependencies before the component is used.</summary>
-    public MachineSession(PcMachine machine, bool enableHostNetworking = false, string? definitionPath = null)
+    public MachineSession(PcMachine machine, bool enableHostNetworking = false, string? definitionPath = null, IMachineExecutionFactory? executionFactory = null, Func<string, IMachineExecutionFactory?>? executionResolver = null)
     {
-        var definition = machine.CaptureDefinition();
-        if (definitionPath is not null) _definitionBinding = new(definitionPath, definition.Id);
-        _enableHostNetworking = enableHostNetworking;
-        _network = new(machine, enableHostNetworking);
-        Machine = machine; Machine.HardwareResetOccurred += TrackReset;
-        _definitionId = definition.Id; _definitionName = definition.Name;
+        executionFactory?.ValidateProfile(machine.Profile);
+        var execution = executionFactory?.Create(machine);
+        execution?.Activate();
+        _executionFactory = executionFactory; _execution = execution; _executionResolver = executionResolver;
+        try
+        {
+            var definition = machine.CaptureDefinition();
+            if (definitionPath is not null) _definitionBinding = new(definitionPath, definition.Id);
+            _enableHostNetworking = enableHostNetworking;
+            _network = new(machine, enableHostNetworking);
+            Machine = machine; Machine.HardwareResetOccurred += TrackReset;
+            _definitionId = definition.Id; _definitionName = definition.Name;
+        }
+        catch { execution?.Dispose(); throw; }
     }
     /// <summary>Invalidates the configuration revision after a real machine reset event.</summary>
     private void TrackReset()
@@ -62,8 +89,12 @@ public sealed class MachineSession : IDisposable
         }
     }
     /// <summary>Transfers battery state, releases the old machine and adopts an already prepared replacement.</summary>
-    private void ReplaceMachine(PcMachine replacement, bool carryBattery = true)
+    private void ReplaceMachine(PcMachine replacement, bool carryBattery = true, IMachineExecution? prepared = null, IMachineExecutionFactory? factory = null, bool changeEngine = false)
     {
+        var selected = changeEngine ? factory : _executionFactory;
+        IMachineExecution? next;
+        try { selected?.ValidateProfile(replacement.Profile); next = prepared ?? selected?.Create(replacement); }
+        catch { prepared?.Dispose(); replacement.Dispose(); throw; }
         if (carryBattery) Machine.Rtc.CarryBatteryStateTo(replacement.Rtc);
         try { _network.Dispose(); }
         catch (Exception error)
@@ -73,12 +104,23 @@ public sealed class MachineSession : IDisposable
             foreach (var adapter in Machine.Profile.NetworkAdapters.ToArray()) Machine.SetNetworkCablePreference(adapter.Slot, false);
             _network = new(Machine, _enableHostNetworking);
             _network.RecordFailure(error.Message);
-            replacement.Dispose();
+            next?.Dispose(); replacement.Dispose();
             throw new IOException("The previous network connection could not close. The original PC is retained with networking disconnected.", error);
+        }
+        try
+        {
+            _execution?.Suspend();
+            next?.Activate();
+        }
+        catch
+        {
+            next?.Dispose(); replacement.Dispose(); _execution?.Activate();
+            _network = new(Machine, _enableHostNetworking); throw;
         }
         _pendingMouse.Clear();
         Machine.HardwareResetOccurred -= TrackReset;
-        Machine.Dispose(); Machine = replacement;
+        _execution?.Dispose(); Machine.Dispose(); Machine = replacement;
+        _execution = next; _executionFactory = selected;
         Machine.HardwareResetOccurred += TrackReset; _revision++; Interlocked.Increment(ref _inputGeneration);
         Interlocked.Increment(ref _networkGeneration);
         _network = new(Machine, _enableHostNetworking);
@@ -116,7 +158,7 @@ public sealed class MachineSession : IDisposable
                     command.Result.TrySetResult(new(1, command.Request.RequestId, false, "StaleInputGeneration", null));
                 else command.Result.TrySetResult(Handle(command.Request));
             }
-            catch (Exception ex) when (ex is ArgumentException or JsonException or InvalidOperationException)
+            catch (Exception ex) when (ex is ArgumentException or JsonException or InvalidOperationException or NotSupportedException)
             {
                 command.Result.TrySetResult(new(1, command.Request.RequestId, false, "InvalidRequest", new { message = ex.Message }));
             }
@@ -163,7 +205,7 @@ public sealed class MachineSession : IDisposable
         switch (request.Command)
         {
             case "Ping": result = new { pong = true }; break;
-            case "GetStatus": result = Machine.GetStatus(); break;
+            case "GetStatus": result = GetStatus(); break;
             case "GetNetworkStatus": result = _network.GetStatus(); break;
             case "SetNetworkConnection":
             {
@@ -194,7 +236,7 @@ public sealed class MachineSession : IDisposable
                 var replacement = MachineFactory.FromDefinition(definition, Machine);
                 ReplaceMachine(replacement); _definitionId = definition.Id; _definitionName = definition.Name;
                 _definitionBinding = new(path, definition.Id);
-                Machine.Running = true; result = Machine.GetStatus(); break;
+                Machine.Running = true; result = GetStatus(); break;
             }
             case "SetHardDisk":
             {
@@ -208,7 +250,7 @@ public sealed class MachineSession : IDisposable
                 definition = definition with { HardDisks = media.OrderBy(d => d.Slot).ToArray(), BuiltInTestDisk = false };
                 var replacement = MachineFactory.FromDefinition(definition, Machine);
                 ReplaceMachine(replacement); Machine.Running = true;
-                result = Machine.GetStatus(); break;
+                result = GetStatus(); break;
             }
             case "SetOpticalDisc":
             {
@@ -219,23 +261,24 @@ public sealed class MachineSession : IDisposable
                 { OpticalDiscs = image is null ? [] : [new(Machine.Profile.AtapiSlot, image)] };
                 var replacement = MachineFactory.FromDefinition(definition, Machine);
                 ReplaceMachine(replacement); Machine.Running = true;
-                result = Machine.GetStatus(); break;
+                result = GetStatus(); break;
             }
             case "CreateSnapshot":
             {
                 string path = request.Payload.GetProperty("path").GetString() ?? throw new ArgumentException("Missing new snapshot directory.");
-                var snapshot = SnapshotStore.Capture(Machine, path);
+                object snapshot = _execution?.CaptureSnapshot(path) ?? (object)SnapshotStore.Capture(Machine, path);
                 result = new { path = Path.GetFullPath(path), snapshot, runningStateSnapshot = true }; break;
             }
             case "LoadSnapshot":
             {
                 string path = request.Payload.GetProperty("path").GetString() ?? throw new ArgumentException("Missing snapshot directory.");
                 string destination = request.Payload.GetProperty("destination").GetString() ?? throw new ArgumentException("Missing new branch directory.");
-                var replacement = SnapshotStore.Load(path, destination);
-                ReplaceMachine(replacement, false);
+                var loaded = _executionFactory?.Load(path, destination);
+                var replacement = loaded?.Machine ?? SnapshotStore.Load(path, destination);
+                ReplaceMachine(replacement, false, loaded);
                 var identity = replacement.CaptureDefinition(); _definitionId = identity.Id; _definitionName = identity.Name;
                 _definitionBinding = null;
-                result = Machine.GetStatus(); break;
+                result = GetStatus(); break;
             }
             case "CreateMediaCheckpoint":
             {
@@ -283,7 +326,7 @@ public sealed class MachineSession : IDisposable
                     biosVgaTextScanlines = true, msDos622Cp850Text = true, guestCpuHotReset = true,
                     resetScope = "CPU only; RAM, devices, virtual time and attached media retained",
                     commands = new[] { "CreateSnapshot", "LoadSnapshot", "CreateMediaCheckpoint", "CreateMediaBranch", "GetMachineDefinition", "SaveMachineDefinition", "LoadMachineDefinition", "SetHardDisk", "SetOpticalDisc", "Ping", "GetStatus", "GetCapabilities", "GetNetworkStatus", "SetNetworkConnection", "Pause", "Resume", "HardwareReset", "SendCtrlAltDel", "PowerCycleCurrent", "PowerCycleDemo", "PowerCycleReadOnlyDisk", "PowerCycleOverlayDisk", "InsertFloppy", "EjectFloppy", "PrepareConfigurationChange", "CommitConfigurationChange", "SendScanCode", "SendMouseInput", "SetGameportInput", "SendSerialInput", "SetParallelInput", "SendMidiInput" } }; break;
-            case "Pause": Machine.Running = false; result = Machine.GetStatus(); break;
+            case "Pause": _execution?.Pause(); Machine.Running = false; result = GetStatus(); break;
             case "Resume":
             {
                 if (!Machine.Running)
@@ -291,25 +334,35 @@ public sealed class MachineSession : IDisposable
                     long next = checked(_resumeGeneration + 1);
                     Machine.Running = true; Interlocked.Exchange(ref _resumeGeneration, next);
                 }
-                result = Machine.GetStatus(); break;
+                result = GetStatus(); break;
             }
-            case "HardwareReset": Machine.HardwareReset(); result = Machine.GetStatus(); break;
+            case "SetCpuEngine":
+            {
+                string engine = request.Payload.GetProperty("engine").GetString() ?? throw new ArgumentException("Missing engine.");
+                IMachineExecutionFactory? selected = null;
+                if (engine != "software") selected = _executionResolver?.Invoke(engine) ?? throw new ArgumentException("Unknown or unavailable CPU engine.");
+                selected?.ValidateProfile(Machine.Profile);
+                var replacement = Machine.CreatePowerCycle(Machine.Profile);
+                ReplaceMachine(replacement, factory: selected, changeEngine: true);
+                Machine.Running = false; result = new { engine = CpuEngine, status = GetStatus() }; break;
+            }
+            case "HardwareReset": Machine.HardwareReset(); result = GetStatus(); break;
             case "SendCtrlAltDel":
                 if (!Machine.Keyboard.TryInjectTranslatedSet1([0x1d, 0x38, 0x53, 0xd3, 0xb8, 0x9d]))
                     return new(1, request.RequestId, false, "InputNotAccepted", null);
-                result = Machine.GetStatus(); break;
+                result = GetStatus(); break;
             case "PowerCycleCurrent":
             {
                 var replacement = Machine.CreatePowerCycle(Machine.Profile);
                 ReplaceMachine(replacement); Machine.Running = true;
-                result = Machine.GetStatus(); break;
+                result = GetStatus(); break;
             }
             case "PowerCycleDemo":
             {
                 // This explicit operation always boots the built-in test disk, never swaps an attached user image silently.
                 var replacement = PcMachine.CreateDemo(Machine.Profile);
                 ReplaceMachine(replacement); Machine.Running = true; _definitionBinding = null;
-                result = Machine.GetStatus(); break;
+                result = GetStatus(); break;
             }
             case "PowerCycleReadOnlyDisk":
             case "PowerCycleOverlayDisk":
@@ -326,7 +379,7 @@ public sealed class MachineSession : IDisposable
                 definition = definition with { BuiltInTestDisk = false, HardDisks = definition.HardDisks.Where(d => d.Slot != 0).Append(new DiskAttachment(0, path, overlay)).ToArray() };
                 var replacement = MachineFactory.FromDefinition(definition, Machine);
                 ReplaceMachine(replacement); Machine.Running = true; _definitionBinding = null;
-                result = Machine.GetStatus(); break;
+                result = GetStatus(); break;
             }
             case "InsertFloppy":
             {
@@ -339,25 +392,25 @@ public sealed class MachineSession : IDisposable
                     throw new ArgumentException("Use an absolute private .cow overlay path.");
                 IReadOnlyBlockDevice disk = overlay is not null ? new CopyOnWriteDisk(path, overlay) : new ReadOnlyRawDisk(path);
                 try { Machine.Floppy.ReplaceMedia(drive, disk); } catch { disk.Dispose(); throw; }
-                _revision++; result = Machine.GetStatus(); break;
+                _revision++; result = GetStatus(); break;
             }
             case "EjectFloppy":
                 Machine.Floppy.ReplaceMedia(ReadInt32(request.Payload, "drive", 0, 1), null);
-                _revision++; result = Machine.GetStatus(); break;
+                _revision++; result = GetStatus(); break;
             case "PrepareConfigurationChange":
             {
                 var requested = request.Payload.Deserialize<MachineProfile>(IpcProtocol.JsonOptions) ?? throw new ArgumentException("Missing profile.");
-                requested.Validate(); result = new ConfigurationPlan(_revision, requested,
+                requested.Validate(); _executionFactory?.ValidateProfile(requested); result = new ConfigurationPlan(_revision, requested,
                     JsonSerializer.Serialize(requested, IpcProtocol.JsonOptions) != JsonSerializer.Serialize(Machine.Profile, IpcProtocol.JsonOptions)); break;
             }
             case "CommitConfigurationChange":
             {
                 var plan = request.Payload.Deserialize<ConfigurationPlan>(IpcProtocol.JsonOptions) ?? throw new ArgumentException("Missing change plan.");
                 if (plan.ExpectedRevision != _revision) return new(1, request.RequestId, false, "StaleConfiguration", null);
-                plan.Requested.Validate();
+                plan.Requested.Validate(); _executionFactory?.ValidateProfile(plan.Requested);
                 var replacement = Machine.CreatePowerCycle(plan.Requested);
                 ReplaceMachine(replacement); Machine.Running = true;
-                result = new { revision = _revision, status = Machine.GetStatus() }; break;
+                result = new { revision = _revision, status = GetStatus() }; break;
             }
             case "SendScanCode":
             {
@@ -436,6 +489,6 @@ public sealed class MachineSession : IDisposable
         }
         Machine.HardwareResetOccurred -= TrackReset;
         try { _network.Dispose(); }
-        finally { Machine.Dispose(); }
+        finally { try { _execution?.Dispose(); } finally { Machine.Dispose(); } }
     }
 }

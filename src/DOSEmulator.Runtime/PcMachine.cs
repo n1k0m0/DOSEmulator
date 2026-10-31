@@ -342,18 +342,7 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
                 if (untilVirtualNanoseconds is { } resetSlice) target = Math.Min(target, resetSlice);
                 Scheduler.AdvanceTo(target); executed++; continue;
             }
-            bool fastReset = Board.ConsumeResetRequest(), keyboardPulse = Keyboard.ConsumeResetPulse();
-            bool keyboardLine = Keyboard.ResetLineAsserted;
-            if (fastReset || keyboardPulse || (keyboardLine && !_keyboardResetWasAsserted))
-            {
-                var sources = new List<string>();
-                if (fastReset) sources.Add("port92");
-                if (keyboardPulse) sources.Add("kbc-pulse");
-                if (keyboardLine && !_keyboardResetWasAsserted) sources.Add("kbc-output-port");
-                if (keyboardPulse) _resetPulseUntil = checked(Scheduler.Now + 6_000);
-                ResetCpu(string.Join("+", sources));
-            }
-            _keyboardResetWasAsserted = keyboardLine;
+            ServiceLegacyResetBoundary();
             if (CpuResetHeld)
             {
                 if (Scheduler.Now < _resetPulseUntil)
@@ -424,6 +413,28 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
         }
         Audio.AdvanceTo(Scheduler.Now);
         return executed;
+    }
+
+    /// <summary>Consumes physical reset sources at an external CPU exit, using the same powered-device reset domains as software execution.</summary>
+    internal bool ServiceExternalResetBoundary()
+    {
+        ServicePiixResetBoundary(); ServiceLegacyResetBoundary(); return CpuResetHeld;
+    }
+    /// <summary>Shares the port-92 and KBC edge/pulse policy between the two CPU owners.</summary>
+    private void ServiceLegacyResetBoundary()
+    {
+    bool fastReset = Board.ConsumeResetRequest(), keyboardPulse = Keyboard.ConsumeResetPulse();
+    bool keyboardLine = Keyboard.ResetLineAsserted;
+    if (fastReset || keyboardPulse || (keyboardLine && !_keyboardResetWasAsserted))
+    {
+        var sources = new List<string>();
+        if (fastReset) sources.Add("port92");
+        if (keyboardPulse) sources.Add("kbc-pulse");
+        if (keyboardLine && !_keyboardResetWasAsserted) sources.Add("kbc-output-port");
+        if (keyboardPulse) _resetPulseUntil = checked(Scheduler.Now + 6_000);
+        ResetCpu(string.Join("+", sources));
+    }
+    _keyboardResetWasAsserted = keyboardLine;
     }
 
     /// <summary>Captures a status description without exposing mutable CPU, RAM or device objects.</summary>

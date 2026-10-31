@@ -11,6 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.3.0" />
+    <ProjectReference Include="../DOSEmulator.Whpx/DOSEmulator.Whpx.csproj" />
     <ProjectReference Include="../DOSEmulator.Runtime/DOSEmulator.Runtime.csproj" />
     <ProjectReference Include="../SharpPixels/SharpPixels.csproj" />
   </ItemGroup>

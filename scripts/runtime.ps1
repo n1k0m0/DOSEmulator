@@ -20,6 +20,12 @@ function Get-DosRuntimeRelease {
                 if ($expected -notmatch '^[0-9A-F]{64}$' -or (Get-DosFileHash -LiteralPath $path).Hash -cne $expected) { throw ('The current runtime is incomplete or changed: ' + $name) }
             }
         }
+        if ($selection.modules.PSObject.Properties.Name -contains 'DOSEmulator.Whpx') {
+            foreach ($framework in @('net10.0','net10.0-windows')) {
+                $native = Join-Path $release ($framework + '/DOSEmulator.Whpx.dll')
+                if ((Get-DosFileHash -LiteralPath $native).Hash -cne $selection.modules.'DOSEmulator.Whpx') { throw 'The selected WHPX backend changed or is incomplete.' }
+            }
+        }
         return $release
     }
     $fallback = Join-Path $script:DosWorkspaceRoot 'artifacts/m1-build/Release'

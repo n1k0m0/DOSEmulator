@@ -16,10 +16,11 @@ internal sealed unsafe class WhpxPhysicalMemory : IDisposable
     private readonly byte* _ram;
     private readonly List<(uint Start, uint Length, IMemoryDevice Device, nint Copy)> _firmware = [];
     private sealed record MapRun(uint Start, ulong Bytes, nint Source, uint Flags);
-    private sealed record MapPlan(MapRun[] Runs);
+    private sealed record MapPlan(MapRun[] Runs, Dictionary<uint, (nint Source, uint Flags)> Pages);
     private WhpxRamView? _view;
     private bool _sharedRam;
     private readonly Dictionary<(bool A20, uint Decoded, uint HoleStart, uint HoleLength), MapPlan> _plans = [];
+    private readonly Dictionary<(MapPlan? From, MapPlan To), MapRun[]> _transitions = [];
     private MapPlan? _activePlan;
     private readonly HashSet<int> _hostTouchedPages = [];
     private readonly Dictionary<uint, UInt128> _hostFirmwareDecode = [];
@@ -132,17 +133,42 @@ internal sealed unsafe class WhpxPhysicalMemory : IDisposable
                     ordered[first].Value.Source, ordered[first].Value.Flags));
                 first = after;
             }
-            plan = new(runs.ToArray());
-            if (_plans.Count == 4) _plans.Clear(); // Guest DRB/hole programming cannot grow an unbounded cache.
+            plan = new(runs.ToArray(), wanted);
+            if (_plans.Count == 4) { _plans.Clear(); _transitions.Clear(); } // Guest DRB/hole programming cannot grow an unbounded cache.
             _plans.Add(topology, plan);
         }
         // Every mapping addresses the same authoritative DRAM. Switching A20
         // aliases or DRB holes cannot discard a CPU store or a device DMA write.
-        if (_activePlan is { } previousPlan)
-            foreach (var run in previousPlan.Runs)
-                WhpxNative.Check(WhpxNative.WHvUnmapGpaRange(_partition, run.Start, run.Bytes), "unmap physical topology");
-        foreach (var run in plan.Runs)
-            WhpxNative.Check(WhpxNative.WHvMapGpaRange(_partition, run.Source, run.Start, run.Bytes, run.Flags), "map physical topology");
+        if (!_transitions.TryGetValue((_activePlan, plan), out var changes))
+        {
+            var rows = new List<(uint Address, nint Source, uint Flags)>();
+            foreach (var item in plan.Pages)
+                if (_activePlan is null || !_activePlan.Pages.TryGetValue(item.Key, out var old) || old != item.Value)
+                    rows.Add((item.Key, item.Value.Source, item.Value.Flags));
+            if (_activePlan is not null)
+                foreach (var item in _activePlan.Pages)
+                    if (!plan.Pages.ContainsKey(item.Key)) rows.Add((item.Key, 0, 0));
+            var orderedChanges = rows.OrderBy(r => r.Address).ToArray();
+            var changedRuns = new List<MapRun>();
+            for (int first = 0; first < orderedChanges.Length;)
+            {
+                int after = first + 1;
+                while (after < orderedChanges.Length && orderedChanges[after].Address == orderedChanges[after - 1].Address + Page &&
+                    orderedChanges[after].Flags == orderedChanges[first].Flags &&
+                    (orderedChanges[first].Flags == 0 || orderedChanges[after].Source == orderedChanges[after - 1].Source + Page)) after++;
+                changedRuns.Add(new(orderedChanges[first].Address, (ulong)(after - first) * Page, orderedChanges[first].Source, orderedChanges[first].Flags));
+                first = after;
+            }
+            changes = changedRuns.ToArray();
+            if (_transitions.Count == 16) _transitions.Clear();
+            _transitions.Add((_activePlan, plan), changes);
+        }
+        foreach (var run in changes)
+        {
+            // WHvMapGpaRange replaces the specified pages; unchanged even-MiB aliases stay mapped.
+            if (run.Flags == 0) WhpxNative.Check(WhpxNative.WHvUnmapGpaRange(_partition, run.Start, run.Bytes), "remove physical topology");
+            else WhpxNative.Check(WhpxNative.WHvMapGpaRange(_partition, run.Source, run.Start, run.Bytes, run.Flags), "map physical topology");
+        }
         _activePlan = plan; _topology = topology;
 
         // Classifies one translated physical page as decoded DRAM or executable own firmware.

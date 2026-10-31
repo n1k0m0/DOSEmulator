@@ -1,5 +1,103 @@
 # DOSE – Implementierungsstand
 
+**C53r1: DOS-Starter und aktive Plattenübergabe, 31. Oktober 2026:**
+Die Prüfung von `run-doom2.cmd` findet einen reproduzierbaren Fehler im
+486→Pentium/WHPX-Startpfad: Die alte Maschine hält ihre Platten-/Diskettenleases
+bis zum Fensterschluss, obwohl die neue bereits starten soll. Der BIOS-Lesezugriff
+wird dadurch abgewiesen. Jetzt wird die alte Maschine nach erfolgreicher
+Vorbereitung und vor Ausführung der neuen freigegeben. Fehlgeschlagene
+Vorbereitung, ursprüngliche PC-Definition und Medienbindungen bleiben geschützt.
+Der direkte eigene DOS-Gast beendet den unveränderten HIMEM-Speichertest; ein
+HIMEM-Deadlock ist damit nicht nachgewiesen. Der korrigierte kompilierte Einstieg
+erreicht mit 8 MiB, periodischer Hostuhrkorrektur und Bildaktualisierung den
+DOS-Prompt, echten ECHO, Doom-II-Grafik und reguläre Spielrückkehr mit erneutem
+ECHO. Eine getrennte 486/33-MHz-Softwarekontrolle erreicht ebenfalls den Prompt.
+Die erweiterte GUI-Owner-Prüfung besteht ohne Hostfenster oder Endpunkte.
+Nur GUI-DLL/PDB ändern sich; alle sechs Ausführungsmodule und die gemeinsame
+Test-DLL bleiben bytegleich C53. Dessen 15471 Regressionen und 54 native Gruppen
+gelten weiter; keine neue Vollsuite wird behauptet. Privater Nachweis
+`artifacts/tests/whpx-himem-release-path.txt`. Alle 13 Starter wählen jetzt
+`c53r1-20261031-dos-startup` mit 124 Produkten und unveränderten Medienbindungen.
+Nur lokal, Automation pausiert; Benutzer-Spielstände wurden nicht geöffnet.
+
+**C53: Win98-CD-Kopie und dauerhaftes Plattenjournal, 31. Oktober 2026:**
+Der scheinbar eingefrorene Explorer-Kopiervorgang ist auf einer eigenen Kopie
+nachgestellt: ATA-Schreibvorgänge liefen weiter, während das Dialogbild stehen
+blieb. Profilierung zeigt die wiederholte vollständige Journal-Synchronisierung
+nach jedem 512-Byte-Sektor als Engpass. Windows-Journale verwenden jetzt einen
+tatsächlich geprüften synchronen Write-through-Handle; die zusätzliche volle
+Dateisynchronisierung je Sektor entfällt. Bestätigung und Cache-Veröffentlichung
+folgen weiterhin erst dem erfolgreichen Schreiben. Explizites Flush,
+Checkpoint, Fehlerreihenfolge und Journalformat bleiben erhalten; andere Hosts
+behalten ihren bisherigen Flush-Pfad.
+
+Der echte Win98-Explorer kopiert alle neun sichtbaren CD-Wurzeleinträge nach C:
+und beendet den Vorgang natürlich. Alle 3533 Dateien, 365 Verzeichnisse und
+663260856 Nutzbytes sind unabhängig gegen die CD geprüft. Der virtuelle
+PS/2-Zeiger reagiert währenddessen. Ein tatsächlicher Speicherstand mitten im
+Kopieren lädt mit gleichen gesamten 128 MiB RAM, CPU-, Geräte- und
+Schedulerzuständen; der restaurierte Gast beendet Kopie und regulären Shutdown.
+Keine allgemeine Lastgeschwindigkeit oder physische Hostbedienabnahme folgt
+daraus. [Vertrag und Grenzen](hardware/DISK-JOURNAL.md), privater Nachweis
+`artifacts/tests/whpx-cd-copy-release-path.txt`. Nur lokal; Automation pausiert.
+
+15471/15471 gemeinsame Regressionen, alle 54 nativen Gruppen und die erweiterte
+GUI-Owner-Prüfung bestehen; Build ohne Warnungen/Fehler. 955 Code-/Projektdateien
+sind qualitätsgeprüft, der Zustandsgraph bleibt bei 48/960/43. Die 13 Starter
+wählen `c53-20261031-durable-io` mit 124 Produkten und denselben acht
+Windows-PC-Bindungen. Die bisherigen 124 C52r1-Produkte bleiben bytegleich
+erhalten. Die folgenden Checkpoints behalten ihren historischen Auswahlbezug.
+
+**C52r1: WHPX-GUI-Uhrkorrektur:** Der gemeldete Win98-Media-Abbruch ist auf dem
+ausgelieferten C52 reproduziert: Die periodische Hostuhrkorrektur verlangte bei
+weiter gehaltenem nativem RAM fälschlich eine volle Software-Snapshotgrenze.
+Der vorherige GUI-Owner-Test hatte diesen Frontendaufruf ausgelassen.
+Kalendereingaben laufen jetzt durch den tatsächlichen CPU-Owner, zwischen
+abgeschlossenen nativen Slices und ohne RAM-Kopie oder Unterbrechung der
+aktiven 1:1-Zeitbasis. Die Snapshot-Wachen bleiben erhalten. Neue GUI-Prüfungen
+decken mehrere periodische Korrekturen sowie Pause, Fortsetzen und Laden ab.
+Der Fehlertitel behält die tatsächliche Engine, die Fehlermeldungsüberschrift
+lautet allgemein **EMULATION STOPPED**. Privater Nachweis:
+`artifacts/tests/whpx-clock-fix-release-path.txt`. Automation bleibt pausiert;
+kein neuer Commit oder Push.
+Alle 15470 gemeinsamen Regressionen und 54 nativen Gruppen bestehen. Eine
+frische eigene Win98-Kopie mit dem Media-Hardwareprofil 100 MHz/128 MiB erreicht
+Explorer und regulären Shutdown bei 78 tatsächlichen Uhrkorrekturen. Alle
+13 Starter wählen jetzt `c52r1-20261031-whpx-clock` mit 124 Produkten und
+denselben acht PC-Bindungen. Laufende Benutzer-PCs und deren Journale bleiben
+unberührt; der vorherige C52-Build bleibt erhalten.
+
+**C52: WHPX in GUI und allen Startern, 31. Oktober 2026:** Der angeforderte
+Ausgangsstand ist als `6d33114` committed und gepusht. Die anschließende
+GUI-Integration bleibt lokal. Alle 13 Root-Starter wählen den gemeinsamen
+Satz `c52-20261031-whpx-gui` mit 124 geprüften Produkten; die acht Windows-Varianten verwenden neue, getrennte
+Sicherheitskopien unter `artifacts/Windows-WHPX-C52-20261031`. Originale und
+frühere Laufzeiten bleiben erhalten. Titel und Fußzeile zeigen die tatsächliche
+Engine. **TIME AND SPEED / CPU ENGINE** wechselt per Kaltstart zwischen WHPX
+und Software; `-Engine software` ist der explizite Starter-Fallback.
+
+Der gemeinsame Owner prüft vollständige native Speicherstände, Pause,
+Hardware-Reset, beide Enginewechsel und den Erhalt des alten PCs bei
+fehlgeschlagenem Laden. Acht tatsächliche Windows-Desktops und acht reguläre
+Shutdowns sind auf den neuen Kopien gesehen. Win95 benötigt neben den beiden
+bekannten PDR-Speedpatches die gezielte 18-Byte-NDIS-Korrektur für seine
+installierte Netzwerkkarte; diese Änderungen betreffen ausschließlich die
+neuen Kopien. Hostnetzwerk-Endpunkte wurden bei den Prüfungen nicht geöffnet.
+
+54 native Prüfgruppen bestehen, darunter drei neue volle A20/RAM-Prüfungen
+mit 8/64/128 MiB. Die 15467 gemeinsamen Regressionen gelten auf bytegleichen
+fünf VM-Modulen bei unveränderten gemeinsamen Testquellen weiter. Gesamtbuild
+ohne Warnungen/Fehler, 954 qualitätsgeprüfte Code-/Projektdateien, Zustand
+48/960/43. Die Beseitigung kompletter GPA-Neumappings verbessert den
+beobachteten XMS/A20-Bootpfad; kein neuer prozentualer Lastgewinn ist daraus
+abgenommen. Frühere C51-Doom-/Videowerte behalten ihren damaligen Buildbezug.
+Native GUI-/GL-/Hostaudioabnahme und universelle 100% bleiben offen.
+Automation **PAUSIERT**. [Bedienung und Grenzen](WHPX-ENGINE.md), privater
+Nachweis `artifacts/tests/whpx-gui-release-path.txt`.
+
+Die folgenden Abschnitte dokumentieren frühere Checkpoints mit ihrem jeweiligen
+Build- und Auswahlbezug.
+
 **Lokaler C51-WHPX-Kandidat, 31. Oktober 2026:** WHPX ist mit C50 zusammengeführt,
 mit gemeinsamem nativem RAM, vollständiger aktiver 1:1-Wanduhr und getrenntem
 nativem Snapshotformat 4. Die 114 ausgewählten C50-Produkte und die Starter

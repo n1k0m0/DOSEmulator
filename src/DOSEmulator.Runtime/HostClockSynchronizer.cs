@@ -12,12 +12,26 @@ public sealed class HostClockSynchronizer
     /// <summary>Number of explicit calendar inputs, outside the serialized machine state.</summary>
     public long Synchronizations { get; private set; }
 
+    /// <summary>Uses the active session's CPU boundary, including retained native RAM between GUI slices.</summary>
+    public bool Update(MachineSession session, bool enabled, DateTime localTime, ulong monotonicNanoseconds)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        return UpdateCore(session.Machine, enabled, localTime, monotonicNanoseconds, session.ResumeGeneration, session.SetCalendar);
+    }
+
     /// <summary>Seeds cold/restored PCs and resumes, then corrects the RTC once per monotonic host second while running.</summary>
     public bool Update(PcMachine machine, bool enabled, DateTime localTime, ulong monotonicNanoseconds) =>
         Update(machine, enabled, localTime, monotonicNanoseconds, null);
 
     /// <summary>Also observes successful session resume transitions coalesced within one owner pump; generations never enter saved hardware.</summary>
     public bool Update(PcMachine machine, bool enabled, DateTime localTime, ulong monotonicNanoseconds, long? resumeGeneration)
+    {
+        ArgumentNullException.ThrowIfNull(machine);
+        return UpdateCore(machine, enabled, localTime, monotonicNanoseconds, resumeGeneration, machine.SetCalendar);
+    }
+
+    /// <summary>Commits policy history only after the selected owner accepts the explicit calendar input.</summary>
+    private bool UpdateCore(PcMachine machine, bool enabled, DateTime localTime, ulong monotonicNanoseconds, long? resumeGeneration, Action<DateTime> setCalendar)
     {
         ArgumentNullException.ThrowIfNull(machine);
         if (resumeGeneration is < 0) throw new ArgumentOutOfRangeException(nameof(resumeGeneration));
@@ -29,7 +43,7 @@ public sealed class HostClockSynchronizer
         bool apply = enabled && (changed || !_enabled || resume || periodic);
         if (apply)
         {
-            machine.SetCalendar(localTime);
+            setCalendar(localTime);
             _lastHostTime = monotonicNanoseconds;
             Synchronizations++;
         }

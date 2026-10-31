@@ -47,6 +47,20 @@ public static class WhpxSnapshotStore
     /// <summary>Validates native format, payloads, CPU topology and PC contract before adopting a fresh media branch.</summary>
     public static WhpxPcSession Load(string directory, string branchDirectory)
     {
+        var prepared = PrepareLoad(directory, branchDirectory);
+        try { return WhpxPcSession.AttachLoaded(prepared.Pc, prepared.Cpu); }
+        catch
+        {
+            prepared.Pc.Dispose();
+            string created = Path.GetFullPath(branchDirectory);
+            if (Directory.Exists(created) && File.Exists(Path.Combine(created, "branch.dospc.json"))) Directory.Delete(created, true);
+            throw;
+        }
+    }
+
+    /// <summary>Validates CPU and media first, allowing the GUI to release the previous partition before native activation.</summary>
+    internal static (PcMachine Pc, WhpxCpuState Cpu) PrepareLoad(string directory, string branchDirectory, bool requireP54c = false)
+    {
         string source = Path.GetFullPath(directory);
         byte[] manifestBytes = ReadBounded(Path.Combine(source, "whpx.json"), 65536);
         var manifest = JsonSerializer.Deserialize<WhpxSnapshotManifest>(manifestBytes)
@@ -65,6 +79,7 @@ public static class WhpxSnapshotStore
         var cpu = JsonSerializer.Deserialize<WhpxCpuState>(cpuBytes)
             ?? throw new InvalidDataException("Missing WHP CPU register state.");
         WhpxMappedMachine.ValidateCpuState(cpu);
+        if (requireP54c && cpu.Contract != WhpxCpuContract.IntelP54cB5Subset) throw new InvalidDataException("GUI WHPX requires a P54C checkpoint.");
         string mediaDirectory = Path.Combine(source, "hardware.dossav", "media.dosemedia");
         using (var media = new FileStream(Path.Combine(mediaDirectory, "media.json"), FileMode.Open, FileAccess.Read, FileShare.Read))
         {
@@ -74,15 +89,7 @@ public static class WhpxSnapshotStore
                 throw new InvalidDataException("Native CPU contract differs from the saved PC profile.");
         }
         PcMachine restored = SnapshotStore.LoadExternalCpu(Path.Combine(source, "hardware.dossav"), branchDirectory);
-        try { return WhpxPcSession.AttachLoaded(restored, cpu); }
-        catch
-        {
-            restored.Dispose();
-            // SnapshotStore returned this newly published, previously absent branch.
-            // Delete only this explicit failed target after all its handles are closed.
-            Directory.Delete(Path.GetFullPath(branchDirectory), true);
-            throw;
-        }
+        return (restored, cpu);
     }
 
     /// <summary>Reads one named snapshot payload only within its explicit byte limit.</summary>

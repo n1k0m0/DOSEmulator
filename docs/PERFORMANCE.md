@@ -1,6 +1,44 @@
 # Performance: gemessene Interpreter- und Geräteoptimierungen
 
+## C53: actual Windows 98 CD copy and journal writes, 31 October 2026
+
+The reported CD-copy freeze reproduces as a static Explorer dialog while ATA
+writes continue. Active-owner sampling identifies the full-file durable flush
+after individual sector records as the storage bottleneck. Windows journals now
+use synchronous write-through and omit that redundant per-sector full flush;
+explicit guest/checkpoint flushes and the non-Windows path remain unchanged.
+
+The real Explorer copy now completes all nine visible CD-root items on an own
+safety branch. All 3,533 files, 365 directories and 663,260,856 payload bytes
+match the CD independently. A strict active-copy snapshot preserves the whole
+128-MiB RAM/CPU/device/scheduler state and continues to natural completion and
+regular Windows shutdown. Virtual PS/2 movement is observed during copying.
+There is no controlled application speedup ratio or universal 100% claim from
+this test. The small backend-only pilot and operating-system durability
+contract are recorded separately in [durable sector journals](hardware/DISK-JOURNAL.md).
+
+## C52: GUI owner and A20 mapping, 31 October 2026
+
+WHPX now runs through the common GUI owner. Short execution slices retain
+authoritative RAM and one active host-time origin across joined scanout work.
+Pause, snapshot and disposal publish the complete managed mirror explicitly.
+This avoids a whole-RAM roundtrip per GUI slice. A native tiny-guest check
+observes approximately 100% clock following; it is not a Windows workload rate.
+
+Actual Windows 95 boot profiling exposed frequent A20 transitions during XMS
+setup. The native mapper now replaces only changed GPA runs, retaining bounded
+mapping plans and transitions. Three complete native RAM controls cover
+8/64/128 MiB and real OUT transitions. The eight new launcher copies reach
+Explorer and regular shutdown through the common owner. There is no controlled
+equal-work speedup factor or new Doom/AVI throughput measurement from this
+integration. The C51 load measurements below retain their original scope.
+Native host-window/input/GL/audio acceptance remains separate; universal 100%
+under load is still open. See [GUI operation](WHPX-ENGINE.md).
+
 ## C51: explicit WHPX with C50, 31 October 2026
+
+The following records the earlier C51 qualification before C52 GUI/launcher
+selection, including its then-selected C50 runtime and private candidate status.
 
 The local native candidate merges WHPX with the retained C50 software paths.
 Its clock follows complete active host-monotonic time at factor 1, including

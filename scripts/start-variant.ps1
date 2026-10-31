@@ -2,7 +2,8 @@
 # Copyright 2026 Nils Kopal
 #requires -Version 7.4
 [CmdletBinding()]
-param([Parameter(Mandatory)][ValidateSet('win95','win98','win95-apm','win98-apm','win95-load','win98-load','win95-media','win98-media','doom2-media')][string]$Variant, [switch]$Inspect)
+param([Parameter(Mandatory)][ValidateSet('win95','win98','win95-apm','win98-apm','win95-load','win98-load','win95-media','win98-media','doom2-media')][string]$Variant, [switch]$Inspect, [ValidateSet('whpx','software')][string]$Engine = 'whpx')
+$engineOption = if ($PSBoundParameters.ContainsKey('Engine')) { '--engine' } else { '--default-engine' }
 . (Join-Path $PSScriptRoot 'runtime.ps1')
 $variants = @{
     'win95' = @('artifacts/Windows95-Drivers-C47r2-20261031/win95.dosebranch/branch.dospc.json','artifacts/Windows95/ui-100MHz-c18')
@@ -17,9 +18,14 @@ $variants = @{
 }
 $release = Get-DosRuntimeRelease -BuildIfMissing
 $exe = Join-Path $release 'net10.0-windows/DOSEmulator.exe'
+$selectionFile = Join-Path $script:DosWorkspaceRoot 'artifacts/current/current.json'
+if ($Engine -eq 'whpx' -and (Test-Path -LiteralPath $selectionFile)) {
+    $selection = Get-Content -LiteralPath $selectionFile -Raw | ConvertFrom-Json
+    if (($selection.PSObject.Properties.Name -contains 'launcherMachines') -and ($selection.launcherMachines.PSObject.Properties.Name -contains $Variant)) { $variants[$Variant][0] = $selection.launcherMachines.$Variant }
+}
 $machine = Join-Path $script:DosWorkspaceRoot $variants[$Variant][0]
 $data = Join-Path $script:DosWorkspaceRoot $variants[$Variant][1]
 if (-not (Test-Path -LiteralPath $machine)) { throw ('The private PC configuration is missing: ' + $Variant) }
-if ($Inspect) { [pscustomobject]@{variant=$Variant;runtime=$release;executable=$exe;machine=$machine;settings=$data;nativeWindowStarted=$false;mediaOpened=$false} | ConvertTo-Json; return }
-& $exe --machine $machine --data-dir $data
+if ($Inspect) { [pscustomobject]@{variant=$Variant;runtime=$release;engine=$Engine;executable=$exe;machine=$machine;settings=$data;nativeWindowStarted=$false;mediaOpened=$false} | ConvertTo-Json; return }
+& $exe $engineOption $Engine --machine $machine --data-dir $data
 exit $LASTEXITCODE

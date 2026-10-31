@@ -17,6 +17,7 @@ public sealed partial class CopyOnWriteDisk : IWritableBlockDevice, IFileBackedB
         public readonly ReadOnlyRawDisk Base;
         public readonly byte[] Identity;
         public readonly FileStream File;
+        private readonly bool _writeThrough = OperatingSystem.IsWindows();
         public readonly Dictionary<long, long> Sectors = [];
         private readonly Dictionary<long, byte[]> _cache = [];
         private readonly Queue<long> _cacheOrder = [];
@@ -41,7 +42,8 @@ public sealed partial class CopyOnWriteDisk : IWritableBlockDevice, IFileBackedB
             {
                 using var original = System.IO.File.OpenRead(source);
                 byte[] identity = Identity = SHA256.HashData(original);
-                File = new FileStream(OverlayPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+                File = new FileStream(OverlayPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, 4096,
+                    _writeThrough ? FileOptions.WriteThrough : FileOptions.None);
                 try
                 {
                     byte[] header = new byte[HeaderBytes]; Encoding.ASCII.GetBytes("DOSCOW01").CopyTo(header, 0);
@@ -83,7 +85,10 @@ public sealed partial class CopyOnWriteDisk : IWritableBlockDevice, IFileBackedB
             BinaryPrimitives.WriteInt64LittleEndian(record, lba);
             bytes[..512].CopyTo(record[8..520]); SHA256.HashData(record[..520], record[520..]);
             long start = _appendOffset;
-            try { RandomAccess.Write(File.SafeFileHandle, record, start); File.Flush(true); }
+            // Windows WRITE_THROUGH completes data and NTFS metadata before ACK,
+            // avoiding a redundant whole-file FlushFileBuffers for every sector.
+            // Other hosts retain the established explicit durable flush.
+            try { RandomAccess.Write(File.SafeFileHandle, record, start); if (!_writeThrough) File.Flush(true); }
             catch { Failed = true; throw; }
             _appendOffset = checked(start + RecordBytes);
             Sectors[lba] = start + 8; Remember(lba, bytes);

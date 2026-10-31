@@ -271,6 +271,10 @@ public sealed record MachineStatus(
 {
     /// <summary>Configured read-only optical basis, independent from the drive's guest-controlled tray state.</summary>
     public OpticalDiscStatus? OpticalDisc { get; init; }
+    /// <summary>Actual CPU owner selected by the frontend.</summary>
+    public string CpuEngine { get; init; } = "software";
+    /// <summary>False for native engines whose API provides no guest instruction retirement count.</summary>
+    public bool InstructionCountAvailable { get; init; } = true;
 }
 
 /// <summary>Installed packet target and protected ISO capacity for UI/IPC; no mutable device is exposed.</summary>
@@ -278,6 +282,8 @@ public sealed record OpticalDiscStatus(int Slot, string? Name, long Bytes);
 
 public sealed record HostSettings
 {
+    /// <summary>Explicit frontend CPU engine; changing it cold-starts a fresh register file.</summary>
+    public string CpuEngine { get; init; } = "software";
     /// <summary>Explicit host local calendar input at startup, restore and resume; deterministic headless runs remain opt-in.</summary>
     public bool SynchronizeClock { get; init; } = true;
     /// <summary>Persisted format version; unsupported versions are rejected before adopting the configuration.</summary>

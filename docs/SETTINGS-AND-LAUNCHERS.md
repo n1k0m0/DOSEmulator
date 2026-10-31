@@ -6,11 +6,22 @@ disks and UI preferences. A new runtime is copied into a new immutable version
 directory and verified before that pointer changes. An already running emulator
 continues to use its original files; close and reopen it to use the new version.
 
-The selected local runtime is **C50, 31 October 2026**, with 114 verified
-products and the measured CPU/game/video optimizations. All PC/media/UI bindings
-below are retained. C47r2 remains available for rollback and its earlier saved
-states; format 1 does not migrate those states into the new VM identity.
-See [C50 workload measurements](PERFORMANCE.md#c50-profiled-gamevideo-execution-and-bounded-decode-storage-31-october-2026).
+The C53r1 GUI runtime includes WHPX, the C50 optimizations, the C52r1 host-clock
+fix, the [durable journal write correction](hardware/DISK-JOURNAL.md) and the
+[legacy DOS startup lease fix](WHPX-ENGINE.md#c53r1-legacy-dos-startup-media-ownership).
+Earlier immutable runtimes remain intact for rollback and their saved states. Runtime selection does not
+migrate old snapshots. All 13 launchers default to WHPX while respecting a saved
+GUI engine preference. Pass `-Engine whpx` or `-Engine software` to force the
+selection. The actual engine is shown in the title and footer.
+
+All eight Windows variants use new copies below
+`artifacts/Windows-WHPX-C52-20261031`, preserving their previous definitions and
+journals. Win95 has the narrowly verified CPU-speed compatibility patches in
+two PDRs and NDIS.VXD. Win98 is copied without these guest patches. The DOS/game
+launchers retain their existing media bindings; their personal game journals
+were not opened for this integration. Legacy 486 configurations use a clearly
+reported Pentium/90-MHz ISA profile under WHPX and retain the original definition
+for software execution. See [WHPX operation and limits](WHPX-ENGINE.md).
 
 `scripts/test-launchers.ps1` checks all launchers using an isolated fake workspace.
 Passing `-Inspect` to a root launcher reports its selected runtime, PC and settings
@@ -22,9 +33,9 @@ directory without opening guest media or a native window.
 | `run-doom2.cmd` | Existing personal Doom II PC and journal |
 | `run-freedos.cmd` | Existing FreeDOS hard-disk PC |
 | `run-freedos-floppy.cmd` | Existing FreeDOS floppy PC |
-| `run-win95.cmd`, `run-win95-apm.cmd`, `run-win95-load.cmd`, `run-win95-media.cmd` | Accepted Windows 95 safety copies with installed guest drivers; see below |
-| `run-win98.cmd`, `run-win98-apm.cmd`, `run-win98-load.cmd` | Existing main, APM and load-test Windows 98 PCs |
-| `run-doom2-media.cmd`, `run-win98-media.cmd` | Existing separate games and multimedia PCs |
+| `run-win95.cmd`, `run-win95-apm.cmd`, `run-win95-load.cmd`, `run-win95-media.cmd` | Additional WHPX safety copies with installed guest drivers; see below |
+| `run-win98.cmd`, `run-win98-apm.cmd`, `run-win98-load.cmd`, `run-win98-media.cmd` | Separate WHPX copies of the main, APM, load-test and multimedia Windows 98 PCs |
+| `run-doom2-media.cmd` | Existing separate games PC |
 
 Selecting a newer emulator does not install drivers inside an existing Windows
 disk. In particular, the original Windows 95 RTL8029 miniport and the APM guest
@@ -33,10 +44,12 @@ driver remain guest installations. See [Networking](NETWORKING.md) and
 
 ## Windows 95 safety copies, 31 October 2026
 
-Following explicit approval, these four launchers now select new copies inside
+At the previous driver-installation checkpoint, these four launchers selected copies inside
 `artifacts/Windows95-Drivers-C47r2-20261031`. Each directory contains
 `branch.dospc.json` and its own writable `ide0.cow`. The originals below remain
 unchanged and available for rollback. No original disk or journal was replaced.
+The later C52 launchers use additional copies of these driver-equipped PCs,
+as described above.
 
 | Launcher | New copy directory | Retained original directory |
 |---|---|---|
@@ -115,8 +128,19 @@ It is not a general CPU or Windows speed multiplier. The speed display measures
 actual simulated time against host time. Continuous 100% under every game and
 video workload remains an open target.
 
+## CPU engine
+
+**TIME AND SPEED / CPU ENGINE** switches between WHPX and software with a cold
+restart. Shut down Windows first. An unavailable WHP installation is reported
+explicitly; the emulator does not claim native speed while running software.
+CPU/platform settings remain validated: switch to software before selecting the
+486 profile. WHPX uses active host time at factor 1 and the configured nominal
+Pentium TSC, without instruction-retirement or cycle-identical hardware claims.
+
 ## Saved states
 
 PC definitions are cold-start configurations. Full snapshots require exactly the
 VM module build that created them. Old immutable runtimes are retained for their
 old snapshots; selecting a newer runtime does not migrate or rewrite snapshots.
+
+WHPX snapshots use `.whpxsav` and the native owner; software snapshots use `.dossav`. Engine and actual module identities are checked before loading.

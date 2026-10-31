@@ -8,6 +8,7 @@ using DOSEmulator.Contracts;
 using DOSEmulator.Core;
 using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
+using DOSEmulator.Whpx;
 using OpenTK.Graphics.OpenGL4;
 using OpenTK.Input;
 using OpenTK.Windowing.Common;
@@ -94,10 +95,13 @@ public sealed partial class DosWindow : SharpPixelsWindow
     protected override bool KeyRepeatsEnabled => IsFocused && (_page.Length != 0 || Volatile.Read(ref _guestRepeatEnabled) != 0);
 
     /// <summary>Initializes DosWindow and connects the supplied dependencies before the component is used.</summary>
-    public DosWindow(PcMachine machine, HostSettings settings, string settingsPath, string? smokeDirectory, bool freeDosAcceptance = false, string? automaticText = null, string? captureAfter = null, string? audioOutPath = null, bool audioAcceptance = false, GuestTestScenario? scenario = null, bool resourceAcceptance = false, bool nativeMouseAcceptance = false, bool storageAcceptance = false, string? machinePath = null)
+    public DosWindow(PcMachine machine, HostSettings settings, string settingsPath, string? smokeDirectory, bool freeDosAcceptance = false, string? automaticText = null, string? captureAfter = null, string? audioOutPath = null, bool audioAcceptance = false, GuestTestScenario? scenario = null, bool resourceAcceptance = false, bool nativeMouseAcceptance = false, bool storageAcceptance = false, string? machinePath = null, string engine = "software", string? startupNotice = null)
         : base(960, 720, DOSEIdentity.DisplayName + " - " + PlatformLabel(machine.Profile))
     {
-        _session = new(machine, enableHostNetworking: true, definitionPath: machinePath); _uiInputGeneration = _session.InputGeneration; _settings = settings with { MasterVolume = Math.Clamp(settings.MasterVolume, 0, 100),
+        if (startupNotice is not null) _notices.Enqueue(startupNotice);
+        _session = new(machine, enableHostNetworking: true, definitionPath: machinePath,
+            executionFactory: engine == "whpx" ? new WhpxExecutionFactory() : null,
+            executionResolver: name => name == "whpx" ? new WhpxExecutionFactory() : throw new ArgumentException("Unknown CPU engine.")); _uiInputGeneration = _session.InputGeneration; _settings = settings with { MasterVolume = Math.Clamp(settings.MasterVolume, 0, 100),
             SpeakerVolume = Math.Clamp(settings.SpeakerVolume, 0, 100), DigitalVolume = Math.Clamp(settings.DigitalVolume, 0, 100),
             FmVolume = Math.Clamp(settings.FmVolume, 0, 100) }; _settingsPath = settingsPath;
         _showDebugOverlay = LoadDebugOverlay(settingsPath);
@@ -156,7 +160,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
                         _session.PumpCommands();
                         var machine = _session.Machine;
                         bool changedMachine = !ReferenceEquals(previousMachine, machine);
-                        _scenario?.Pump(machine);
+                        if (!_session.UsesExternalCpu) _scenario?.Pump(machine);
                         if (!ReferenceEquals(previousMachine, machine))
                         {
                             if (previousMachine is not null) previousMachine.Audio.AudioReady -= audio.Write;
@@ -164,27 +168,42 @@ public sealed partial class DosWindow : SharpPixelsWindow
                             pacing.Reset(machine.Scheduler.Now, HostNanoseconds()); speed.Reset(); previousMachine = machine;
                         }
                         var levels = Volatile.Read(ref _settings);
-                        clockSync.Update(machine, levels.SynchronizeClock, DateTime.Now, HostNanoseconds(), _session.ResumeGeneration);
+                        clockSync.Update(_session, levels.SynchronizeClock, DateTime.Now, HostNanoseconds());
                         machine.Speaker.Volume = levels.SpeakerVolume / 100.0;
                         if (machine.SoundBlaster is { } sb) sb.Volume = levels.DigitalVolume / 100.0;
                         if (machine.SoundBlaster16 is { } sb16) sb16.Volume = levels.DigitalVolume / 100.0;
                         if (machine.Opl is { } opl) opl.Volume = levels.FmVolume / 100.0;
                         if (machine.Opl3 is { } opl3) opl3.Volume = levels.FmVolume / 100.0;
-                        if (_automaticKeyIndex < _automaticKeys.Length && machine.Board.DebugText.Contains(machine.Profile.BootDevice == "floppy-a" ? "A:\\>" : "C:\\>", StringComparison.Ordinal)
+                        if (!_session.UsesExternalCpu && _automaticKeyIndex < _automaticKeys.Length && machine.Board.DebugText.Contains(machine.Profile.BootDevice == "floppy-a" ? "A:\\>" : "C:\\>", StringComparison.Ordinal)
                             && GuestKeyboard.TryInjectForBios(machine, _automaticKeys[_automaticKeyIndex])) _automaticKeyIndex++;
                         if (machine.Running && machine.Fault is null)
                         {
-                            ulong target = pacing.Target(machine.Scheduler.Now, HostNanoseconds());
-                            machine.RunSteps(200000, target);
-                            delay = pacing.DelayMilliseconds(machine.Scheduler.Now, HostNanoseconds(), machine.Cpu.Halted);
+                            if (_session.UsesExternalCpu)
+                            {
+                                _session.RunRealtime(TimeSpan.FromMilliseconds(16), () =>
+                                {
+                                    if (presentation.Due(HostNanoseconds(), Volatile.Read(ref _presentationHz), changedMachine))
+                                    {
+                                        var renderer = Volatile.Read(ref _parallelVideo) ? _videoWorker ??= new JoinedWorker("DOSE video rows") : null;
+                                        _frames.TryPublish((machine, renderer), static (surface, source) => source.machine.CaptureFrame(surface, source.renderer));
+                                    }
+                                }, _stop.Token);
+                                delay = 0;
+                            }
+                            else
+                            {
+                                ulong target = pacing.Target(machine.Scheduler.Now, HostNanoseconds());
+                                machine.RunSteps(200000, target);
+                                delay = pacing.DelayMilliseconds(machine.Scheduler.Now, HostNanoseconds(), machine.Cpu.Halted);
+                            }
                         }
                         else { audio.Clear(); pacing.Reset(machine.Scheduler.Now, HostNanoseconds()); }
                         speed.Observe(machine.Scheduler.Now, HostNanoseconds(), machine.Running && machine.Fault is null);
                         Volatile.Write(ref _realtimePercent, speed.Percent ?? double.NaN);
                         Volatile.Write(ref _guestCalendar, machine.Rtc.Calendar.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture));
                         Volatile.Write(ref _guestRepeatEnabled, machine.Running && machine.Fault is null && !machine.CpuResetHeld ? 1 : 0);
-                        Volatile.Write(ref _status, machine.GetStatus());
-                        if (presentation.Due(HostNanoseconds(), Volatile.Read(ref _presentationHz), changedMachine))
+                        Volatile.Write(ref _status, _session.GetStatus());
+                        if (!_session.UsesExternalCpu && presentation.Due(HostNanoseconds(), Volatile.Read(ref _presentationHz), changedMachine))
                         {
                             var renderer = Volatile.Read(ref _parallelVideo) ? _videoWorker ??= new JoinedWorker("DOSE video rows") : null;
                             _frames.TryPublish((machine, renderer),
@@ -197,7 +216,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
             catch (Exception ex)
             {
                 Volatile.Write(ref _guestRepeatEnabled, 0);
-                lock (_gate) Volatile.Write(ref _status, _session.Machine.GetStatus() with { State = MachineRunState.Faulted, Fault = ex.Message });
+                lock (_gate) Volatile.Write(ref _status, _session.GetStatus() with { State = MachineRunState.Faulted, Fault = ex.Message });
             }
         });
     }
@@ -206,6 +225,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
     public override void OnUserUpdate(double time)
     {
         CompleteConfiguration();
+        if (_settings.CpuEngine != _session.CpuEngine) { _settings = _settings with { CpuEngine = _session.CpuEngine }; SaveSettings(); }
         if (_frames.AcquireLatest() is { } nextFrame)
         {
             var previousFrame = _displayFrame;
@@ -249,15 +269,15 @@ public sealed partial class DosWindow : SharpPixelsWindow
         if (_showDebugOverlay)
         {
             DrawFilledRectangle(0, PixelsHeight - 38, PixelsWidth, 38, 12, 15, 29);
-            Text(15, PixelsHeight - 31, $"{PlatformLabel(status?.Configuration).ToUpperInvariant()} | {status?.State.ToString().ToUpperInvariant() ?? "STARTING"} | VGA {frame?.Width}X{frame?.Height} | {status?.Position ?? "RESET"} | {FPS} FPS", 1, Color.LightSteelBlue);
+            Text(15, PixelsHeight - 31, $"{PlatformLabel(status?.Configuration).ToUpperInvariant()} | {status?.CpuEngine.ToUpperInvariant()} | {status?.State.ToString().ToUpperInvariant() ?? "STARTING"} | VGA {frame?.Width}X{frame?.Height} | {status?.Position ?? "RESET"} | {FPS} FPS", 1, Color.LightSteelBlue);
             Text(15, PixelsHeight - 16, _mouseInput.Captured ? "MOUSE CAPTURED / CTRL+ALT RELEASE   CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN" :
                 status?.Configuration?.Mouse == "ps2-two-button" ? "CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN   CLICK GUEST FOR PS/2 MOUSE" :
-                "CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN   EXPERIMENTAL REAL-MODE DOS", 1, Color.Gray);
+                _session.UsesExternalCpu ? "CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN   WHPX / 1:1 CLOCK" : "CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN   EXPERIMENTAL REAL-MODE DOS", 1, Color.Gray);
         }
         if (status?.Fault is not null && _page.Length == 0)
         {
             DrawFilledRectangleWithAlpha(20, 18, PixelsWidth - 40, 80, 30, 10, 20, 235);
-            Text(32, 28, "CPU STOPPED: UNIMPLEMENTED OPERATION", 2, Color.Salmon);
+            Text(32, 28, "EMULATION STOPPED", 2, Color.Salmon);
             Text(32, 57, status.Fault.Length > 112 ? status.Fault[..112] : status.Fault, 1, Color.White);
         }
         if (_page.Length > 0) { RebuildItems(); DrawMenu(status); }
@@ -276,7 +296,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         }
         double speedPercent = Volatile.Read(ref _realtimePercent);
         string speedLabel = double.IsNaN(speedPercent) ? "SPEED --" : $"SPEED {speedPercent:0}%";
-        Title = $"{DOSEIdentity.DisplayName} - {PlatformLabel(status?.Configuration)} | {status?.State} | {speedLabel} | {FPS} FPS";
+        Title = $"{DOSEIdentity.DisplayName} - {PlatformLabel(status?.Configuration)} | {status?.CpuEngine.ToUpperInvariant()} | {status?.State} | {speedLabel} | {FPS} FPS";
     }
 
     /// <summary>Renders the active keyboard-driven overlay and its published state without mutating guest hardware.</summary>
@@ -353,7 +373,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
             "HOST: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture),
             "RTC:  " + Volatile.Read(ref _guestCalendar),
             "REALTIME TARGET: 100% / LIVE SPEED IN WINDOW TITLE",
-            "RESTORE / RESUME: CURRENT HOST LOCAL TIME", "WINDOWS CLOCK SYNC REQUIRES DOSE TOOLS", "BACK"],
+            "RESTORE / RESUME: CURRENT HOST LOCAL TIME", "WINDOWS CLOCK SYNC REQUIRES DOSE TOOLS", $"CPU ENGINE: {_session.CpuEngine.ToUpperInvariant()} (COLD RESTART)", "BACK"],
         "SAVED MACHINES" => ["SAVE THIS PC...", "LOAD PC... (COLD START)", "SAVE FULL SNAPSHOT...", "LOAD FULL SNAPSHOT...", "PC FILES COLD START / SNAPSHOTS RESUME", "BACK"],
         "OPTICAL DRIVE" => [status?.OpticalDisc is { } cd ? $"IDE {cd.Slot}: {ShortName(cd.Name)} / {cd.Bytes / 1048576m:0.##} MIB" : "NO PACKET TARGET INSTALLED",
             "MOUNT READ-ONLY ISO... (RESTART)", "REMOVE ISO (RESTART)", "BACK"],
@@ -414,7 +434,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
     /// <summary>Submits the requested operation through the component's normal command interface.</summary>
     private void Command(string command, object? payload = null)
     {
-        bool topology = command is "SetOpticalDisc" or "SetHardDisk" or "LoadMachineDefinition" or "LoadSnapshot" or "CommitConfigurationChange" or "PowerCycleReadOnlyDisk" or "PowerCycleOverlayDisk";
+        bool topology = command is "SetCpuEngine" or "SetOpticalDisc" or "SetHardDisk" or "LoadMachineDefinition" or "LoadSnapshot" or "CommitConfigurationChange" or "PowerCycleReadOnlyDisk" or "PowerCycleOverlayDisk";
         if (topology) Interlocked.Increment(ref _machineOperationPending);
         _ = _session.Enqueue(IpcProtocol.CreateRequest(command, payload), Volatile.Read(ref _uiInputGeneration))
             .ContinueWith(task =>
@@ -431,6 +451,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
     private void Activate(int delta = 1)
     {
         if (_configurationApplying) { _notice = "APPLY IN PROGRESS"; return; }
+        if (_configurationDraft?.HasChanges == true && _page == "TIME AND SPEED" && _selected == 6)
+        { OpenPage("UNSAVED HARDWARE CHANGES"); return; }
         if (_configurationDraft?.HasChanges == true && (_page == "RESET / POWER" || _page == "SAVED MACHINES" && _selected is 0 or 1 or 3 ||
             _page == "MEDIA" && _selected is 1 or 2 or 5 || _page.StartsWith("IDE ", StringComparison.Ordinal) && _selected is 1 or 2 or 3 ||
             _page == "OPTICAL DRIVE" && _selected is 1 or 2 || _page is "FLOPPY A" or "FLOPPY B" && _selected is 1 or 2 or 3 ||
@@ -461,7 +483,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
         else if (_page == "TIME AND SPEED")
         {
             if (_selected == 0) { _settings = _settings with { SynchronizeClock = !_settings.SynchronizeClock }; SaveSettings(); }
-            else if (_selected == 6) OpenPage("MAIN MENU");
+            else if (_selected == 6) Command("SetCpuEngine", new { engine = _session.CpuEngine == "whpx" ? "software" : "whpx" });
+            else if (_selected == 7) OpenPage("MAIN MENU");
         }
         else if (_page == "RESET / POWER")
         {
@@ -560,13 +583,13 @@ public sealed partial class DosWindow : SharpPixelsWindow
             }
             else if (_selected == 2)
             {
-                using var dialog = new SaveFileDialog { Title = "Create full DOSE snapshot (new folder)", Filter = "DOSE Snapshot (*.dossav)|*.dossav",
-                    DefaultExt = "dossav", FileName = "Snapshot-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + ".dossav", InitialDirectory = Path.GetDirectoryName(_settingsPath) };
+                using var dialog = new SaveFileDialog { Title = "Create full DOSE snapshot (new folder)", Filter = _session.UsesExternalCpu ? "WHPX Snapshot (*.whpxsav)|*.whpxsav" : "DOSE Snapshot (*.dossav)|*.dossav",
+                    DefaultExt = _session.UsesExternalCpu ? "whpxsav" : "dossav", FileName = "Snapshot-" + DateTime.Now.ToString("yyyyMMdd-HHmmss") + (_session.UsesExternalCpu ? ".whpxsav" : ".dossav"), InitialDirectory = Path.GetDirectoryName(_settingsPath) };
                 if (dialog.ShowDialog() == DialogResult.OK) { Command("CreateSnapshot", new { path = dialog.FileName }); _notice = "FULL SNAPSHOT SAVE REQUESTED"; }
             }
             else if (_selected == 3)
             {
-                using var source = new FolderBrowserDialog { Description = "Select DOSE snapshot folder (.dossav)", UseDescriptionForTitle = true, ShowNewFolderButton = false };
+                using var source = new FolderBrowserDialog { Description = _session.UsesExternalCpu ? "Select WHPX snapshot folder (.whpxsav)" : "Select DOSE snapshot folder (.dossav)", UseDescriptionForTitle = true, ShowNewFolderButton = false };
                 if (source.ShowDialog() != DialogResult.OK) return;
                 string parent = Path.GetDirectoryName(source.SelectedPath)!;
                 string destination = Path.Combine(parent, "Resume-" + Guid.NewGuid().ToString("N") + ".dosebranch");

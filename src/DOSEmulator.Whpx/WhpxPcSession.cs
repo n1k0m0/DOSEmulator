@@ -36,6 +36,8 @@ public sealed class WhpxPcSession : IDisposable
             if (setResetEntry) engine.SetEntry(0xf000, 0xfff0);
             pc.MarkExternalCpuImage();
             _whpx = engine;
+            engine.ServiceHardwareBoundary = pc.ServiceExternalResetBoundary;
+            pc.HardwareResetOccurred += ResetNativeCpu;
         }
         catch
         {
@@ -44,6 +46,13 @@ public sealed class WhpxPcSession : IDisposable
             throw;
         }
     }
+
+    /// <summary>Uses the actual native selector and IP for frontend and IPC status.</summary>
+    public string Position { get { lock (_gate) { ThrowIfDisposed(); return _whpx.Position; } } }
+    /// <summary>Stops the active host-time origin only on a real menu pause, capture or disposal.</summary>
+    public void Pause() { lock (_gate) { ThrowIfDisposed(); _whpx.PauseRealtime(); _pc.Audio.AdvanceTo(_pc.Scheduler.Now); } }
+    /// <summary>Mirrors completed physical reset edges into the real CPU without executing the stale software image.</summary>
+    private void ResetNativeCpu() => _whpx.ResetProcessor(_pc.LastResetSource == "cf9-init");
 
     /// <summary>Returns the graph borrowed by this native session; its software CPU registers are not the native register file.</summary>
     public PcMachine Pc => _pc;
@@ -90,9 +99,9 @@ public sealed class WhpxPcSession : IDisposable
     }
 
     /// <summary>Adopts a media-branched PC already validated by SnapshotStore.</summary>
-    internal static WhpxPcSession AttachLoaded(PcMachine restoredPc, WhpxCpuState cpu)
+    internal static WhpxPcSession AttachLoaded(PcMachine restoredPc, WhpxCpuState cpu, bool ownsPc = true)
     {
-        var session = new WhpxPcSession(restoredPc, false, true,
+        var session = new WhpxPcSession(restoredPc, false, ownsPc,
             cpu.VirtualTimeScale);
         try { session._whpx.RestoreCpuState(cpu); return session; }
         catch { session.Dispose(); throw; }
@@ -104,7 +113,7 @@ public sealed class WhpxPcSession : IDisposable
         lock (_gate)
         {
             ThrowIfDisposed();
-            _whpx.RequireCheckpointBoundary();
+            _whpx.PauseRealtime(); _whpx.RequireCheckpointBoundary();
             var cpu = _whpx.CaptureCpuState();
             var hardware = SnapshotStore.CaptureExternalCpu(_pc, hardwarePath);
             return (hardware, cpu);
@@ -136,7 +145,7 @@ public sealed class WhpxPcSession : IDisposable
     /// <summary>Runs one continuous real-time window, counting audio and observation work as elapsed guest wall time.
     /// Bus-writes-only observers must use MemoryBus writes/notifications for RAM stores; direct untracked byte-array writes require the default full reconciliation.</summary>
     public WhpxRealtimeRunResult RunRealtime(TimeSpan duration, Action<WhpxRealtimeObservation>? observe = null,
-        int observationHz = 60, CancellationToken cancellation = default, bool busWritesOnly = false)
+        int observationHz = 60, CancellationToken cancellation = default, bool busWritesOnly = false, bool retainOwnerWindow = false)
     {
         if (duration <= TimeSpan.Zero || duration > TimeSpan.FromHours(1)) throw new ArgumentOutOfRangeException(nameof(duration));
         if (observationHz is < 1 or > 240) throw new ArgumentOutOfRangeException(nameof(observationHz));
@@ -149,6 +158,8 @@ public sealed class WhpxPcSession : IDisposable
             ulong next = startedAt;
             long hostStart = Stopwatch.GetTimestamp();
             int io = 0, mmio = 0, irq = 0, exits = 0, observations = 0;
+            if (retainOwnerWindow && !busWritesOnly) throw new ArgumentException("Retained owners must use bus writes.");
+            bool completed = false;
             _whpx.BeginRealtimeWindow(busWritesOnly);
             try
             {
@@ -165,11 +176,22 @@ public sealed class WhpxPcSession : IDisposable
                         observations++;
                     }
                 }
+                completed = true;
             }
-            finally { _whpx.EndRealtimeWindow(); _pc.Audio.AdvanceTo(_pc.Scheduler.Now); }
+            finally { _whpx.EndRealtimeWindow(retainOwnerWindow && completed); _pc.Audio.AdvanceTo(_pc.Scheduler.Now); }
             ulong hostNs = (ulong)((UInt128)(ulong)(Stopwatch.GetTimestamp() - hostStart) * 1_000_000_000 / (ulong)Stopwatch.Frequency);
             return new(startedAt, _pc.Scheduler.Now, hostNs, io, mmio, irq, exits, observations,
                 hostNs == 0 ? 0 : 100d * (_pc.Scheduler.Now - startedAt) / hostNs);
+        }
+    }
+
+    /// <summary>Sets only the RTC at a completed native owner slice without pausing active time or publishing the RAM mirror.</summary>
+    public void SetCalendar(DateTime calendar)
+    {
+        lock (_gate)
+        {
+            ThrowIfDisposed(); _whpx.RequireDeviceBoundary();
+            _pc.Rtc.SetCalendar(calendar);
         }
     }
 
@@ -179,7 +201,7 @@ public sealed class WhpxPcSession : IDisposable
         lock (_gate)
         {
             ThrowIfDisposed();
-            _whpx.RequireCheckpointBoundary();
+            _whpx.PauseRealtime(); _whpx.RequireCheckpointBoundary();
             var cpu = _whpx.CaptureCpuState();
             var hardware = _pc.CaptureHardwareState();
             return new(hardware, (byte[])_pc.Memory.Ram.Clone(), cpu);
@@ -195,6 +217,7 @@ public sealed class WhpxPcSession : IDisposable
         lock (_gate)
         {
             if (_disposed) return;
+            _pc.HardwareResetOccurred -= ResetNativeCpu;
             _whpx.Dispose();
             _pc.ReleaseExternalCpuOwner();
             if (_ownsPc) _pc.Dispose();

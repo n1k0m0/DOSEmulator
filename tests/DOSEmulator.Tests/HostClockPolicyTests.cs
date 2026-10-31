@@ -18,6 +18,46 @@ internal static class HostClockPolicyTests
     /// <summary>Registers owner-boundary host-clock and honest realtime telemetry checks.</summary>
     internal static void AddTo(Action<string, Action> test)
     {
+        test("session host clock routes software RTC input without changing CPU RAM or device time", () =>
+        {
+            using var machine = new PcMachine(new(), null) { Running = true };
+            using var session = new MachineSession(machine);
+            var policy = new HostClockSynchronizer(); var before = machine.CaptureHardwareState();
+            byte[] ram = (byte[])machine.Memory.Ram.Clone(); DateTime local = new(2031, 3, 4, 5, 6, 7);
+            Check(policy.Update(session, true, local, 0) && machine.Rtc.Calendar == local, "Session did not route the cold calendar input.");
+            Check(policy.Update(session, true, local.AddHours(1), 1_000_000_000) && machine.Rtc.Calendar == local.AddHours(1), "Session missed periodic correction.");
+            var after = machine.CaptureHardwareState(); after.Components["rtc"] = before.Components["rtc"];
+            Check(JsonSerializer.Serialize(before, StateValues.Json) == JsonSerializer.Serialize(after, StateValues.Json) &&
+                ram.AsSpan().SequenceEqual(machine.Memory.Ram) && machine.Cpu.Instructions == 0 && machine.Scheduler.Now == 0,
+                "Session clock input changed non-RTC state.");
+        });
+        test("session host clock preserves disabled pause and coalesced resume policy", () =>
+        {
+            using var machine = new PcMachine(new(), null) { Running = true };
+            using var session = new MachineSession(machine); var policy = new HostClockSynchronizer();
+            DateTime initial = machine.Rtc.Calendar, local = new(2032, 4, 5, 6, 7, 8);
+            Check(!policy.Update(session, false, local, 0) && machine.Rtc.Calendar == initial, "Disabled session synchronization changed the RTC.");
+            Check(policy.Update(session, true, local, 1), "Enabled session seed missing.");
+            Queue(session, "Pause"); session.PumpCommands();
+            Check(!policy.Update(session, true, local.AddDays(1), 1_000_000_001), "Paused session applied a periodic correction.");
+            Queue(session, "Resume"); session.PumpCommands();
+            Check(policy.Update(session, true, local.AddDays(2), 1_000_000_002) && machine.Rtc.Calendar == local.AddDays(2), "Session resume lost current calendar input.");
+        });
+        test("session host clock rejects live software callbacks and disposed owners before mutation", () =>
+        {
+            using var machine = new PcMachine(new(), null) { Running = true };
+            using var session = new MachineSession(machine); var policy = new HostClockSynchronizer();
+            bool rejected = false; DateTime local = new(2033, 5, 6, 7, 8, 9);
+            machine.Cpu.InstructionStarting += (_, _) =>
+            {
+                try { policy.Update(session, true, local, 0); } catch (InvalidOperationException) { rejected = true; }
+            };
+            machine.RunSteps(1);
+            Check(rejected && policy.Synchronizations == 0 && policy.Update(session, true, local, 1), "Live callback consumed session clock history.");
+            session.Dispose(); rejected = false;
+            try { session.SetCalendar(local.AddDays(1)); } catch (ObjectDisposedException) { rejected = true; }
+            Check(rejected, "Disposed owner admitted calendar input.");
+        });
         test("host calendar seeds a cold PC without executing or advancing devices", () =>
         {
             using var machine = new PcMachine(new(), null);

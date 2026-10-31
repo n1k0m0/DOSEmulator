@@ -3,12 +3,13 @@
 #requires -Version 7.4
 [CmdletBinding()]
 param([string]$Disk, [string]$Overlay, [string]$Profile, [switch]$NoBuild, [string]$SmokeTestDirectory,
-    [string]$Machine, [string]$Disk1, [string]$Overlay1, [string]$Disk2, [string]$Overlay2, [string]$Disk3, [string]$Overlay3, [switch]$Inspect)
+    [string]$Machine, [string]$Disk1, [string]$Overlay1, [string]$Disk2, [string]$Overlay2, [string]$Disk3, [string]$Overlay3, [switch]$Inspect, [ValidateSet('whpx','software')][string]$Engine = 'whpx')
+$engineOption = if ($PSBoundParameters.ContainsKey('Engine')) { '--engine' } else { '--default-engine' }
 . (Join-Path $PSScriptRoot 'runtime.ps1')
 $workspaceRoot = Split-Path -Parent $PSScriptRoot
 $release = Get-DosRuntimeRelease -BuildIfMissing:(-not $NoBuild)
 $emulatorExe = Join-Path $release 'net10.0-windows/DOSEmulator.exe'
-$emulatorArguments = @('--remember-configuration', (Join-Path $workspaceRoot 'artifacts/launcher-pcs/general'))
+$emulatorArguments = @($engineOption, $Engine, '--remember-configuration', (Join-Path $workspaceRoot 'artifacts/launcher-pcs/general'))
 if ($Disk) { $emulatorArguments += @('--disk', (Resolve-Path -LiteralPath $Disk).Path) }
 if ($Overlay) { $emulatorArguments += @('--overlay', (Resolve-DosPath -Path $Overlay)) }
 if ($Profile) { $emulatorArguments += @('--profile', (Resolve-Path -LiteralPath $Profile).Path) }
@@ -23,5 +24,5 @@ if ($SmokeTestDirectory) {
     $smokePath = Resolve-DosPath -Path $SmokeTestDirectory
     $emulatorArguments += @('--data-dir', (Join-Path $smokePath 'settings'), '--smoke-test', $smokePath)
 }
-if ($Inspect) { [pscustomobject]@{runtime=$release;executable=$emulatorExe;arguments=$emulatorArguments;nativeWindowStarted=$false;mediaOpened=$false} | ConvertTo-Json; return }
+if ($Inspect) { [pscustomobject]@{runtime=$release;engine=$Engine;executable=$emulatorExe;arguments=$emulatorArguments;nativeWindowStarted=$false;mediaOpened=$false} | ConvertTo-Json; return }
 & $emulatorExe @emulatorArguments

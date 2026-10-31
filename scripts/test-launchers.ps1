@@ -48,7 +48,7 @@ foreach ($file in $launchers) {
         [IO.File]::WriteAllText((Join-Path $output ($file.Name + '.stderr.txt')), $errorText)
         if ($process.ExitCode -ne 0) { throw ('Launcher inspection failed: ' + $file.Name + ' / ' + $errorText) }
         $row = $text | ConvertFrom-Json
-        if ($row.runtime -cne $release -or $row.nativeWindowStarted -ne $false -or $row.mediaOpened -ne $false) { throw ('Launcher did not use the common runtime safely: ' + $file.Name) }
+        if ($row.runtime -cne $release -or $row.nativeWindowStarted -ne $false -or $row.mediaOpened -ne $false -or $row.engine -cne 'whpx') { throw ('Launcher did not use the common runtime safely: ' + $file.Name) }
         $results.Add([pscustomobject]@{launcher=$file.Name;runtime=$row.runtime;passed=$true;mediaOpened=$false;nativeWindowStarted=$false})
     } finally { $process.Dispose() }
 }
