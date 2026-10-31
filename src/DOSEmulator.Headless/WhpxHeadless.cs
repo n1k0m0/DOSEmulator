@@ -11,7 +11,7 @@ using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
 using DOSEmulator.Whpx;
 
-/// <summary>Explicit offline native-CPU runner; existing launchers and deterministic software snapshots retain their own engine.</summary>
+/// <summary>Explicit offline native-CPU runner, separate from the available deterministic software runner.</summary>
 internal static class WhpxHeadless
 {
     /// <summary>Runs one bounded host-monotonic window and reports native registers without presenting a clock ratio as verified workload throughput.</summary>
@@ -24,7 +24,8 @@ internal static class WhpxHeadless
             double seconds = double.Parse(get("--whpx-seconds") ?? "10", CultureInfo.InvariantCulture);
             if (!double.IsFinite(seconds) || seconds < 0.01 || seconds > 3600) throw new ArgumentOutOfRangeException("--whpx-seconds", "Duration must be 0.01..3600 seconds.");
             string? source = get("--load-whpx-snapshot");
-            if (source is not null && new[] { "--machine", "--profile", "--disk", "--overlay", "--cdrom", "--floppy-a", "--floppy-b" }.Any(o => get(o) is not null))
+            if (source is not null && new[] { "--machine", "--profile", "--disk", "--overlay", "--disk1", "--overlay1", "--disk2", "--overlay2", "--disk3", "--overlay3",
+                "--cdrom", "--floppy-a", "--floppy-a-overlay", "--floppy-b", "--floppy-b-overlay", "--boot" }.Any(o => get(o) is not null))
                 throw new ArgumentException("A native snapshot supplies its complete hardware and media.");
             using var loaded = source is null ? null : WhpxSnapshotStore.Load(source,
                 get("--snapshot-branch") ?? throw new ArgumentException("--load-whpx-snapshot requires a new --snapshot-branch directory."));

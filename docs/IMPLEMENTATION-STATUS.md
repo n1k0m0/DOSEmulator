@@ -1,5 +1,30 @@
 # DOSE – Implementierungsstand
 
+**C54: Gesamtaudit vom 31. Oktober / 1. November 2026:**
+Der [Auditbericht](AUDIT-2026-10-31.md) dokumentiert fünf behobene P2-Befunde:
+native DLL-Identität, dauerhafte Snapshot-Payloads, eindeutiges JSON,
+Aufräumen nach fehlgeschlagener nativer Aktivierung und widersprüchliche
+CLI-Medienoptionen. Frisch 15471/15471 gemeinsame Regressionen; C54 besteht
+57/57 native Gruppen, neun gezielte vorhandene Uhrfälle und die erweiterte
+kompilierte GUI-Owner-Prüfung. Builds ohne Warnungen/Fehler; 956 Code-/Projektdateien
+ohne Qualitätsprobleme, Zustandsgraph 48/960/43. Fünf Software-VM-Module und
+gemeinsame Test-DLL bleiben bytegleich; native Format-4-Sicherungen bleiben
+streng an ihre tatsächliche WHPX-DLL gebunden. Alte Laufzeiten bleiben erhalten.
+
+Zwei neue eigene Windows-Kaltstarts, drei volle aktive native Importe und
+reguläre Windows-Shutdowns bestehen. Die begrenzten Lastproben liegen bei
+99,91–99,96 Prozent Zeitgleichlauf: echte AVI-Quellbilder/DSP-Samples und
+Dooms 699 von rund 700 erwarteten Spiel-Tics mit aktivem SB16 sind getrennt
+belegt. Alle AVI-Bytes sind aus vier versiegelten eigenen FAT-Journalen geprüft.
+Kein allgemeines 100-Prozent-, vollständiges Hardware- oder natives
+Hostbedien-/Audio-/GL-Prädikat. RTC-Alarm/IRQ8, weitere Treiber-/Codec-/Langlast-
+und Netz-Ende-zu-Ende-Abnahmen sowie alle offenen Konzeptkriterien bleiben offen.
+Alle 13 Starter wählen `c54-20261031-audit` mit 124 Produkten und denselben
+acht Windows-Bindungen. Originale und Benutzerjournale bleiben ungeöffnet.
+Der Audit wurde zunächst lokal abgenommen; Git-Veröffentlichung siehe
+Versionshistorie. Die Automation bleibt pausiert.
+Privater Nachweis: `artifacts/tests/audit-release-path.txt`.
+
 **C53r1: DOS-Starter und aktive Plattenübergabe, 31. Oktober 2026:**
 Die Prüfung von `run-doom2.cmd` findet einen reproduzierbaren Fehler im
 486→Pentium/WHPX-Startpfad: Die alte Maschine hält ihre Platten-/Diskettenleases

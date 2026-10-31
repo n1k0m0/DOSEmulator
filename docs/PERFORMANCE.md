@@ -1,5 +1,26 @@
 # Performance: gemessene Interpreter- und Geräteoptimierungen
 
+## C54 audit: actual guest progress, 31 October / 1 November 2026
+
+The [comprehensive audit](AUDIT-2026-10-31.md) repeats finite native game/video
+work through the common owner with periodic host-calendar input and joined
+scanout. Win95 active-video restore: 99.94% clock, 200 observed source frames
+and 110251 mono DSP samples in approximately ten seconds. Win98 cold video:
+99.95%, 201 source frames and 110250 samples; its strict restore reaches 99.91%
+over 10.001434 seconds with 200 observed source frames and 110265 samples.
+Doom II with explicit `sound.cfg`: 99.96% clock, 699 of approximately 700
+expected original DEMO1 tics and 441000 stereo DSP components over twenty seconds.
+The movie is the same 320×240 RLE8/PCM source; all bytes are checked in four own
+sealed journals. Both original players finish naturally and Windows shuts down.
+
+Three active native imports preserve the entire initial RAM, CPU and hardware.
+The accepted Doom sample follows such an import. A silent control and one
+discarded private-wrapper duration-rounding attempt remain separate. No new
+equal-work speedup factor, universal 100% guarantee, historical instruction-rate
+calibration or physical host-output acceptance follows. C54 changes snapshot/
+CLI integrity, with unchanged CPU/device execution paths. No extra disk/audio
+worker or altered guest frequency/deadline is introduced.
+
 ## C53: actual Windows 98 CD copy and journal writes, 31 October 2026
 
 The reported CD-copy freeze reproduces as a static Explorer dialog while ATA

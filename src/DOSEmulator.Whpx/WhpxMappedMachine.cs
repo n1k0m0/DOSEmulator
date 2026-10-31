@@ -8,9 +8,9 @@ using DOSEmulator.Hardware;
 namespace DOSEmulator.Whpx;
 
 /// <summary>
-/// Experimental physical-bus WHP owner. RAM, ROM, MMIO, port I/O and a cascaded PIC
-/// use DOSE devices; host-clock slices drive the supplied scheduler. Production PC
-/// launchers and their deterministic snapshots retain their software CPU.
+/// Physical-bus WHP owner. RAM, ROM, MMIO, port I/O and a cascaded PIC use DOSE
+/// devices; host-clock slices drive the supplied scheduler. GUI/headless native
+/// owners use separately typed snapshots; the software CPU remains available.
 /// </summary>
 public sealed class WhpxMappedMachine : IDisposable
 {

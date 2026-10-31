@@ -1,5 +1,23 @@
 # Vollständige lokale DOSE-Snapshots
 
+## C54: native checkpoint audit
+
+The [audit](AUDIT-2026-10-31.md) fixes executed-module identity after DLL
+replacement, adds explicit durable native payload flushes, rejects duplicate/
+case-aliased JSON keys and removes a newly prepared branch after failed WHP
+activation. The existing owner recovers with its complete RAM/CPU/hardware
+unchanged. The same final grader fails all three new native groups on C53r1
+and passes on C54. Native CLI hardware/media overrides are rejected before
+loading. An actual old native CLI checkpoint is rejected with exit 1 before
+branch creation; a current checkpoint loads successfully.
+
+Three actual active-game/video imports (Doom II, Win95, Win98) preserve the
+entire initial RAM, CPU and hardware without excluded fields, then continue
+useful work and return/shut down normally. The five software VM modules stay
+byte-identical, preserving format-1 identity. Native format 4 keeps its strict
+WHPX-DLL identity; old native checkpoints require their retained matching
+runtime. There is no migration or deterministic native future-replay claim.
+
 ## C53: native continuation during an actual CD copy
 
 A real Windows 98 Explorer copy restores through the strict common native

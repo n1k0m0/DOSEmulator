@@ -7,6 +7,9 @@ using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
 using DOSEmulator.Whpx;
 
+if (args.Length == 2 && args[0] == "--audit-identity-child") { NativeSnapshotAuditChecks.IdentityChild(args[1]); return; }
+if (args.Length is 1 or 2 && args[0] == "--audit-snapshot-checks") { NativeSnapshotAuditChecks.Run(args.Length == 2 ? args[1] : "all"); return; }
+
 if (!WhpxRealModeMachine.IsAvailable())
 {
     Console.WriteLine("SKIP: Windows Hypervisor Platform is unavailable.");
@@ -511,6 +514,7 @@ using (var resumedSleeper = new WhpxMappedMachine(sleepMemory, resumedSleepPorts
 }
 
 NativeTopologyChecks.Run();
+NativeSnapshotAuditChecks.Run();
 NativeRealtimeChecks.Run();
 
 if (Environment.GetEnvironmentVariable("DOSE_WHPX_BOOT_PROBE") == "1")

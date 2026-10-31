@@ -24,14 +24,15 @@ public sealed class WhpxExecutionFactory : IMachineExecutionFactory
     {
         if (!WhpxRealModeMachine.IsAvailable()) throw new PlatformNotSupportedException("Windows Hypervisor Platform is unavailable.");
         var prepared = WhpxSnapshotStore.PrepareLoad(source, destination, requireP54c: true);
-        return new Execution(prepared.Pc, prepared.Cpu);
+        return new Execution(prepared.Pc, prepared.Cpu, Path.GetFullPath(destination));
     }
 
     /// <summary>Owns native resources and exposes only operations safe at a stopped queued-owner boundary.</summary>
-    private sealed class Execution(PcMachine machine, WhpxCpuState? restored = null) : IMachineExecution
+    private sealed class Execution(PcMachine machine, WhpxCpuState? restored = null, string? preparedBranch = null) : IMachineExecution
     {
         private WhpxPcSession? _session;
         private WhpxCpuState? _restored = restored;
+        private string? _preparedBranch = preparedBranch;
         private string? _fault;
         private long _resetCount = machine.HardwareResetCount;
         /// <summary>The powered device graph stays with the common session through native partition replacement.</summary>
@@ -40,7 +41,12 @@ public sealed class WhpxExecutionFactory : IMachineExecutionFactory
         public void Activate()
         {
             if (_session is not null) return;
-            _session = _restored is null ? WhpxPcSession.Start(machine) : WhpxPcSession.AttachLoaded(machine, _restored, ownsPc: false);
+            try
+            {
+                _session = _restored is null ? WhpxPcSession.Start(machine) : WhpxPcSession.AttachLoaded(machine, _restored, ownsPc: false);
+                _preparedBranch = null;
+            }
+            catch { AbandonPreparedBranch(); throw; }
         }
         /// <summary>Retains the stopped CPU and graph so failed replacement can restore the original session.</summary>
         public void Suspend()
@@ -70,6 +76,15 @@ public sealed class WhpxExecutionFactory : IMachineExecutionFactory
         /// <summary>Saves the authoritative native CPU with its complete hardware and media.</summary>
         public object CaptureSnapshot(string path) => WhpxSnapshotStore.Capture(_session!, path);
         /// <summary>Releases only CPU resources; the common session owns PC and network disposal.</summary>
-        public void Dispose() { _session?.Dispose(); _session = null; }
+        public void Dispose() { _session?.Dispose(); _session = null; AbandonPreparedBranch(); }
+
+        /// <summary>Closes only a never-activated restored PC before discarding its newly created branch, leaving the previous owner to resume.</summary>
+        private void AbandonPreparedBranch()
+        {
+            if (_preparedBranch is not { } branch) return;
+            _preparedBranch = null;
+            try { machine.Dispose(); }
+            finally { WhpxSnapshotStore.DiscardPreparedBranch(branch); }
+        }
     }
 }

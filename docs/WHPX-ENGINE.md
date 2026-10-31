@@ -1,4 +1,22 @@
-# WHPX GUI and launchers — C53r1
+# WHPX GUI and launchers — C54
+
+## C54: comprehensive audit
+
+The [DOS/Windows/game/hardware audit](AUDIT-2026-10-31.md) fixes five native
+checkpoint/CLI issues and qualifies them with 57 native groups, the compiled
+GUI owner, actual Windows cold starts and three complete active imports.
+The fresh 15471-case common suite passes on unchanged software VM modules.
+Finite sound/video/game samples reach 99.91–99.96% clock following with actual
+source-frame, DSP-sample and original Doom DEMO1 progress checks. This is not
+universal 100% speed or complete hardware/native frontend acceptance.
+
+C54 is selected by all 13 launchers, with the same eight Windows safety-copy
+bindings. Existing user journals are untouched. Native format 4 still requires
+its exact WHPX DLL: retain the prior runtime for its old snapshots. Software
+format 1 keeps its unchanged five-module identity. This audit adds no disk/
+audio worker or new execution-frequency policy. The audit was first qualified
+locally; subsequent source publication is recorded in Git history. The
+automation stays paused. Evidence: `artifacts/tests/audit-release-path.txt`.
 
 ## C53r1: legacy DOS startup media ownership
 
@@ -71,7 +89,7 @@ C52 GUI integration remains local. The GUI and all 13 root launchers now support
 WHPX, with an explicit software fallback. Original media and previous runtimes
 remain available. Native input, OpenGL and physical host-audio acceptance remain
 separate from the managed owner tests and headless guest stills.
-The selected runtime is `c53r1-20261031-dos-startup`, with 124 verified products.
+The selected runtime is `c54-20261031-audit`, with 124 verified products.
 
 ## GUI and launcher selection
 

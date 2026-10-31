@@ -6,7 +6,8 @@ disks and UI preferences. A new runtime is copied into a new immutable version
 directory and verified before that pointer changes. An already running emulator
 continues to use its original files; close and reopen it to use the new version.
 
-The C53r1 GUI runtime includes WHPX, the C50 optimizations, the C52r1 host-clock
+The C54 GUI runtime adds the [native checkpoint/CLI audit fixes](AUDIT-2026-10-31.md).
+It includes WHPX, the C50 optimizations, the C52r1 host-clock
 fix, the [durable journal write correction](hardware/DISK-JOURNAL.md) and the
 [legacy DOS startup lease fix](WHPX-ENGINE.md#c53r1-legacy-dos-startup-media-ownership).
 Earlier immutable runtimes remain intact for rollback and their saved states. Runtime selection does not
