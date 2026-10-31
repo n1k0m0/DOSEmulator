@@ -14,7 +14,9 @@ WHPX-Sitzung reserviert ihren PC, sodass `RunSteps` nicht gleichzeitig laufen ka
   zurück. Speicherzugriffe der DOSE-Geräte markieren betroffene Seiten für die
   Rückrichtung. Vor jedem neuen Laufabschnitt werden auch direkte Besitzeränderungen
   am RAM abgeglichen. Zusammenhängende GPA-/Hostbereiche werden in einem WHP-Aufruf
-  gemappt; A20- oder DRAM-Änderungen ersetzen nur die betroffenen Bereiche.
+  gemappt; A20- oder DRAM-Änderungen ersetzen nur die betroffenen Bereiche. Die
+  Abfragebereiche der Dirty-Bitmap werden beim Mappingwechsel aufgebaut und für
+  die einzelnen WHP-Exits wiederverwendet.
 - BIOS-ROM und PAM-Fenster sind lesbar und ausführbar. PAM-Schreibzugriffe gehen
   über den bestehenden `MemoryBus`; geänderte PAM-Konfiguration und Shadow-RAM-
   Seiten aktualisieren die WHP-Sicht. VGA und dynamische S3-MMIO-Fenster bleiben
@@ -74,6 +76,17 @@ Menü nach echten FDC-Sektorlesungen und bestand die Snapshot-Fortsetzung.
 Das Menü gehört zur Startdiskette; ein installierter Windows-95/98-Kernel oder
 Desktop wurde über WHPX damit noch nicht geprüft.
 
+Mit `DOSE_WHPX_INSTALLED_BRANCH=<absoluter Pfad zur branch.dospc.json>` kann
+eine installierte PC-Arbeitskopie isoliert diagnostiziert werden. Die Probe
+kopiert deren COW-Journal in einen eigenen temporären Testordner und entfernt
+diesen danach; die Quellarbeitskopie wird nur gelesen. Die Kopie benötigt
+vorübergehend Platz in Höhe des Journals. `DOSE_WHPX_INSTALLED_STEPS` begrenzt
+die Anzahl der 100-ms-Laufscheiben. Mit der vorhandenen Windows-98-SE-Installation
+erreichte der Gast in drei Scheiben 300 ms Gerätezeit und blieb bei POST `20h`
+im BIOS-IDE-Pfad (`RIP=641h`, mehr als 60.000 Port-Exits). Das dauerte auf dem
+Entwicklungshost deutlich länger als 300 ms; ein Kernelstart ist damit nicht
+nachgewiesen.
+
 Der komplette Release-Build und die 314 bestehenden Snapshot-Regressionen des
 Softwarepfads liefen nach der Integration ohne Fehler.
 
@@ -88,6 +101,8 @@ RDTSC/MSR melden deshalb einen eigenen nominellen Zähler aus der virtuellen
 Gerätezeit. Die Gerätezeit selbst verwendet weiterhin die tatsächliche
 WHP-Ausführungsdauer und ist nicht zyklusidentisch zum Softwarekern. Auch ein
 Vergleich der Video-/MMIO-Exit-Rate mit einem laufenden Windows-Gast fehlt.
+Der gemessene BIOS-IDE-Pollpfad der installierten Kopie ist ebenfalls noch weit
+von Echtzeit entfernt.
 Ein zusätzlich untersuchter Real-Mode-Zugriff auf einen ungemappten Bereich
 oberhalb des installierten RAM lieferte von WHP keine gültige lineare Adresse;
 der Instruktions-Emulator lehnte ihn ab. Solche Exits bleiben explizite Fehler,

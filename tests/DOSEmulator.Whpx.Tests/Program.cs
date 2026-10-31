@@ -495,6 +495,59 @@ if (!string.IsNullOrWhiteSpace(realBootFloppy))
     finally { if (File.Exists(overlay)) File.Delete(overlay); }
 }
 
+string? installedBranch = Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_BRANCH");
+if (!string.IsNullOrWhiteSpace(installedBranch))
+{
+    var definition = MachineDefinitionStore.Load(installedBranch);
+    var installedDisk = definition.HardDisks.Single(disk => disk.Slot == 0 && disk.OverlayPath is not null);
+    string ownedRoot = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory,
+        "artifacts", "tests", "whpx-installed-" + Guid.NewGuid().ToString("N")));
+    Directory.CreateDirectory(ownedRoot);
+    try
+    {
+        string privateOverlay = Path.Combine(ownedRoot, "ide0.cow");
+        var before = new FileInfo(installedDisk.OverlayPath!);
+        long sourceLength = before.Length;
+        DateTime sourceWrite = before.LastWriteTimeUtc;
+        File.Copy(installedDisk.OverlayPath!, privateOverlay);
+        before.Refresh();
+        if (before.Length != sourceLength || before.LastWriteTimeUtc != sourceWrite)
+            throw new IOException("Installed source overlay changed during the isolated copy.");
+        definition = definition with { HardDisks = definition.HardDisks.Select(disk =>
+            disk.Slot == 0 ? disk with { OverlayPath = privateOverlay } : disk).ToArray() };
+        using var pc = MachineFactory.FromDefinition(definition);
+        using var whpx = WhpxPcSession.Start(pc);
+        int steps = int.TryParse(Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_STEPS"), out int requested)
+            ? Math.Clamp(requested, 1, 200) : 3;
+        for (int step = 1; step <= steps; step++)
+        {
+            try
+            {
+                var run = whpx.RunUntilVirtualTime(checked(pc.Scheduler.Now + 100_000_000), TimeSpan.FromSeconds(30), 100_000);
+                Console.WriteLine($"INSTALLED-PROBE {step}: time={pc.Scheduler.Now}, POST={pc.Board.PostCode:X2}, RIP={run.Rip:X}, exits={run.TotalExits}, io={run.IoExits}, mmio={run.MmioExits}, irq={run.PicInterrupts}.");
+            }
+            catch (Exception error)
+            {
+                Console.WriteLine($"INSTALLED-PROBE {step}: {error.GetType().Name}: {error.Message}; time={pc.Scheduler.Now}, POST={pc.Board.PostCode:X2}, RIP={whpx.GetRegister(0x10):X}.");
+                break;
+            }
+        }
+        Console.WriteLine("INSTALLED-DIAGNOSTIC: " + pc.Board.DebugText.Replace('\r', ' ').Replace('\n', ' '));
+        for (uint row = 0; row < 25; row++)
+        {
+            var line = new string(Enumerable.Range(0, 80).Select(column =>
+                (char)pc.Memory.ReadByte(0xb8000u + row * 160 + (uint)column * 2)).ToArray()).Trim();
+            if (line.Length > 0) Console.WriteLine($"INSTALLED-SCREEN {row:D2}: {line}");
+        }
+    }
+    finally
+    {
+        if (!ownedRoot.StartsWith(Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "artifacts", "tests")) + Path.DirectorySeparatorChar,
+                StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Refusing to delete a non-test WHP installed probe path.");
+        if (Directory.Exists(ownedRoot)) Directory.Delete(ownedRoot, true);
+    }
+}
+
 sealed class ProofPort : IIoPortDevice
 {
     public int Writes { get; private set; }

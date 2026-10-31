@@ -15,6 +15,7 @@ internal sealed unsafe class WhpxPhysicalMemory : IDisposable
     private readonly byte* _ram;
     private readonly List<(uint Start, uint Length, IMemoryDevice Device, nint Copy)> _firmware = [];
     private readonly Dictionary<uint, (nint Source, uint Flags)> _mapped = [];
+    private readonly List<(uint Start, nint[] Sources, ulong[] Bits)> _dirtyRuns = [];
     private readonly HashSet<int> _hostTouchedPages = [];
     private readonly Dictionary<uint, byte[]> _hostFirmwareDecode = [];
     private bool _firmwareInitialized;
@@ -48,23 +49,19 @@ internal sealed unsafe class WhpxPhysicalMemory : IDisposable
     /// <summary>Guest RAM is copied before a device callback; device DMA and PAM changes are copied back before resuming.</summary>
     internal void PullGuestRam()
     {
-        var pages = _mapped.Where(item => (item.Value.Flags & 8) != 0).Select(item => item.Key).Order().ToArray();
-        for (int first = 0; first < pages.Length;)
+        foreach (var run in _dirtyRuns)
         {
-            int after = first + 1;
-            while (after < pages.Length && pages[after] == pages[after - 1] + Page) after++;
-            int count = after - first;
-            var bits = new ulong[(count + 63) / 64];
-            WhpxNative.Check(WhpxNative.WHvQueryGpaRangeDirtyBitmap(_partition, pages[first], (ulong)count * Page,
-                bits, (uint)(bits.Length * sizeof(ulong))), "query mapped dirty RAM");
-            for (int index = 0; index < count; index++)
+            Array.Clear(run.Bits);
+            WhpxNative.Check(WhpxNative.WHvQueryGpaRangeDirtyBitmap(_partition, run.Start,
+                (ulong)run.Sources.Length * Page, run.Bits, (uint)(run.Bits.Length * sizeof(ulong))),
+                "query mapped dirty RAM");
+            for (int index = 0; index < run.Sources.Length; index++)
             {
-                if ((bits[index >> 6] & (1UL << (index & 63))) == 0) continue;
-                byte* source = (byte*)_mapped[pages[first + index]].Source;
+                if ((run.Bits[index >> 6] & (1UL << (index & 63))) == 0) continue;
+                byte* source = (byte*)run.Sources[index];
                 int offset = checked((int)(source - _ram));
                 new ReadOnlySpan<byte>(source, Page).CopyTo(_bus.Ram.AsSpan(offset, Page));
             }
-            first = after;
         }
     }
 
@@ -155,6 +152,17 @@ internal sealed unsafe class WhpxPhysicalMemory : IDisposable
                 added[first].Key, bytes, added[first].Value.Flags),
                 $"map physical range 0x{added[first].Key:X}+0x{bytes:X}");
             for (int index = first; index < after; index++) _mapped[added[index].Key] = added[index].Value;
+            first = after;
+        }
+        _dirtyRuns.Clear();
+        var dirtyPages = _mapped.Where(item => (item.Value.Flags & 8) != 0).OrderBy(item => item.Key).ToArray();
+        for (int first = 0; first < dirtyPages.Length;)
+        {
+            int after = first + 1;
+            while (after < dirtyPages.Length && dirtyPages[after].Key == dirtyPages[after - 1].Key + Page) after++;
+            var sources = new nint[after - first];
+            for (int index = first; index < after; index++) sources[index - first] = dirtyPages[index].Value.Source;
+            _dirtyRuns.Add((dirtyPages[first].Key, sources, new ulong[(sources.Length + 63) / 64]));
             first = after;
         }
         _topology = topology;
