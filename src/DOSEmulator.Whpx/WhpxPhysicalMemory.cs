@@ -129,16 +129,33 @@ internal sealed unsafe class WhpxPhysicalMemory : IDisposable
         foreach (var (start, length, _, _) in _firmware)
             for (ulong page = start; page < (ulong)start + length; page += Page) Add((uint)page);
 
-        foreach (var old in _mapped.Keys.Except(wanted.Keys).ToArray())
+        // A 32-MiB PC exposes thousands of pages. WHP accepts contiguous GPA and
+        // host ranges in one call, which also avoids exhausting its mapping table.
+        uint[] removed = _mapped.Where(item => !wanted.TryGetValue(item.Key, out var next) || next != item.Value)
+            .Select(item => item.Key).Order().ToArray();
+        for (int first = 0; first < removed.Length;)
         {
-            WhpxNative.Check(WhpxNative.WHvUnmapGpaRange(_partition, old, Page), "unmap old physical page");
-            _mapped.Remove(old);
+            int after = first + 1;
+            while (after < removed.Length && removed[after] == removed[after - 1] + Page) after++;
+            ulong bytes = (ulong)(after - first) * Page;
+            WhpxNative.Check(WhpxNative.WHvUnmapGpaRange(_partition, removed[first], bytes),
+                $"unmap physical range 0x{removed[first]:X}+0x{bytes:X}");
+            for (int index = first; index < after; index++) _mapped.Remove(removed[index]);
+            first = after;
         }
-        foreach (var (page, value) in wanted)
+        var added = wanted.Where(item => !_mapped.ContainsKey(item.Key)).OrderBy(item => item.Key).ToArray();
+        for (int first = 0; first < added.Length;)
         {
-            if (_mapped.TryGetValue(page, out var previous) && previous == value) continue;
-            WhpxNative.Check(WhpxNative.WHvMapGpaRange(_partition, value.Source, page, Page, value.Flags), "map physical page");
-            _mapped[page] = value;
+            int after = first + 1;
+            while (after < added.Length && added[after].Key == added[after - 1].Key + Page &&
+                   added[after].Value.Flags == added[first].Value.Flags &&
+                   added[after].Value.Source == added[after - 1].Value.Source + Page) after++;
+            ulong bytes = (ulong)(after - first) * Page;
+            WhpxNative.Check(WhpxNative.WHvMapGpaRange(_partition, added[first].Value.Source,
+                added[first].Key, bytes, added[first].Value.Flags),
+                $"map physical range 0x{added[first].Key:X}+0x{bytes:X}");
+            for (int index = first; index < after; index++) _mapped[added[index].Key] = added[index].Value;
+            first = after;
         }
         _topology = topology;
 

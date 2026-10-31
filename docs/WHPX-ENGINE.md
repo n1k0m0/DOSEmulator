@@ -13,7 +13,8 @@ WHPX-Sitzung reserviert ihren PC, sodass `RunSteps` nicht gleichzeitig laufen ka
   gemeldeten geänderten Seiten fließen vor jedem Gerätecallback in `MemoryBus.Ram`
   zurück. Speicherzugriffe der DOSE-Geräte markieren betroffene Seiten für die
   Rückrichtung. Vor jedem neuen Laufabschnitt werden auch direkte Besitzeränderungen
-  am RAM abgeglichen.
+  am RAM abgeglichen. Zusammenhängende GPA-/Hostbereiche werden in einem WHP-Aufruf
+  gemappt; A20- oder DRAM-Änderungen ersetzen nur die betroffenen Bereiche.
 - BIOS-ROM und PAM-Fenster sind lesbar und ausführbar. PAM-Schreibzugriffe gehen
   über den bestehenden `MemoryBus`; geänderte PAM-Konfiguration und Shadow-RAM-
   Seiten aktualisieren die WHP-Sicht. VGA und dynamische S3-MMIO-Fenster bleiben
@@ -54,6 +55,17 @@ Mit `DOSE_WHPX_WIN_PROBE=1` durchläuft das Windows-95-Boardprofil mit der
 Entwicklungshost erreichte die Probe POST-Code `30h` und `RIP=7C48h`; danach
 wurde auch dessen WHP-/Geräte-/RAM-Checkpoint auf einem neuen PC geprüft.
 Es wird dabei kein Windows-Image gestartet.
+
+Mit `DOSE_WHPX_REAL_BOOT_FLOPPY=<absoluter Pfad>` wird optional eine vorhandene,
+echte Windows-98-Startdiskette **nur lesend** eingebunden; ihre Änderungen gehen in
+ein eigenes kurzlebiges Overlay. Die Probe verlangt das tatsächliche „Microsoft
+Windows 98 CD-ROM Startup Menu“ im VGA-Textspeicher, versiegelt diesen Zustand
+als `.whpxsav`, lädt ihn mit eigenem Medienzweig und führt den Gast weiter.
+`DOSE_WHPX_REAL_BOOT_STEPS` begrenzt optional die Anzahl der 100-ms-Laufscheiben
+(Standard: 20, maximal 200). Auf dem Entwicklungshost erreichte die Probe das
+Menü nach echten FDC-Sektorlesungen und bestand die Snapshot-Fortsetzung.
+Das Menü gehört zur Startdiskette; ein installierter Windows-95/98-Kernel oder
+Desktop wurde über WHPX damit noch nicht geprüft.
 
 Der komplette Release-Build und die 314 bestehenden Snapshot-Regressionen des
 Softwarepfads liefen nach der Integration ohne Fehler.

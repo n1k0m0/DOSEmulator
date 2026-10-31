@@ -269,6 +269,84 @@ if (Environment.GetEnvironmentVariable("DOSE_WHPX_WIN_PROBE") == "1")
     Console.WriteLine("PASS: Windows95 board WHP CPU, devices, scheduler and RAM checkpoint round-tripped.");
 }
 
+string? realBootFloppy = Environment.GetEnvironmentVariable("DOSE_WHPX_REAL_BOOT_FLOPPY");
+if (!string.IsNullOrWhiteSpace(realBootFloppy))
+{
+    var profile = new MachineProfile
+    {
+        Id = MachineProfile.Windows95ProfileId, Name = "WHPX isolated real Windows boot floppy probe",
+        Cpu = MachineProfile.P54cCpuId, CpuHz = 100_000_000, RamMiB = 32,
+        VideoCard = MachineProfile.S3Trio64VideoId, OpticalDrive = MachineProfile.AtapiCdRomId, AtapiSlot = 2
+    };
+    string overlay = Path.Combine(Path.GetTempPath(), "dose-whpx-floppy-" + Guid.NewGuid().ToString("N") + ".cow");
+    try
+    {
+        using var pc = MachineFactory.FromImagesWithOptical(profile, null, floppyA: realBootFloppy,
+            floppyAOverlay: overlay, bootDevice: "floppy-a");
+        using var whpx = WhpxPcSession.Start(pc);
+        int bootSteps = int.TryParse(Environment.GetEnvironmentVariable("DOSE_WHPX_REAL_BOOT_STEPS"), out int requestedSteps)
+            ? Math.Clamp(requestedSteps, 1, 200) : 20;
+        for (int step = 1; step <= bootSteps; step++)
+        {
+            try
+            {
+                var run = whpx.RunUntilVirtualTime(checked(pc.Scheduler.Now + 100_000_000), TimeSpan.FromSeconds(10), 100_000);
+                if (step <= 20 || step % 10 == 0 || step == bootSteps)
+                    Console.WriteLine($"REAL-BOOT-PROBE {step}: time={pc.Scheduler.Now}, POST={pc.Board.PostCode:X2}, RIP={run.Rip:X}, exits={run.TotalExits}, io={run.IoExits}, mmio={run.MmioExits}, irq={run.PicInterrupts}.");
+            }
+            catch (Exception error)
+            {
+                Console.WriteLine($"REAL-BOOT-PROBE {step}: {error.GetType().Name}: {error.Message}; time={pc.Scheduler.Now}, POST={pc.Board.PostCode:X2}, RIP={whpx.GetRegister(0x10):X}.");
+                break;
+            }
+        }
+        Console.WriteLine("REAL-BOOT-DIAGNOSTIC: " + pc.Board.DebugText.Replace('\r', ' ').Replace('\n', ' '));
+        byte[] bootBytes = new byte[16];
+        using (var source = File.OpenRead(realBootFloppy)) source.ReadExactly(bootBytes);
+        Console.WriteLine($"REAL-BOOT-FDC: reads={pc.Floppy.ReadSectorCount}, busy={pc.Floppy.Busy}, irq={pc.Floppy.InterruptAsserted}, source={Convert.ToHexString(bootBytes)}, ram={Convert.ToHexString(pc.Memory.Ram.AsSpan(0x7c00, 16))}.");
+        var realBootCpu = whpx.Capture().Cpu;
+        var csState = realBootCpu.Registers.Single(register => register.Name == 0x13);
+        Console.WriteLine($"REAL-BOOT-CPU: CS={(csState.High >> 32) & 0xffff:X4}, base={csState.Low:X}, RIP={whpx.GetRegister(0x10):X}, flags={whpx.GetRegister(0x11):X}, CR0={whpx.GetRegister(0x1000):X}.");
+        for (uint row = 0; row < 25; row++)
+        {
+            var line = new string(Enumerable.Range(0, 80).Select(column =>
+                (char)pc.Memory.ReadByte(0xb8000u + row * 160 + (uint)column * 2)).ToArray()).Trim();
+            if (line.Length > 0) Console.WriteLine($"REAL-BOOT-SCREEN {row:D2}: {line}");
+        }
+        string firstRow = new(Enumerable.Range(0, 80).Select(column =>
+            (char)pc.Memory.ReadByte(0xb8000u + (uint)column * 2)).ToArray());
+        if (!firstRow.Contains("Microsoft Windows 98 CD-ROM Startup Menu", StringComparison.Ordinal))
+            throw new InvalidOperationException("The real Windows 98 boot floppy did not reach its startup menu under WHP.");
+        string snapshotRoot = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory,
+            "artifacts", "tests", "whpx-real-boot-" + Guid.NewGuid().ToString("N")));
+        Directory.CreateDirectory(snapshotRoot);
+        try
+        {
+            string saved = Path.Combine(snapshotRoot, "menu.whpxsav");
+            ulong savedTime = pc.Scheduler.Now, savedRip = whpx.GetRegister(0x10);
+            WhpxSnapshotStore.Capture(whpx, saved);
+            whpx.Dispose();
+            using var restored = WhpxSnapshotStore.Load(saved, Path.Combine(snapshotRoot, "menu.dosebranch"));
+            if (restored.Pc.Scheduler.Now != savedTime || restored.GetRegister(0x10) != savedRip ||
+                !restored.Pc.Memory.Ram.AsSpan().SequenceEqual(pc.Memory.Ram) ||
+                !firstRow.SequenceEqual(Enumerable.Range(0, 80).Select(column =>
+                    (char)restored.Pc.Memory.ReadByte(0xb8000u + (uint)column * 2))))
+                throw new InvalidOperationException("Real Windows 98 boot-menu snapshot did not restore exactly.");
+            var continued = restored.RunUntilVirtualTime(checked(savedTime + 100_000_000), TimeSpan.FromSeconds(10), 100_000);
+            if (continued.TotalExits == 0 || restored.Pc.Scheduler.Now < savedTime + 100_000_000)
+                throw new InvalidOperationException("Restored Windows 98 boot menu did not continue under WHP.");
+            Console.WriteLine("PASS: real Windows 98 boot menu and isolated WHP media/PC/CPU snapshot continuation.");
+        }
+        finally
+        {
+            if (!snapshotRoot.StartsWith(Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "artifacts", "tests")) + Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("Refusing to delete a non-test WHP snapshot path.");
+            if (Directory.Exists(snapshotRoot)) Directory.Delete(snapshotRoot, true);
+        }
+    }
+    finally { if (File.Exists(overlay)) File.Delete(overlay); }
+}
+
 sealed class ProofPort : IIoPortDevice
 {
     public int Writes { get; private set; }
