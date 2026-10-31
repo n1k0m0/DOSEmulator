@@ -19,7 +19,8 @@ public sealed class WhpxPcSession : IDisposable
     private readonly bool _ownsPc;
     private bool _disposed;
 
-    private WhpxPcSession(PcMachine pc, bool setResetEntry, bool ownsPc = false)
+    private WhpxPcSession(PcMachine pc, bool setResetEntry, bool ownsPc = false,
+        uint virtualTimeScale = 1)
     {
         _pc = pc;
         _ownsPc = ownsPc;
@@ -29,7 +30,7 @@ public sealed class WhpxPcSession : IDisposable
         {
             engine = new WhpxMappedMachine(pc.Memory, pc.Ports, pc.Pic, pc.Scheduler,
                 pc.Profile.IsP54c ? WhpxCpuContract.IntelP54cB5Subset : WhpxCpuContract.Intel486Dx,
-                pc.Profile.IsP54c ? (uint)pc.Profile.CpuHz : 0);
+                pc.Profile.IsP54c ? (uint)pc.Profile.CpuHz : 0, virtualTimeScale);
             if (setResetEntry) engine.SetEntry(0xf000, 0xfff0);
             _whpx = engine;
         }
@@ -45,7 +46,8 @@ public sealed class WhpxPcSession : IDisposable
     public ulong GetRegister(uint name) { lock (_gate) { ThrowIfDisposed(); return _whpx.GetRegister(name); } }
 
     /// <summary>Attaches WHP only when explicitly requested by an experimental caller.</summary>
-    public static WhpxPcSession Start(PcMachine pc) => new(pc ?? throw new ArgumentNullException(nameof(pc)), true);
+    public static WhpxPcSession Start(PcMachine pc, uint virtualTimeScale = 1) =>
+        new(pc ?? throw new ArgumentNullException(nameof(pc)), true, virtualTimeScale: virtualTimeScale);
 
     /// <summary>Rebuilds the PC's validated device graph before restoring the independent WHP CPU register file.</summary>
     public static WhpxPcSession Resume(PcMachine freshPc, WhpxPcCheckpoint checkpoint)
@@ -55,7 +57,8 @@ public sealed class WhpxPcSession : IDisposable
         if (checkpoint.Hardware is null || checkpoint.Ram is null || checkpoint.Cpu is null)
             throw new InvalidDataException("Incomplete WHP PC checkpoint.");
         freshPc.RestoreHardwareState(checkpoint.Hardware, checkpoint.Ram);
-        var session = new WhpxPcSession(freshPc, false);
+        var session = new WhpxPcSession(freshPc, false,
+            virtualTimeScale: checkpoint.Cpu.VirtualTimeScale);
         try { session._whpx.RestoreCpuState(checkpoint.Cpu); return session; }
         catch { session.Dispose(); throw; }
     }
@@ -63,7 +66,8 @@ public sealed class WhpxPcSession : IDisposable
     /// <summary>Adopts a media-branched PC already validated by SnapshotStore.</summary>
     internal static WhpxPcSession AttachLoaded(PcMachine restoredPc, WhpxCpuState cpu)
     {
-        var session = new WhpxPcSession(restoredPc, false, true);
+        var session = new WhpxPcSession(restoredPc, false, true,
+            cpu.VirtualTimeScale);
         try { session._whpx.RestoreCpuState(cpu); return session; }
         catch { session.Dispose(); throw; }
     }

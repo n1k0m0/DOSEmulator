@@ -22,9 +22,11 @@ public sealed class WhpxMappedMachine : IDisposable
         .. Enumerable.Range(0x21, 7).Select(i => (uint)i),
         .. Enumerable.Range(0x1000, 0x1a).Select(i => (uint)i),
         0x2000, 0x2001, 0x2003, 0x2004, 0x2005, 0x2006, 0x2007,
-        WhpxNative.PendingInterruption, 0x80000001, WhpxNative.PendingEvent, 0x80000004
+        WhpxNative.PendingInterruption, WhpxNative.InterruptState, WhpxNative.PendingEvent,
+        WhpxNative.DeliverabilityNotifications
     ];
     private readonly IoPortBus _ports;
+    private readonly MemoryBus _bus;
     private readonly Pic8259 _pic;
     private readonly DeviceScheduler _scheduler;
     private readonly WhpxCpuContract _cpuContract;
@@ -32,12 +34,15 @@ public sealed class WhpxMappedMachine : IDisposable
     private readonly byte[] _exit = new byte[4096];
     private readonly WhpxPhysicalMemory _memory;
     private readonly WhpxInstructionEmulator _emulator;
+    private readonly bool _traceExceptions = Environment.GetEnvironmentVariable("DOSE_WHPX_TRACE_EXCEPTIONS") == "1";
+    private readonly uint _timeScale;
     private nint _partition;
     private ulong _tscEpochTicks;
-    private bool _vp, _running, _disposed, _halted;
+    private bool _vp, _running, _disposed, _halted, _interruptWindowArmed;
 
     public WhpxMappedMachine(MemoryBus memory, IoPortBus ports, Pic8259 pic, DeviceScheduler scheduler,
-        WhpxCpuContract cpuContract = WhpxCpuContract.Host, uint nominalCpuHz = 0)
+        WhpxCpuContract cpuContract = WhpxCpuContract.Host, uint nominalCpuHz = 0,
+        uint virtualTimeScale = 1)
     {
         ArgumentNullException.ThrowIfNull(memory);
         ArgumentNullException.ThrowIfNull(ports);
@@ -46,8 +51,10 @@ public sealed class WhpxMappedMachine : IDisposable
         if (cpuContract == WhpxCpuContract.IntelP54cB5Subset ? nominalCpuHz == 0 : nominalCpuHz != 0)
             throw new ArgumentException("Only the P54C contract accepts a positive nominal CPU frequency.", nameof(nominalCpuHz));
         if (!Enum.IsDefined(cpuContract)) throw new ArgumentOutOfRangeException(nameof(cpuContract));
+        if (virtualTimeScale is < 1 or > 64) throw new ArgumentOutOfRangeException(nameof(virtualTimeScale));
         if (!WhpxRealModeMachine.IsAvailable()) throw new PlatformNotSupportedException("Windows Hypervisor Platform is unavailable.");
-        _ports = ports; _pic = pic; _scheduler = scheduler; _cpuContract = cpuContract; _nominalCpuHz = nominalCpuHz;
+        _ports = ports; _bus = memory; _pic = pic; _scheduler = scheduler; _cpuContract = cpuContract;
+        _nominalCpuHz = nominalCpuHz; _timeScale = virtualTimeScale;
         if (nominalCpuHz != 0) _tscEpochTicks = scheduler.ClockTicks(nominalCpuHz);
         WhpxPhysicalMemory? mappedMemory = null;
         WhpxInstructionEmulator? instructionEmulator = null;
@@ -58,11 +65,15 @@ public sealed class WhpxMappedMachine : IDisposable
             WhpxNative.Check(WhpxNative.WHvSetPartitionProperty(_partition, 0x1fff, in one, 4), "set processor count");
             if (cpuContract != WhpxCpuContract.Host)
             {
-                ulong exits = 0xb; // CPUID, MSR, RDTSC(P)
+                ulong exits = 0xfUL; // CPUID, MSR, RDTSC(P), exception compatibility
                 WhpxNative.Check(WhpxNative.WHvGetCapability(2, out ulong available, 8, out uint written), "query extended exits");
                 if (written != 8 || (available & exits) != exits)
                     throw new PlatformNotSupportedException("WHP does not support the required P54C/486 CPU instruction exits.");
                 WhpxNative.Check(WhpxNative.WHvSetPartitionProperty(_partition, 1, in exits, 8), "set CPU instruction exits");
+                ulong bitmap = 1UL << 13;
+                if (_traceExceptions) bitmap |= (1UL << 6) | (1UL << 8) | (1UL << 11) |
+                    (1UL << 12) | (1UL << 14);
+                WhpxNative.Check(WhpxNative.WHvSetPartitionProperty(_partition, 2, in bitmap, 8), "set exception exits");
                 ulong msrExits = 0x7; // unhandled MSRs and TSC reads/writes
                 WhpxNative.Check(WhpxNative.WHvGetCapability(4, out ulong availableMsrs, 8, out written), "query MSR exits");
                 if (written != 8 || (availableMsrs & msrExits) != msrExits)
@@ -116,7 +127,7 @@ public sealed class WhpxMappedMachine : IDisposable
         WhpxNative.Check(WhpxNative.WHvGetVirtualProcessorRegisters(_partition, 0, SavedRegisters,
             (uint)SavedRegisters.Length, values), "capture mapped CPU registers");
         return new WhpxCpuState(SavedRegisters.Zip(values, (name, value) => new WhpxRegisterState(name, value.Low, value.High)).ToArray(),
-            _cpuContract, _nominalCpuHz, _tscEpochTicks, _halted);
+            _cpuContract, _nominalCpuHz, _timeScale, _tscEpochTicks, _halted);
     }
 
     /// <summary>Restores an exact register set into a fresh stopped VP after the owner restored RAM and devices.</summary>
@@ -124,6 +135,7 @@ public sealed class WhpxMappedMachine : IDisposable
     {
         EnsureStopped();
         if (state.Contract != _cpuContract || state.NominalCpuHz != _nominalCpuHz ||
+            state.VirtualTimeScale != _timeScale ||
             state.Registers is null || state.Registers.Length != SavedRegisters.Length ||
             state.Registers.Where((item, index) => item.Name != SavedRegisters[index]).Any())
             throw new InvalidDataException("WHP CPU state register topology differs.");
@@ -132,6 +144,7 @@ public sealed class WhpxMappedMachine : IDisposable
             (uint)SavedRegisters.Length, values), "restore mapped CPU registers");
         _halted = state.Halted;
         _tscEpochTicks = state.TscEpochTicks;
+        _interruptWindowArmed = (state.Registers.Single(item => item.Name == WhpxNative.DeliverabilityNotifications).Low & 2) != 0;
     }
 
     /// <summary>Runs in bounded host-clock slices. Device events and PIC pins are sampled at each WHP exit.</summary>
@@ -155,9 +168,12 @@ public sealed class WhpxMappedMachine : IDisposable
         _running = true;
         int io = 0, mmio = 0, interrupts = 0;
         using var deadline = new CancellationTokenSource(timeout);
-        using var timer = new Timer(_ => WhpxNative.WHvCancelRunVirtualProcessor(_partition, 0, 0), null, 2, 2);
+        using var timerResolution = new TimerResolution();
+        using var timer = new Timer(_ => WhpxNative.WHvCancelRunVirtualProcessor(_partition, 0, 0), null,
+            Timeout.Infinite, Timeout.Infinite);
         try
         {
+            if (TryInjectPic()) interrupts++;
             for (int exits = 0; exits < maximumExits; exits++)
             {
                 if (deadline.IsCancellationRequested) throw new TimeoutException("WHP mapped execution timed out.");
@@ -177,22 +193,38 @@ public sealed class WhpxMappedMachine : IDisposable
                         continue;
                     }
                 }
+                timer.Change(2, Timeout.Infinite);
                 long runStart = Stopwatch.GetTimestamp();
-                WhpxNative.Check(WhpxNative.WHvRunVirtualProcessor(_partition, 0, _exit, (uint)_exit.Length), "run mapped VP");
+                try { WhpxNative.Check(WhpxNative.WHvRunVirtualProcessor(_partition, 0, _exit, (uint)_exit.Length), "run mapped VP"); }
+                finally { timer.Change(Timeout.Infinite, Timeout.Infinite); }
                 long runEnd = Stopwatch.GetTimestamp();
                 ulong elapsedNs = (ulong)((UInt128)(ulong)(runEnd - runStart) * 1_000_000_000 / (ulong)Stopwatch.Frequency);
                 _memory.PullGuestRam();
-                _scheduler.AdvanceTo(checked(_scheduler.Now + elapsedNs));
+                _scheduler.AdvanceTo(checked(_scheduler.Now + elapsedNs * _timeScale));
                 uint reason = BinaryPrimitives.ReadUInt32LittleEndian(_exit);
                 switch (reason)
                 {
                     case 1:
-                        _emulator.Emulate(_exit);
+                        try { _emulator.Emulate(_exit); }
+                        catch (NotSupportedException error)
+                        {
+                            var cs = ReadRegister(WhpxNative.Cs);
+                            var ds = ReadRegister(WhpxNative.Ds);
+                            var es = ReadRegister(WhpxNative.Es);
+                            throw new NotSupportedException($"{error.Message} RIP={ReadRegister(WhpxNative.Rip).Low:X}, " +
+                                $"CS={cs.Low:X}/{cs.High:X}, DS={ds.Low:X}/{ds.High:X}, ES={es.Low:X}/{es.High:X}, " +
+                                $"RSI={ReadRegister(6).Low:X}, RDI={ReadRegister(7).Low:X}, " +
+                                $"RCX={ReadRegister(WhpxNative.Rcx).Low:X}, RFLAGS={ReadRegister(WhpxNative.Rflags).Low:X}, " +
+                                $"CR0={ReadRegister(0x1c).Low:X}, CR3={ReadRegister(0x1e).Low:X}.", error);
+                        }
                         mmio++;
                         break;
                     case 2:
                         HandleIoExit();
                         io++;
+                        break;
+                    case 7: // interruptibility changed to a PIC-deliverable window
+                        _interruptWindowArmed = false; // WHP consumes the one-shot notification.
                         break;
                     case 8:
                         _halted = true;
@@ -214,6 +246,9 @@ public sealed class WhpxMappedMachine : IDisposable
                         break;
                     case 0x1001:
                         HandleCpuidExit();
+                        break;
+                    case 0x1002:
+                        HandleExceptionExit();
                         break;
                     case 0x1003:
                         HandleRdtscExit();
@@ -244,14 +279,46 @@ public sealed class WhpxMappedMachine : IDisposable
 
     private bool TryInjectPic()
     {
-        if (!_pic.HasPending || (ReadRegister(WhpxNative.Rflags).Low & 0x200) == 0) return false;
-        if ((ReadRegister(WhpxNative.PendingInterruption).Low & 1) != 0) return false;
-        if ((ReadRegister(WhpxNative.PendingEvent).Low & 1) != 0) return false;
-        // ExitContext.ExecutionState bit 12 is the STI/MOV-SS interrupt shadow.
-        if ((BinaryPrimitives.ReadUInt16LittleEndian(_exit.AsSpan(8)) & 0x1000) != 0) return false;
+        if (!_pic.HasPending)
+        {
+            SetInterruptWindow(false);
+            return false;
+        }
+        if ((ReadRegister(WhpxNative.PendingInterruption).Low & 1) != 0 ||
+            (ReadRegister(WhpxNative.PendingEvent).Low & 1) != 0)
+        {
+            SetInterruptWindow(false);
+            return false;
+        }
+        if ((ReadRegister(WhpxNative.Rflags).Low & 0x200) == 0 ||
+            (ReadRegister(WhpxNative.InterruptState).Low & 1) != 0)
+        {
+            SetInterruptWindow(true);
+            return false;
+        }
+        SetInterruptWindow(false);
         if (_pic.Acknowledge() is not { } vector) return false;
         SetRegister(WhpxNative.PendingInterruption, new(1UL | ((ulong)vector << 16)));
         return true;
+    }
+
+    private void SetInterruptWindow(bool enabled)
+    {
+        if (_interruptWindowArmed == enabled) return;
+        ulong current = ReadRegister(WhpxNative.DeliverabilityNotifications).Low;
+        ulong wanted = enabled ? current | 2UL : current & ~2UL;
+        if (wanted != current)
+            SetRegister(WhpxNative.DeliverabilityNotifications, new(wanted));
+        _interruptWindowArmed = enabled;
+    }
+
+    private sealed class TimerResolution : IDisposable
+    {
+        private readonly bool _active = WhpxNative.TimeBeginPeriod(1) == 0;
+        public void Dispose()
+        {
+            if (_active) WhpxNative.TimeEndPeriod(1);
+        }
     }
 
     private void HandleCpuidExit()
@@ -316,6 +383,86 @@ public sealed class WhpxMappedMachine : IDisposable
         SetRegister(WhpxNative.PendingEvent, new(eventBits));
     }
 
+    private void HandleExceptionExit()
+    {
+        uint info = BinaryPrimitives.ReadUInt32LittleEndian(_exit.AsSpan(68));
+        byte vector = _exit[72];
+        uint error = BinaryPrimitives.ReadUInt32LittleEndian(_exit.AsSpan(76));
+        ulong parameter = BinaryPrimitives.ReadUInt64LittleEndian(_exit.AsSpan(80));
+        if (vector == 13 && TryCompleteLegacyRealModeCopy())
+        {
+            if (_traceExceptions) Console.WriteLine($"WHP-COMPAT-COPY: time={_scheduler.Now}.");
+            return;
+        }
+        if (_traceExceptions) Console.WriteLine($"WHP-EXCEPTION: time={_scheduler.Now}, vector={vector:X2}, error={error:X8}, " +
+            $"RIP={ReadRegister(WhpxNative.Rip).Low:X}, CS={ReadRegister(WhpxNative.Cs).Low:X}, " +
+            $"DS={ReadRegister(WhpxNative.Ds).Low:X}/{ReadRegister(WhpxNative.Ds).High:X}, " +
+            $"ES={ReadRegister(WhpxNative.Es).Low:X}/{ReadRegister(WhpxNative.Es).High:X}, " +
+            $"RSI={ReadRegister(6).Low:X}, RDI={ReadRegister(7).Low:X}, RCX={ReadRegister(WhpxNative.Rcx).Low:X}, " +
+            $"RFLAGS={ReadRegister(WhpxNative.Rflags).Low:X}, CR0={ReadRegister(0x1c).Low:X}, " +
+            $"CR2={ReadRegister(0x1d).Low:X}, CR3={ReadRegister(0x1e).Low:X}, " +
+            $"parameter={parameter:X}, bytes={Convert.ToHexString(_exit.AsSpan(52, 16))}.");
+        if ((ReadRegister(WhpxNative.PendingEvent).Low & 1) != 0)
+            throw new InvalidOperationException("WHP exception exit found an already pending event.");
+        ulong eventBits = 1UL | ((info & 1UL) << 8) | ((ulong)vector << 16) | ((ulong)error << 32);
+        SetRegister(WhpxNative.PendingEvent, new(eventBits, parameter));
+    }
+
+    // The existing software CPU permits these Windows 95 loader copies
+    // with 32-bit real-mode offsets and 64-KiB segment caches. Real hardware
+    // raises #GP. Preserve that loader contract only for plain RAM on both ends.
+    private bool TryCompleteLegacyRealModeCopy()
+    {
+        int width, length;
+        if (_exit[48] >= 4 && _exit.AsSpan(52, 4).SequenceEqual(new byte[] { 0xf3, 0x67, 0x66, 0xa5 }))
+        { width = 4; length = 4; }
+        else if (_exit[48] >= 3 && _exit.AsSpan(52, 3).SequenceEqual(new byte[] { 0xf3, 0x67, 0xa5 }))
+        { width = 2; length = 3; }
+        else return false;
+        if ((ReadRegister(0x1c).Low & 0x8000_0001UL) != 0 ||
+            (ReadRegister(WhpxNative.Rflags).Low & 0x20000) != 0)
+            return false;
+        var ds = ReadRegister(WhpxNative.Ds);
+        var es = ReadRegister(WhpxNative.Es);
+        if (ds.Low != 0 || es.Low != 0 || (ds.High & 0xffff_ffff) != 0xffff ||
+            (es.High & 0xffff_ffff) != 0xffff) return false;
+
+        ulong rsi = ReadRegister(6).Low, rdi = ReadRegister(7).Low;
+        ulong rcx = ReadRegister(WhpxNative.Rcx).Low;
+        uint count = (uint)rcx;
+        if (count is 0 or > 65536 || rsi <= 0xffff && rdi <= 0xffff) return false;
+        int direction = (ReadRegister(WhpxNative.Rflags).Low & 0x400) != 0 ? -1 : 1;
+        long source = (uint)rsi, destination = (uint)rdi;
+        for (uint element = 0; element < count; element++)
+        {
+            long from = source + (long)element * direction * width;
+            long to = destination + (long)element * direction * width;
+            if (from < 0 || to < 0 || from + width - 1 > uint.MaxValue || to + width - 1 > uint.MaxValue)
+                return false;
+            for (int lane = 0; lane < width; lane++)
+                if (!_bus.IsPlainRamByte((uint)(from + lane)) || !_bus.IsPlainRamByte((uint)(to + lane)))
+                    return false;
+        }
+        Span<byte> value = stackalloc byte[4];
+        for (uint element = 0; element < count; element++)
+        {
+            uint from = (uint)(source + (long)element * direction * width);
+            uint to = (uint)(destination + (long)element * direction * width);
+            for (uint lane = 0; lane < width; lane++) value[(int)lane] = _bus.ReadByte(from + lane);
+            for (uint lane = 0; lane < width; lane++) _bus.WriteByte(to + lane, value[(int)lane]);
+        }
+        ulong rip = ReadRegister(WhpxNative.Rip).Low;
+        uint[] names = [6, 7, WhpxNative.Rcx, WhpxNative.Rip];
+        WhpxNative.RegisterValue[] values =
+        [new((rsi & ~0xffff_ffffUL) | unchecked((uint)(source + (long)direction * count * width))),
+         new((rdi & ~0xffff_ffffUL) | unchecked((uint)(destination + (long)direction * count * width))),
+         new(rcx & ~0xffff_ffffUL),
+         new((rip & ~0xffffUL) | (ushort)(rip + (uint)length))];
+        WhpxNative.Check(WhpxNative.WHvSetVirtualProcessorRegisters(_partition, 0, names, 4,
+            values), "complete Windows 95 real-mode copy");
+        return true;
+    }
+
     private void AdvanceInterceptedInstruction()
     {
         int length = _exit[10] & 15;
@@ -328,7 +475,22 @@ public sealed class WhpxMappedMachine : IDisposable
         int length = _exit[10] & 15;
         uint info = BinaryPrimitives.ReadUInt32LittleEndian(_exit.AsSpan(68));
         int width = (int)((info >> 1) & 7);
-        if ((info & 0x30) != 0) { _emulator.EmulateIo(_exit); return; }
+        if ((info & 0x30) != 0)
+        {
+            try { _emulator.EmulateIo(_exit); }
+            catch (NotSupportedException error)
+            {
+                var cs = ReadRegister(WhpxNative.Cs);
+                var ds = ReadRegister(WhpxNative.Ds);
+                var es = ReadRegister(WhpxNative.Es);
+                throw new NotSupportedException($"{error.Message} RIP={ReadRegister(WhpxNative.Rip).Low:X}, " +
+                    $"CS={cs.Low:X}/{cs.High:X}, DS={ds.Low:X}/{ds.High:X}, ES={es.Low:X}/{es.High:X}, " +
+                    $"RDX={ReadRegister(WhpxNative.Rdx).Low:X}, RSI={ReadRegister(6).Low:X}, " +
+                    $"RDI={ReadRegister(7).Low:X}, RCX={ReadRegister(WhpxNative.Rcx).Low:X}, RFLAGS={ReadRegister(WhpxNative.Rflags).Low:X}, " +
+                    $"CR0={ReadRegister(0x1c).Low:X}, CR3={ReadRegister(0x1e).Low:X}, CR4={ReadRegister(0x1f).Low:X}.", error);
+            }
+            return;
+        }
         if (length is < 1 or > 15 || width is not (1 or 2 or 4))
             throw new NotSupportedException("Malformed WHP I/O exit.");
         ushort port = BinaryPrimitives.ReadUInt16LittleEndian(_exit.AsSpan(72));
@@ -377,5 +539,5 @@ public readonly record struct WhpxMappedRunResult(int IoExits, int MmioExits, in
 
 public enum WhpxCpuContract { Host, Intel486Dx, IntelP54cB5Subset }
 public sealed record WhpxCpuState(WhpxRegisterState[] Registers, WhpxCpuContract Contract,
-    uint NominalCpuHz, ulong TscEpochTicks, bool Halted);
+    uint NominalCpuHz, uint VirtualTimeScale, ulong TscEpochTicks, bool Halted);
 public readonly record struct WhpxRegisterState(uint Name, ulong Low, ulong High);

@@ -2,6 +2,7 @@
 // Copyright 2026 Nils Kopal
 using DOSEmulator.Core;
 using DOSEmulator.Contracts;
+using DOSEmulator.Cpu.X86;
 using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
 using DOSEmulator.Whpx;
@@ -94,6 +95,52 @@ using (var irqMachine = new WhpxMappedMachine(irqMemory, irqPorts, irqPic, irqCl
     Console.WriteLine("PASS: DOSE PIC IRQ0 entered and returned from a WHP real-mode handler.");
 }
 
+var narrowMemory = new MemoryBus(1 << 20);
+var narrowPic = new Pic8259();
+narrowMemory.Ram[0x20] = 0;
+narrowMemory.Ram[0x21] = 0x30;
+new byte[] { 0xfa, 0x68, 0x02, 0x02, 0x9d, 0xfa, 0xf4 }
+    .CopyTo(narrowMemory.Ram.AsSpan(0x1000)); // CLI; PUSH 202h; POPF; CLI; HLT
+new byte[] { 0xc6, 0x06, 0, 0x21, 0x55, 0xcf }
+    .CopyTo(narrowMemory.Ram.AsSpan(0x3000));
+narrowPic.Write(0x21, 0xfe, 1);
+narrowPic.SetLine(0, true);
+using (var narrowMachine = new WhpxMappedMachine(narrowMemory, new IoPortBus(), narrowPic, new DeviceScheduler()))
+{
+    narrowMachine.SetEntry(0, 0x1000);
+    var narrowResult = narrowMachine.RunUntilHalt(TimeSpan.FromSeconds(5));
+    if (narrowResult.PicInterrupts != 1 || narrowMemory.Ram[0x2100] != 0x55)
+        throw new InvalidOperationException("WHP missed IRQ0 in the brief POPF-to-CLI interrupt window.");
+    Console.WriteLine("PASS: WHP interrupt-window exit delivers PIC IRQ before the next CLI.");
+}
+
+var periodicMemory = new MemoryBus(1 << 20);
+var periodicClock = new DeviceScheduler();
+var periodicPic = new Pic8259();
+var periodicPorts = new IoPortBus();
+var periodicPit = new Pit8254(periodicClock, () => { periodicPic.SetLine(0, true); periodicPic.SetLine(0, false); });
+periodicPorts.Map(0x20, 2, periodicPic);
+periodicPorts.Map(0x40, 4, periodicPit);
+periodicMemory.Ram[0x20] = 0;
+periodicMemory.Ram[0x21] = 0x30;
+new byte[] { 0xfb, 0xeb, 0xfe }.CopyTo(periodicMemory.Ram.AsSpan(0x1000)); // STI; JMP $
+new byte[] { 0xff, 0x06, 0x00, 0x21, 0xb0, 0x20, 0xe6, 0x20, 0xcf }
+    .CopyTo(periodicMemory.Ram.AsSpan(0x3000)); // INC counter; EOI; IRET
+periodicPic.Write(0x21, 0xfe, 1);
+periodicPit.Write(0x43, 0x34, 1); // channel 0, mode 2, 5965 clocks ~= 200 Hz
+periodicPit.Write(0x40, 0x4d, 1);
+periodicPit.Write(0x40, 0x17, 1);
+using (var periodicMachine = new WhpxMappedMachine(periodicMemory, periodicPorts, periodicPic, periodicClock))
+{
+    periodicMachine.SetEntry(0, 0x1000);
+    var periodicResult = periodicMachine.RunUntilVirtualTime(100_000_000, TimeSpan.FromSeconds(5), 1024);
+    int received = periodicMemory.ReadWord(0x2100);
+    if (periodicPit.InterruptPulses is < 18 or > 22 || received < 15 ||
+        periodicResult.PicInterrupts - received is < 0 or > 1)
+        throw new InvalidOperationException($"WHP lost periodic PIT interrupts: pulses={periodicPit.InterruptPulses}, received={received}, injected={periodicResult.PicInterrupts}.");
+    Console.WriteLine($"PASS: WHP delivered {received}/{periodicPit.InterruptPulses} periodic 200-Hz PIT interrupts.");
+}
+
 var timedMemory = new MemoryBus(1 << 20);
 var timedPic = new Pic8259();
 timedPic.Write(0x21, 0xfe, 1);
@@ -147,7 +194,143 @@ using (var stringMachine = new WhpxMappedMachine(stringMemory, stringPorts, new 
     if (stringResult.IoExits < 1 || stringDevice.Reads != 3 ||
         !stringMemory.Ram.AsSpan(0x2000, 3).SequenceEqual(new byte[] { 0x7a, 0x7a, 0x7a }))
         throw new InvalidOperationException("WHP REP INSB did not traverse the DOSE port and RAM bus.");
-    Console.WriteLine("PASS: WHP REP INSB traverses the DOSE port and RAM bus.");
+    Console.WriteLine($"PASS: WHP REP INSB traverses the DOSE port and RAM bus ({stringResult.IoExits} exits).");
+}
+
+var wordMemory = new MemoryBus(1 << 20);
+var wordPorts = new IoPortBus();
+var wordDevice = new SequentialWordPort();
+wordPorts.Map(0xe9, 2, wordDevice);
+new byte[] { 0xba, 0xe9, 0, 0xb9, 0, 1, 0xbf, 0, 0x20, 0xf3, 0x6d, 0xf4 }
+    .CopyTo(wordMemory.Ram.AsSpan(0x1000));
+using (var wordMachine = new WhpxMappedMachine(wordMemory, wordPorts, new Pic8259(), new DeviceScheduler()))
+{
+    wordMachine.SetEntry(0, 0x1000);
+    var wordResult = wordMachine.RunUntilHalt(TimeSpan.FromSeconds(5));
+    if (wordResult.IoExits != 1 || wordDevice.Reads != 256 ||
+        Enumerable.Range(0, 256).Any(index => BitConverter.ToUInt16(wordMemory.Ram, 0x2000 + index * 2) != index))
+        throw new InvalidOperationException("WHP REP INSW did not transfer one complete sector through the I/O and RAM buses.");
+    Console.WriteLine("PASS: WHP REP INSW transfers one 512-byte sector in a single I/O exit.");
+}
+var softwareWordMemory = new MemoryBus(1 << 20);
+var softwareWordPorts = new IoPortBus();
+var softwareWordDevice = new SequentialWordPort();
+softwareWordPorts.Map(0xe9, 2, softwareWordDevice);
+new byte[] { 0xba, 0xe9, 0, 0xb9, 0, 1, 0xbf, 0, 0x20, 0xf3, 0x6d, 0xf4 }
+    .CopyTo(softwareWordMemory.Ram.AsSpan(0x1000));
+var softwareWordCpu = new X86Cpu(softwareWordMemory, softwareWordPorts);
+softwareWordCpu.SetSegment(Segment.Cs, 0);
+softwareWordCpu.Eip = 0x1000;
+for (int step = 0; step < 300 && !softwareWordCpu.Halted; step++) softwareWordCpu.Step();
+if (!softwareWordCpu.Halted || softwareWordDevice.Reads != 256 ||
+    Enumerable.Range(0, 256).Any(index => BitConverter.ToUInt16(softwareWordMemory.Ram, 0x2000 + index * 2) != index))
+    throw new InvalidOperationException("Software REP INSW sector reference differs.");
+Console.WriteLine("PASS: software REP INSW sector reference matches the WHP I/O transfer.");
+var outputMemory = new MemoryBus(1 << 20);
+var outputPorts = new IoPortBus();
+var outputDevice = new SequentialWordPort();
+outputPorts.Map(0xe9, 2, outputDevice);
+for (int index = 0; index < 256; index++) BitConverter.GetBytes((ushort)index).CopyTo(outputMemory.Ram.AsSpan(0x2000 + index * 2));
+new byte[] { 0xba, 0xe9, 0, 0xb9, 0, 1, 0xbe, 0, 0x20, 0xf3, 0x6f, 0xf4 }
+    .CopyTo(outputMemory.Ram.AsSpan(0x1000));
+using (var outputMachine = new WhpxMappedMachine(outputMemory, outputPorts, new Pic8259(), new DeviceScheduler()))
+{
+    outputMachine.SetEntry(0, 0x1000);
+    var outputResult = outputMachine.RunUntilHalt(TimeSpan.FromSeconds(5));
+    if (outputResult.IoExits != 1 || outputDevice.Writes != 256 || outputDevice.BadWrite)
+        throw new InvalidOperationException("WHP REP OUTSW did not transfer one complete ordered sector.");
+    Console.WriteLine("PASS: WHP REP OUTSW transfers one 512-byte sector in a single I/O exit.");
+}
+
+var segmentedOutMemory = new MemoryBus(1 << 20);
+var segmentedOutPorts = new IoPortBus();
+var segmentedOutDevice = new SequentialWordPort();
+segmentedOutPorts.Map(0xe2e8, 2, segmentedOutDevice);
+new byte[] { 0xf3, 0x6f, 0xf4 }.CopyTo(segmentedOutMemory.Ram.AsSpan(0x1000));
+segmentedOutMemory.Ram[0x2004] = 1;
+using (var segmentedOutMachine = new WhpxMappedMachine(segmentedOutMemory, segmentedOutPorts,
+    new Pic8259(), new DeviceScheduler()))
+{
+    segmentedOutMachine.SetEntry(0, 0x1000);
+    var registers = segmentedOutMachine.CaptureCpuState().Registers;
+    void Replace(uint name, ulong low, ulong high = 0)
+    {
+        int index = Array.FindIndex(registers, value => value.Name == name);
+        registers[index] = new WhpxRegisterState(name, low, high);
+    }
+    Replace(0x13, 0, 0xffffUL | (8UL << 32) | (0x9bUL << 48));
+    Replace(0x15, 0x1a80, 0xcbfUL | (0x10UL << 32) | (0x93UL << 48));
+    foreach (uint segment in new uint[] { 0x12, 0x14 })
+        Replace(segment, 0, 0xffffUL | (0x10UL << 32) | (0x93UL << 48));
+    Replace(0x1c, segmentedOutMachine.GetRegister(0x1c) | 1);
+    Replace(6, 0x582); Replace(1, 2); Replace(2, 0xe2e8);
+    segmentedOutMachine.RestoreCpuState(segmentedOutMachine.CaptureCpuState() with { Registers = registers });
+    segmentedOutMachine.RunUntilHalt(TimeSpan.FromSeconds(5));
+    if (segmentedOutDevice.Writes != 2 || segmentedOutDevice.BadWrite ||
+        segmentedOutMachine.GetRegister(6) != 0x586 || segmentedOutMachine.GetRegister(1) != 0)
+        throw new InvalidOperationException("16-bit protected REP OUTSW did not honor DS base, SI and CX.");
+    Console.WriteLine("PASS: protected 16-bit REP OUTSW honors a non-aligned DS base and two CX elements.");
+}
+
+var unrealVideoMemory = new MemoryBus(2 << 20);
+var unrealVideoDevice = new ProofMemory();
+unrealVideoMemory.Map(0xa0000, 0x20000, unrealVideoDevice, "unreal-mode VGA target");
+new byte[] { 0xf3, 0xa4, 0xf4 }.CopyTo(unrealVideoMemory.Ram.AsSpan(0xf373a));
+for (int i = 0; i < 16; i++) unrealVideoMemory.Ram[0x10c086 + i] = (byte)i;
+using (var unrealVideoMachine = new WhpxMappedMachine(unrealVideoMemory, new IoPortBus(),
+    new Pic8259(), new DeviceScheduler()))
+{
+    unrealVideoMachine.SetEntry(0xf000, 0x373a);
+    var registers = unrealVideoMachine.CaptureCpuState().Registers;
+    void Replace(uint name, ulong low, ulong high = 0)
+    {
+        int index = Array.FindIndex(registers, value => value.Name == name);
+        registers[index] = new WhpxRegisterState(name, low, high);
+    }
+    Replace(0x15, 0xffff0, 0xc093_ffff_ffff_ffff);
+    Replace(0x12, 0xa0000, 0xc093_a000_ffff_ffff);
+    Replace(6, 0xc096); Replace(7, 0); Replace(1, 16);
+    unrealVideoMachine.RestoreCpuState(unrealVideoMachine.CaptureCpuState() with { Registers = registers });
+    unrealVideoMachine.RunUntilHalt(TimeSpan.FromSeconds(5));
+    if (unrealVideoDevice.Writes != 16 || unrealVideoDevice.Value != 15 ||
+        unrealVideoMachine.GetRegister(6) != 0xc0a6 || unrealVideoMachine.GetRegister(7) != 16 ||
+        unrealVideoMachine.GetRegister(1) != 0)
+        throw new InvalidOperationException("Unreal-mode video REP MOVSB did not copy via the device bus.");
+    Console.WriteLine("PASS: unreal-mode REP MOVSB copies high RAM to the VGA device with 16-bit index progress.");
+}
+
+var legacyCopyMemory = new MemoryBus(2 << 20);
+byte[] legacyCopyProgram =
+[
+    0xf3, 0x67, 0x66, 0xa5, // 80 dwords above the 64-KiB real-mode segment limit
+    0x66, 0xbe, 0x1b, 0x59, 0x18, 0, // ESI=0018591B
+    0x66, 0xbf, 0xbc, 0x4a, 0x04, 0, // EDI=00044ABC
+    0x66, 0xb9, 1, 0, 0, 0,          // ECX=1
+    0xf3, 0x67, 0xa5, 0xf4           // one word, then HLT
+];
+legacyCopyProgram.CopyTo(legacyCopyMemory.Ram.AsSpan(0x1000));
+for (int i = 0; i < 320; i++) legacyCopyMemory.Ram[0x81610 + i] = (byte)i;
+legacyCopyMemory.Ram[0x18591b] = 0xab;
+legacyCopyMemory.Ram[0x18591c] = 0xcd;
+using (var legacyCopyMachine = new WhpxMappedMachine(legacyCopyMemory, new IoPortBus(),
+    new Pic8259(), new DeviceScheduler(), WhpxCpuContract.IntelP54cB5Subset, 100_000_000))
+{
+    legacyCopyMachine.SetEntry(0, 0x1000);
+    var registers = legacyCopyMachine.CaptureCpuState().Registers;
+    void Replace(uint name, ulong low)
+    {
+        int index = Array.FindIndex(registers, value => value.Name == name);
+        registers[index] = new WhpxRegisterState(name, low, 0);
+    }
+    Replace(6, 0x81610); Replace(7, 0x110000); Replace(1, 80);
+    legacyCopyMachine.RestoreCpuState(legacyCopyMachine.CaptureCpuState() with { Registers = registers });
+    legacyCopyMachine.RunUntilHalt(TimeSpan.FromSeconds(5));
+    if (!legacyCopyMemory.Ram.AsSpan(0x110000, 320).SequenceEqual(legacyCopyMemory.Ram.AsSpan(0x81610, 320)) ||
+        legacyCopyMemory.Ram[0x44abc] != 0xab || legacyCopyMemory.Ram[0x44abd] != 0xcd ||
+        legacyCopyMachine.GetRegister(6) != 0x18591d || legacyCopyMachine.GetRegister(7) != 0x44abe ||
+        legacyCopyMachine.GetRegister(1) != 0)
+        throw new InvalidOperationException("Windows 95 real-mode copy compatibility did not preserve RAM and index progress.");
+    Console.WriteLine("PASS: Windows 95 real-mode dword and word copies beyond the 64-KiB cache limit preserve RAM and indices.");
 }
 
 var pamMemory = new MemoryBus(8 << 20);
@@ -495,6 +678,85 @@ if (!string.IsNullOrWhiteSpace(realBootFloppy))
     finally { if (File.Exists(overlay)) File.Delete(overlay); }
 }
 
+string? resumeSnapshot = Environment.GetEnvironmentVariable("DOSE_WHPX_RESUME_SNAPSHOT");
+if (!string.IsNullOrWhiteSpace(resumeSnapshot))
+{
+    string resumeRoot = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory,
+        "artifacts", "tests", "whpx-resume-" + Guid.NewGuid().ToString("N")));
+    try
+    {
+        Directory.CreateDirectory(resumeRoot);
+        using var resumed = WhpxSnapshotStore.Load(resumeSnapshot, Path.Combine(resumeRoot, "resumed.dosebranch"));
+        if (Environment.GetEnvironmentVariable("DOSE_WHPX_RESUME_ENTER") == "1" &&
+            !resumed.Pc.Keyboard.TryInjectTranslatedSet1([0x1c, 0x9c]))
+            throw new InvalidOperationException("Resumed Windows did not admit Enter.");
+        if (Environment.GetEnvironmentVariable("DOSE_WHPX_RESUME_SCANCODES") is { } requestedScanCodes &&
+            !resumed.Pc.Keyboard.TryInjectTranslatedSet1(Convert.FromHexString(requestedScanCodes)))
+            throw new InvalidOperationException("Resumed Windows did not admit the requested scan codes.");
+        int resumeSteps = int.TryParse(Environment.GetEnvironmentVariable("DOSE_WHPX_RESUME_STEPS"), out int requestedResumeSteps)
+            ? Math.Clamp(requestedResumeSteps, 1, 4000) : 10;
+        var scriptedKeys = new Dictionary<int, byte[]>();
+        if (Environment.GetEnvironmentVariable("DOSE_WHPX_RESUME_KEY_SCRIPT") is { } keyScript)
+            foreach (string instruction in keyScript.Split(';', StringSplitOptions.RemoveEmptyEntries))
+            {
+                string[] parts = instruction.Split(':', 2);
+                scriptedKeys.Add(int.Parse(parts[0]), Convert.FromHexString(parts[1]));
+            }
+        var scriptedMouse = new Dictionary<int, (int X, int Y, int Buttons)>();
+        if (Environment.GetEnvironmentVariable("DOSE_WHPX_RESUME_MOUSE_SCRIPT") is { } mouseScript)
+            foreach (string instruction in mouseScript.Split(';', StringSplitOptions.RemoveEmptyEntries))
+            {
+                string[] parts = instruction.Split(':', 4);
+                scriptedMouse.Add(int.Parse(parts[0]), (int.Parse(parts[1]), int.Parse(parts[2]), int.Parse(parts[3])));
+            }
+        for (int step = 1; step <= resumeSteps; step++)
+        {
+            if (scriptedKeys.TryGetValue(step, out byte[]? scanCodes) &&
+                !resumed.Pc.Keyboard.TryInjectTranslatedSet1(scanCodes))
+                throw new InvalidOperationException($"Resumed Windows did not admit scan codes at step {step}.");
+            if (scriptedMouse.TryGetValue(step, out var mouseInput))
+                (resumed.Pc.Mouse ?? throw new InvalidOperationException("No guest mouse attached."))
+                    .Inject(mouseInput.X, mouseInput.Y, mouseInput.Buttons);
+            var run = resumed.RunUntilVirtualTime(checked(resumed.Pc.Scheduler.Now + 100_000_000), TimeSpan.FromSeconds(120), 100_000);
+            Console.WriteLine($"RESUMED-PROBE {step}: time={resumed.Pc.Scheduler.Now}, RIP={run.Rip:X}, io={run.IoExits}, mmio={run.MmioExits}, irq={run.PicInterrupts}, ata-read={resumed.Pc.Ata.ReadSectorCount}, reset={resumed.Pc.HardwareResetCount}, graphics={resumed.Pc.Video.GraphicsMode}.");
+        }
+        if (Environment.GetEnvironmentVariable("DOSE_WHPX_RESUME_EXPECT_GRAPHICS") == "1" &&
+            (!resumed.Pc.Video.GraphicsMode || resumed.Pc.Ata.ReadSectorCount < 10_000 ||
+             resumed.Pc.Board.DebugText.Contains("Windows-Schutzfehler", StringComparison.Ordinal) ||
+             resumed.Pc.HardwareResetCount != 0))
+            throw new InvalidOperationException("Resumed Windows did not reach a stable WHP graphics boot.");
+        string? resumedFramePath = Environment.GetEnvironmentVariable("DOSE_WHPX_RESUME_FRAME");
+        if (!string.IsNullOrWhiteSpace(resumedFramePath))
+        {
+            var frame = resumed.Pc.CaptureFrame();
+            using var stream = File.Create(resumedFramePath);
+            stream.Write(System.Text.Encoding.ASCII.GetBytes($"P6\n{frame.Width} {frame.Height}\n255\n"));
+            for (int pixel = 0; pixel < frame.ArgbPixels.Length; pixel++)
+            {
+                uint argb = frame.ArgbPixels[pixel];
+                stream.WriteByte((byte)(argb >> 16));
+                stream.WriteByte((byte)(argb >> 8));
+                stream.WriteByte((byte)argb);
+            }
+            Console.WriteLine($"RESUMED-FRAME: {resumedFramePath}, {frame.Width}x{frame.Height}.");
+        }
+        string? resumedSavePath = Environment.GetEnvironmentVariable("DOSE_WHPX_RESUME_SAVE");
+        if (!string.IsNullOrWhiteSpace(resumedSavePath))
+        {
+            WhpxSnapshotStore.Capture(resumed, resumedSavePath);
+            Console.WriteLine($"RESUMED-SNAPSHOT: {resumedSavePath}.");
+        }
+    }
+    finally
+    {
+        string testsRoot = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, "artifacts", "tests")) + Path.DirectorySeparatorChar;
+        if (!resumeRoot.StartsWith(testsRoot, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Refusing to delete a non-test WHP resume path.");
+        if (Directory.Exists(resumeRoot)) Directory.Delete(resumeRoot, true);
+    }
+    return;
+}
+
 string? installedBranch = Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_BRANCH");
 if (!string.IsNullOrWhiteSpace(installedBranch))
 {
@@ -516,23 +778,109 @@ if (!string.IsNullOrWhiteSpace(installedBranch))
         definition = definition with { HardDisks = definition.HardDisks.Select(disk =>
             disk.Slot == 0 ? disk with { OverlayPath = privateOverlay } : disk).ToArray() };
         using var pc = MachineFactory.FromDefinition(definition);
-        using var whpx = WhpxPcSession.Start(pc);
+        if (Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_SOFTWARE_CONTROL") == "1")
+        {
+            int softwareSteps = int.TryParse(Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_SOFTWARE_STEPS"), out int requestedSoftwareSteps)
+                ? Math.Clamp(requestedSoftwareSteps, 1, 1000) : 20;
+            for (int step = 1; step <= softwareSteps; step++)
+            {
+                ulong target = checked(pc.Scheduler.Now + 100_000_000);
+                int executed = pc.RunSteps(2_000_000, target);
+                Console.WriteLine($"SOFTWARE-CONTROL {step}: time={pc.Scheduler.Now}, steps={executed}, POST={pc.Board.PostCode:X2}, cpu={pc.Cpu.Position}, reads={pc.Ata.ReadSectorCount}, writes={pc.Ata.WrittenSectorCount}, pit={pc.Pit.InterruptPulses}, bios-ticks={pc.Memory.ReadDword(0x46c)}, fault={pc.Fault ?? "none"}.");
+                if (pc.Fault is not null) break;
+            }
+            for (uint row = 19; row < 25; row++)
+            {
+                var line = new string(Enumerable.Range(0, 80).Select(column =>
+                    (char)pc.Memory.ReadByte(0xb8000u + row * 160 + (uint)column * 2)).ToArray()).Trim();
+                if (line.Length > 0) Console.WriteLine($"SOFTWARE-SCREEN {row:D2}: {line}");
+            }
+            return;
+        }
+        uint installedTimeScale = uint.TryParse(Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_TIME_SCALE"),
+            out uint requestedTimeScale) ? requestedTimeScale : 1;
+        using var whpx = WhpxPcSession.Start(pc, installedTimeScale);
         int steps = int.TryParse(Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_STEPS"), out int requested)
-            ? Math.Clamp(requested, 1, 200) : 3;
+            ? Math.Clamp(requested, 1, 4000) : 3;
+        int probeTimeout = int.TryParse(Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_TIMEOUT_SECONDS"), out int requestedTimeout)
+            ? Math.Clamp(requestedTimeout, 1, 300) : 30;
+        int enterAt = int.TryParse(Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_ENTER_AT"), out int requestedEnter)
+            ? Math.Clamp(requestedEnter, 1, steps) : int.MaxValue;
+        int secondEnterAt = int.TryParse(Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_SECOND_ENTER_AT"), out int requestedSecondEnter)
+            ? Math.Clamp(requestedSecondEnter, 1, steps) : int.MaxValue;
+        int checkpointAt = int.TryParse(Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_CHECKPOINT_AT"), out int requestedCheckpoint)
+            ? Math.Clamp(requestedCheckpoint, 1, steps) : int.MaxValue;
+        string? checkpointPath = Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_CHECKPOINT_PATH");
+        bool enterSent = false, secondEnterSent = false;
         for (int step = 1; step <= steps; step++)
         {
-            try
+            if (!enterSent && step >= enterAt && pc.Keyboard.TryInjectTranslatedSet1([0x1c, 0x9c]))
             {
-                var run = whpx.RunUntilVirtualTime(checked(pc.Scheduler.Now + 100_000_000), TimeSpan.FromSeconds(30), 100_000);
-                Console.WriteLine($"INSTALLED-PROBE {step}: time={pc.Scheduler.Now}, POST={pc.Board.PostCode:X2}, RIP={run.Rip:X}, exits={run.TotalExits}, io={run.IoExits}, mmio={run.MmioExits}, irq={run.PicInterrupts}.");
+                enterSent = true;
+                Console.WriteLine($"INSTALLED-INPUT: Enter admitted at step {step}.");
             }
-            catch (Exception error)
+            if (enterSent && !secondEnterSent && step >= secondEnterAt &&
+                pc.Keyboard.TryInjectTranslatedSet1([0x1c, 0x9c]))
             {
-                Console.WriteLine($"INSTALLED-PROBE {step}: {error.GetType().Name}: {error.Message}; time={pc.Scheduler.Now}, POST={pc.Board.PostCode:X2}, RIP={whpx.GetRegister(0x10):X}.");
-                break;
+                secondEnterSent = true;
+                Console.WriteLine($"INSTALLED-INPUT: second Enter admitted at step {step}.");
+            }
+            var run = whpx.RunUntilVirtualTime(checked(pc.Scheduler.Now + 100_000_000), TimeSpan.FromSeconds(probeTimeout), 100_000);
+            Console.WriteLine($"INSTALLED-PROBE {step}: time={pc.Scheduler.Now}, POST={pc.Board.PostCode:X2}, RIP={run.Rip:X}, exits={run.TotalExits}, io={run.IoExits}, mmio={run.MmioExits}, irq={run.PicInterrupts}, ata-read={pc.Ata.ReadSectorCount}, ata-write={pc.Ata.WrittenSectorCount}, pit={pc.Pit.InterruptPulses}, bios-ticks={pc.Memory.ReadDword(0x46c)}.");
+            if (step == checkpointAt)
+            {
+                if (string.IsNullOrWhiteSpace(checkpointPath)) throw new ArgumentException("Installed checkpoint path is missing.");
+                WhpxSnapshotStore.Capture(whpx, checkpointPath);
+                Console.WriteLine($"INSTALLED-CHECKPOINT: {checkpointPath}.");
             }
         }
+        if ((enterAt != int.MaxValue && !enterSent) || (secondEnterAt != int.MaxValue && !secondEnterSent))
+            throw new InvalidOperationException("Installed Windows 98 did not admit the requested Enter scan codes.");
         Console.WriteLine("INSTALLED-DIAGNOSTIC: " + pc.Board.DebugText.Replace('\r', ' ').Replace('\n', ' '));
+        var installedCpu = whpx.Capture().Cpu;
+        var installedCs = installedCpu.Registers.Single(register => register.Name == 0x13);
+        Console.WriteLine($"INSTALLED-CPU: CS={(installedCs.High >> 32) & 0xffff:X4}, RIP={whpx.GetRegister(0x10):X}, CR0={whpx.GetRegister(0x1c):X}, RFLAGS={whpx.GetRegister(0x11):X}, graphics={pc.Video.GraphicsMode}.");
+        if (Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_EXPECT_GRAPHICS") == "1" &&
+            (!pc.Video.GraphicsMode || pc.Ata.ReadSectorCount < 10_000 ||
+             pc.Board.DebugText.Contains("Windows-Schutzfehler", StringComparison.Ordinal) ||
+             pc.HardwareResetCount != 0))
+            throw new InvalidOperationException("Installed Windows did not reach a stable WHP graphics boot.");
+        string? framePath = Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_FRAME");
+        if (!string.IsNullOrWhiteSpace(framePath))
+        {
+            var frame = pc.CaptureFrame();
+            using var stream = File.Create(framePath);
+            byte[] header = System.Text.Encoding.ASCII.GetBytes($"P6\n{frame.Width} {frame.Height}\n255\n");
+            stream.Write(header);
+            var rgb = new byte[checked(frame.ArgbPixels.Length * 3)];
+            for (int pixel = 0; pixel < frame.ArgbPixels.Length; pixel++)
+            {
+                uint argb = frame.ArgbPixels[pixel];
+                rgb[pixel * 3] = (byte)(argb >> 16);
+                rgb[pixel * 3 + 1] = (byte)(argb >> 8);
+                rgb[pixel * 3 + 2] = (byte)argb;
+            }
+            stream.Write(rgb);
+            Console.WriteLine($"INSTALLED-FRAME: {framePath}, {frame.Width}x{frame.Height}.");
+        }
+        if (Environment.GetEnvironmentVariable("DOSE_WHPX_INSTALLED_SNAPSHOT") == "1")
+        {
+            string saved = Path.Combine(ownedRoot, "installed.whpxsav");
+            ulong savedTime = pc.Scheduler.Now, savedRip = whpx.GetRegister(0x10);
+            var savedFrame = pc.CaptureFrame();
+            WhpxSnapshotStore.Capture(whpx, saved);
+            whpx.Dispose();
+            using var restored = WhpxSnapshotStore.Load(saved, Path.Combine(ownedRoot, "resumed.dosebranch"));
+            if (restored.Pc.Scheduler.Now != savedTime || restored.GetRegister(0x10) != savedRip ||
+                restored.Capture().Cpu.VirtualTimeScale != installedTimeScale ||
+                !restored.Pc.Memory.Ram.AsSpan().SequenceEqual(pc.Memory.Ram) ||
+                !restored.Pc.CaptureFrame().ArgbPixels.AsSpan().SequenceEqual(savedFrame.ArgbPixels))
+                throw new InvalidOperationException("Installed Windows WHP checkpoint did not restore PC, CPU, RAM and VGA exactly.");
+            var resumed = restored.RunUntilVirtualTime(checked(savedTime + 100_000_000), TimeSpan.FromSeconds(probeTimeout), 100_000);
+            if (resumed.TotalExits == 0 || restored.Pc.Scheduler.Now < savedTime + 100_000_000)
+                throw new InvalidOperationException("Installed Windows WHP checkpoint did not continue.");
+            Console.WriteLine($"PASS: installed Windows WHP media/CPU/RAM/VGA checkpoint continued; RIP={resumed.Rip:X}.");
+        }
         for (uint row = 0; row < 25; row++)
         {
             var line = new string(Enumerable.Range(0, 80).Select(column =>
@@ -555,6 +903,19 @@ sealed class ProofPort : IIoPortDevice
     public uint LastWrite { get; private set; }
     public uint Read(ushort port, int width) { Reads++; return 0x7a; }
     public void Write(ushort port, uint value, int width) { Writes++; LastWrite = value; }
+}
+
+sealed class SequentialWordPort : IIoPortDevice
+{
+    public int Reads { get; private set; }
+    public int Writes { get; private set; }
+    public bool BadWrite { get; private set; }
+    public uint Read(ushort port, int width) => width == 2 ? (uint)Reads++ : throw new InvalidOperationException("Expected a word read.");
+    public void Write(ushort port, uint value, int width)
+    {
+        if (width != 2) throw new InvalidOperationException("Expected a word write.");
+        BadWrite |= value != (uint)Writes++;
+    }
 }
 
 sealed class ProofMemory : IMemoryDevice

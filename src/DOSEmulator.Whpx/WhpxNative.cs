@@ -9,8 +9,15 @@ internal static unsafe class WhpxNative
     private const string Library = "WinHvPlatform.dll";
     internal const uint Rax = 0, Rcx = 1, Rdx = 2, Rbx = 3, Rsp = 4, Rip = 0x10, Rflags = 0x11;
     internal const uint Es = 0x12, Cs = 0x13, Ss = 0x14, Ds = 0x15;
-    internal const uint PendingInterruption = 0x80000000, PendingEvent = 0x80000002;
+    internal const uint PendingInterruption = 0x80000000, InterruptState = 0x80000001,
+        PendingEvent = 0x80000002, DeliverabilityNotifications = 0x80000004;
     internal const uint ReadWriteExecuteDirty = 0xf;
+
+    [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]
+    internal static extern uint TimeBeginPeriod(uint milliseconds);
+
+    [DllImport("winmm.dll", EntryPoint = "timeEndPeriod")]
+    internal static extern uint TimeEndPeriod(uint milliseconds);
 
     [StructLayout(LayoutKind.Sequential, Size = 16)]
     internal struct RegisterValue(ulong low, ulong high = 0)

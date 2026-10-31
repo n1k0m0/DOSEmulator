@@ -4,7 +4,7 @@ using DOSEmulator.Core;
 
 namespace DOSEmulator.Hardware;
 
-/// <summary>Channel 0 timer (binary modes 2/3) and separate speaker counter 2. Channel 1 remains unimplemented.</summary>
+/// <summary>Channel 0 timer (binary modes 0/2/3) and separate speaker counter 2. Channel 1 remains unimplemented.</summary>
 public sealed partial class Pit8254 : IIoPortDevice
 {
     private readonly DeviceScheduler scheduler;
@@ -30,15 +30,18 @@ public sealed partial class Pit8254 : IIoPortDevice
     /// <summary>Diagnostic indication that the guest selected programming outside the implemented reference contract.</summary>
     public bool UnsupportedProgramming => _unsupportedProgramming || SpeakerCounter.UnsupportedProgramming;
     /// <summary>Current reference output signal of Pit8254, in that component's native representation.</summary>
-    private bool Output => !_resetOutputLow && (!_running || (_mode == 2
-        ? ((scheduler.Now - _start) * Frequency / 1_000_000_000) % _reload != _reload - 1
-        : ((scheduler.Now - _start) * Frequency / 1_000_000_000) % _reload < (_reload + 1) / 2));
+    private bool Output => !_resetOutputLow && (_mode == 0
+        ? _running && (scheduler.Now - _start) * Frequency / 1_000_000_000 >= _reload
+        : !_running || (_mode == 2
+            ? ((scheduler.Now - _start) * Frequency / 1_000_000_000) % _reload != _reload - 1
+            : ((scheduler.Now - _start) * Frequency / 1_000_000_000) % _reload < (_reload + 1) / 2));
 
     /// <summary>Derives the visible PIT count from the reference channel's loaded count, mode and current tick.</summary>
     private ushort Current()
     {
         if (!_running) return (ushort)_reload;
         ulong clocks = (scheduler.Now - _start) * Frequency / 1_000_000_000;
+        if (_mode == 0) return (ushort)(clocks >= _reload ? 0 : _reload - clocks);
         // Mode 2 count is exact; mode 3 count readback remains a documented development approximation.
         return (ushort)(_reload - clocks % _reload);
     }
@@ -81,7 +84,7 @@ public sealed partial class Pit8254 : IIoPortDevice
             _resetOutputLow = false;
             _access = access; _writeHigh = _readHigh = false;
             _mode = (int)(value >> 1) & 7; if (_mode >= 6) _mode -= 4;
-            _unsupportedProgramming = _mode is not (2 or 3) || (value & 1) != 0;
+            _unsupportedProgramming = _mode is not (0 or 2 or 3) || (value & 1) != 0;
             if (_event != 0) scheduler.Cancel(_event);
             _event = 0; _running = false; _latch = null; _statusLatch = null; return;
         }
@@ -105,6 +108,12 @@ public sealed partial class Pit8254 : IIoPortDevice
     {
         ulong numerator = _reload * 1_000_000_000UL + _remainder;
         ulong delay = numerator / Frequency; _remainder = numerator % Frequency;
-        _event = scheduler.ScheduleAfter(delay, () => { InterruptPulses++; irqPulse(); if (_running) Schedule(); }, this, "event0");
+        _event = scheduler.ScheduleAfter(delay, () =>
+        {
+            _event = 0;
+            InterruptPulses++;
+            irqPulse();
+            if (_running && _mode != 0) Schedule();
+        }, this, "event0");
     }
 }

@@ -647,9 +647,22 @@ transfer_sectors:
     ; Only an odd start beyond FE00h can split a word in this 512-byte sector.
     ; Keep the ordinary aligned/noncrossing word loop free of per-word checks.
     cmp di,0xfe00
+%ifdef DOSE_APM
+    jb .read_bulk
+%endif
     jbe .read_words
     test di,1
     jnz .read_boundary_words
+%ifdef DOSE_APM
+    jmp .read_words
+.read_bulk:
+    pushf
+    pop ax
+    test ax,0x400
+    jnz .read_words
+    rep insw
+    jmp .data_done
+%endif
 .read_words:
     in ax,dx
     mov [es:di],ax
@@ -683,9 +696,26 @@ transfer_sectors:
     jmp .data_done
 .write_sector:
     cmp di,0xfe00
+%ifdef DOSE_APM
+    jb .write_bulk
+%endif
     jbe .write_words
     test di,1
     jnz .write_boundary_words
+%ifdef DOSE_APM
+    jmp .write_words
+.write_bulk:
+    pushf
+    pop ax
+    test ax,0x400
+    jnz .write_words
+    mov ebx,esi
+    mov si,di
+    es rep outsw
+    mov di,si
+    mov esi,ebx
+    jmp .data_done
+%endif
 .write_words:
     mov ax,[es:di]
     out dx,ax

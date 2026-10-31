@@ -14,7 +14,7 @@ public sealed record WhpxSnapshotManifest(string Kind, int Version, string Hardw
 /// <summary>Atomic, separately identified WHP checkpoints; product .dossav files retain their software-CPU meaning.</summary>
 public static class WhpxSnapshotStore
 {
-    private const string Kind = "DOSE-WHPX-PC-STATE-2";
+    private const string Kind = "DOSE-WHPX-PC-STATE-3";
 
     public static WhpxSnapshotManifest Capture(WhpxPcSession session, string directory)
     {
@@ -34,7 +34,7 @@ public static class WhpxSnapshotStore
             if (cpuBytes.Length is < 1 or > 1_048_576) throw new InvalidDataException("WHP CPU state exceeds the checkpoint limit.");
             File.WriteAllBytes(Path.Combine(staging, "cpu.json"), cpuBytes);
             byte[] hardwareManifest = File.ReadAllBytes(Path.Combine(staging, "hardware.dossav", "snapshot.json"));
-            var manifest = new WhpxSnapshotManifest(Kind, 2, hardware.Id,
+            var manifest = new WhpxSnapshotManifest(Kind, 3, hardware.Id,
                 Hash(hardwareManifest), Hash(cpuBytes), RuntimeHash());
             File.WriteAllBytes(Path.Combine(staging, "whpx.json"), JsonSerializer.SerializeToUtf8Bytes(manifest));
             Directory.Move(staging, target);
@@ -49,7 +49,7 @@ public static class WhpxSnapshotStore
         byte[] manifestBytes = ReadBounded(Path.Combine(source, "whpx.json"), 65536);
         var manifest = JsonSerializer.Deserialize<WhpxSnapshotManifest>(manifestBytes)
             ?? throw new InvalidDataException("Missing WHP checkpoint manifest.");
-        if (manifest.Kind != Kind || manifest.Version != 2 || !Guid.TryParseExact(manifest.HardwareId, "N", out _) ||
+        if (manifest.Kind != Kind || manifest.Version != 3 || !Guid.TryParseExact(manifest.HardwareId, "N", out _) ||
             manifest.WhpxRuntimeSha256 != RuntimeHash())
             throw new InvalidDataException("Unsupported WHP checkpoint format.");
         byte[] cpuBytes = ReadBounded(Path.Combine(source, "cpu.json"), 1_048_576);
