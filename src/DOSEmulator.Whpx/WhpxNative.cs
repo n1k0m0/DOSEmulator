@@ -7,9 +7,9 @@ namespace DOSEmulator.Whpx;
 internal static unsafe class WhpxNative
 {
     private const string Library = "WinHvPlatform.dll";
-    internal const uint Rax = 0, Rcx = 1, Rsp = 4, Rip = 0x10, Rflags = 0x11;
+    internal const uint Rax = 0, Rcx = 1, Rdx = 2, Rbx = 3, Rsp = 4, Rip = 0x10, Rflags = 0x11;
     internal const uint Es = 0x12, Cs = 0x13, Ss = 0x14, Ds = 0x15;
-    internal const uint PendingInterruption = 0x80000000;
+    internal const uint PendingInterruption = 0x80000000, PendingEvent = 0x80000002;
     internal const uint ReadWriteExecuteDirty = 0xf;
 
     [StructLayout(LayoutKind.Sequential, Size = 16)]
@@ -28,6 +28,9 @@ internal static unsafe class WhpxNative
     [DllImport(Library, ExactSpelling = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     internal static extern int WHvSetPartitionProperty(nint partition, uint property, in uint value, uint size);
+    [DllImport(Library, ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    internal static extern int WHvSetPartitionProperty(nint partition, uint property, in ulong value, uint size);
     [DllImport(Library, ExactSpelling = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     internal static extern int WHvSetupPartition(nint partition);

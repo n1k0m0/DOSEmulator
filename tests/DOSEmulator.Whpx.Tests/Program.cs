@@ -172,6 +172,123 @@ using (var pamMachine = new WhpxMappedMachine(pamMemory, pamPorts, new Pic8259()
     Console.WriteLine("PASS: real 430FX PAM shadow updates WHP firmware pages and RAM.");
 }
 
+var cpuMemory = new MemoryBus(1 << 20);
+var cpuClock = new DeviceScheduler();
+byte[] cpuProgram = [
+    0x66, 0xb8, 0, 0, 0, 0, 0x0f, 0xa2,             // CPUID leaf 0
+    0x66, 0xa3, 0x00, 0x20, 0x66, 0x89, 0x1e, 0x04, 0x20,
+    0x66, 0x89, 0x0e, 0x08, 0x20, 0x66, 0x89, 0x16, 0x0c, 0x20,
+    0x66, 0xb8, 1, 0, 0, 0, 0x0f, 0xa2,             // CPUID leaf 1
+    0x66, 0xa3, 0x10, 0x20, 0x66, 0x89, 0x16, 0x14, 0x20,
+    0x0f, 0x31, 0x66, 0xa3, 0x18, 0x20, 0x66, 0x89, 0x16, 0x1c, 0x20, // RDTSC
+    0x66, 0xb9, 0x10, 0, 0, 0, 0x0f, 0x32,         // RDMSR TSC
+    0x66, 0xa3, 0x20, 0x20, 0x66, 0x89, 0x16, 0x24, 0x20,
+    0x66, 0xb8, 0x78, 0x56, 0x34, 0x12, 0x66, 0xba, 0, 0, 0, 0,
+    0x0f, 0x30, 0x0f, 0x32,                        // WRMSR / RDMSR TSC
+    0x66, 0xa3, 0x28, 0x20, 0x66, 0x89, 0x16, 0x2c, 0x20, 0xf4
+];
+cpuProgram.CopyTo(cpuMemory.Ram.AsSpan(0x1000));
+using (var cpuMachine = new WhpxMappedMachine(cpuMemory, new IoPortBus(), new Pic8259(), cpuClock,
+    WhpxCpuContract.IntelP54cB5Subset, 100_000_000))
+{
+    cpuMachine.SetEntry(0, 0x1000);
+    cpuMachine.RunUntilHalt(TimeSpan.FromSeconds(5));
+    uint Read32(int offset) => BitConverter.ToUInt32(cpuMemory.Ram, offset);
+    ulong Read64(int offset) => (ulong)Read32(offset) | ((ulong)Read32(offset + 4) << 32);
+    if (Read32(0x2000) != 1 || Read32(0x2004) != 0x756e6547 ||
+        Read32(0x2008) != 0x6c65746e || Read32(0x200c) != 0x49656e69 ||
+        Read32(0x2010) != 0x524 || Read32(0x2014) != 0x135 ||
+        Read64(0x2018) > Read64(0x2020) || Read64(0x2028) < 0x1234_5678 ||
+        Read64(0x2028) > 0x1234_5678 + 1_000_000)
+        throw new InvalidOperationException("WHP CPUID/RDTSC/TSC-MSR results differ from the DOSE P54C clock contract.");
+    var cpuCheckpoint = cpuMachine.CaptureCpuState();
+    if (cpuCheckpoint.Contract != WhpxCpuContract.IntelP54cB5Subset || cpuCheckpoint.NominalCpuHz != 100_000_000 ||
+        cpuCheckpoint.TscEpochTicks == 0)
+        throw new InvalidOperationException("WHP checkpoint omitted the nominal P54C TSC epoch.");
+    Console.WriteLine("PASS: WHP CPUID and RDTSC/RDMSR/WRMSR follow the DOSE P54C identity and virtual 100-MHz clock.");
+}
+
+var oldCpuMemory = new MemoryBus(1 << 20);
+oldCpuMemory.Ram[0x18] = 0x00; oldCpuMemory.Ram[0x19] = 0x30;
+new byte[] { 0x0f, 0xa2, 0xf4 }.CopyTo(oldCpuMemory.Ram.AsSpan(0x1000));
+new byte[] { 0xc6, 0x06, 0x00, 0x21, 0x42, 0x58, 0x83, 0xc0, 0x02, 0x50, 0xcf }
+    .CopyTo(oldCpuMemory.Ram.AsSpan(0x3000));
+using (var oldCpuMachine = new WhpxMappedMachine(oldCpuMemory, new IoPortBus(), new Pic8259(), new DeviceScheduler(),
+    WhpxCpuContract.Intel486Dx))
+{
+    oldCpuMachine.SetEntry(0, 0x1000);
+    oldCpuMachine.RunUntilHalt(TimeSpan.FromSeconds(5));
+    if (oldCpuMemory.Ram[0x2100] != 0x42)
+        throw new InvalidOperationException("WHP exposed host CPUID to the DOSE 486 profile.");
+    Console.WriteLine("PASS: 486 WHP CPUID raises the guest's #UD handler.");
+}
+
+var unknownMsrMemory = new MemoryBus(1 << 20);
+unknownMsrMemory.Ram[0x34] = 0x00; unknownMsrMemory.Ram[0x35] = 0x30;
+new byte[] { 0x66, 0xb9, 0x11, 0, 0, 0, 0x0f, 0x32, 0xf4 }
+    .CopyTo(unknownMsrMemory.Ram.AsSpan(0x1000));
+new byte[] { 0xc6, 0x06, 0x00, 0x21, 0x42, 0xf4 }
+    .CopyTo(unknownMsrMemory.Ram.AsSpan(0x3000));
+using (var unknownMsrMachine = new WhpxMappedMachine(unknownMsrMemory, new IoPortBus(), new Pic8259(),
+    new DeviceScheduler(), WhpxCpuContract.IntelP54cB5Subset, 100_000_000))
+{
+    unknownMsrMachine.SetEntry(0, 0x1000);
+    unknownMsrMachine.RunUntilHalt(TimeSpan.FromSeconds(5));
+    if (unknownMsrMemory.Ram[0x2100] != 0x42)
+        throw new InvalidOperationException("WHP exposed an unimplemented host MSR to the DOSE P54C profile.");
+    Console.WriteLine("PASS: unknown P54C MSR raises the guest's #GP handler.");
+}
+
+var sleepMemory = new MemoryBus(1 << 20);
+var sleepClock = new DeviceScheduler();
+var sleepPic = new Pic8259();
+var sleepPorts = new IoPortBus();
+sleepPorts.Map(0x20, 2, sleepPic);
+sleepPic.Write(0x21, 0xfe, 1);
+sleepMemory.Ram[0x20] = 0x00; sleepMemory.Ram[0x21] = 0x30;
+new byte[] {
+    0x66, 0xb9, 0x10, 0, 0, 0, 0x66, 0xb8, 0x78, 0x56, 0x34, 0x12,
+    0x66, 0xba, 0, 0, 0, 0, 0x0f, 0x30, 0xfb, 0xf4, // WRMSR; STI; HLT
+    0x0f, 0x32, 0x66, 0xa3, 0x00, 0x21, 0x66, 0x89, 0x16, 0x04, 0x21, 0xf4
+}.CopyTo(sleepMemory.Ram.AsSpan(0x1000));
+new byte[] { 0xb0, 0x20, 0xe6, 0x20, 0xcf }.CopyTo(sleepMemory.Ram.AsSpan(0x3000));
+WhpxCpuState sleepState;
+ulong wakeAt;
+using (var sleeper = new WhpxMappedMachine(sleepMemory, sleepPorts, sleepPic, sleepClock,
+    WhpxCpuContract.IntelP54cB5Subset, 100_000_000))
+{
+    sleeper.SetEntry(0, 0x1000);
+    sleeper.RunUntilHalt(TimeSpan.FromSeconds(5));
+    sleepState = sleeper.CaptureCpuState();
+    if (!sleepState.Halted)
+        throw new InvalidOperationException("WHP owner did not checkpoint the stopped HLT state.");
+    wakeAt = checked(sleepClock.Now + 20_000_000);
+}
+var resumedSleepClock = new DeviceScheduler();
+resumedSleepClock.AdvanceTo(sleepClock.Now);
+var resumedSleepPic = new Pic8259();
+var resumedSleepPorts = new IoPortBus();
+resumedSleepPorts.Map(0x20, 2, resumedSleepPic);
+resumedSleepPic.Write(0x21, 0xfe, 1);
+resumedSleepClock.ScheduleAfter(wakeAt - resumedSleepClock.Now, () =>
+{
+    resumedSleepPic.SetLine(0, true);
+    resumedSleepPic.SetLine(0, false);
+});
+using (var resumedSleeper = new WhpxMappedMachine(sleepMemory, resumedSleepPorts, resumedSleepPic,
+    resumedSleepClock, WhpxCpuContract.IntelP54cB5Subset, 100_000_000))
+{
+    resumedSleeper.RestoreCpuState(sleepState);
+    var stillHalted = resumedSleeper.RunUntilHalt(TimeSpan.FromSeconds(5));
+    if (stillHalted.TotalExits != 0 || sleepMemory.Ram[0x2100] != 0)
+        throw new InvalidOperationException("Restored HLT state executed before an interrupt.");
+    resumedSleeper.RunUntilVirtualTime(wakeAt + 1_000_000, TimeSpan.FromSeconds(5));
+    ulong afterWakeTsc = BitConverter.ToUInt64(sleepMemory.Ram, 0x2100);
+    if (afterWakeTsc < 0x1234_5678 || afterWakeTsc > 0x1234_5678 + 10_000_000)
+        throw new InvalidOperationException("Restored P54C TSC epoch or HLT wakeup differs after the PIC interrupt.");
+    Console.WriteLine("PASS: WHP HLT state and written P54C TSC epoch survive a stopped checkpoint and PIC wakeup.");
+}
+
 if (Environment.GetEnvironmentVariable("DOSE_WHPX_BOOT_PROBE") == "1")
 {
     using var demo = PcMachine.CreateDemo();
@@ -200,8 +317,9 @@ if (Environment.GetEnvironmentVariable("DOSE_WHPX_BOOT_PROBE") == "1")
         throw new InvalidOperationException("WHP PC checkpoint did not round-trip on a fresh device graph.");
     ulong resumeTarget = checked(fresh.Scheduler.Now + 1_000_000);
     var continuation = resumed.RunUntilVirtualTime(resumeTarget, TimeSpan.FromSeconds(5));
-    if (fresh.Scheduler.Now < resumeTarget || continuation.TotalExits == 0)
-        throw new InvalidOperationException("Restored WHP PC did not continue advancing guest time.");
+    if (fresh.Scheduler.Now < resumeTarget || !checkpoint.Cpu.Halted || continuation.TotalExits != 0 ||
+        resumed.GetRegister(0x10) != savedRip)
+        throw new InvalidOperationException("Restored WHP PC did not preserve HLT while advancing guest time.");
     Console.WriteLine("PASS: full DOSE device graph, scheduler, RAM and WHP CPU register checkpoint resumed.");
 
     string ownedRoot = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory,
@@ -218,6 +336,9 @@ if (Environment.GetEnvironmentVariable("DOSE_WHPX_BOOT_PROBE") == "1")
             loaded.Pc.Board.Post10Count != fresh.Board.Post10Count ||
             !loaded.Pc.Memory.Ram.AsSpan().SequenceEqual(fresh.Memory.Ram))
             throw new InvalidOperationException("Persistent WHP media/PC/CPU checkpoint did not restore.");
+        var persistedHalt = loaded.RunUntilVirtualTime(persistedTime + 1_000_000, TimeSpan.FromSeconds(5));
+        if (persistedHalt.TotalExits != 0 || loaded.GetRegister(0x10) != persistedRip)
+            throw new InvalidOperationException("Persistent WHP snapshot lost its stopped HLT state.");
         Console.WriteLine("PASS: sealed WHPX snapshot restored media, device graph, RAM and CPU state.");
         string cpuPath = Path.Combine(saved, "cpu.json");
         byte[] corrupted = File.ReadAllBytes(cpuPath);

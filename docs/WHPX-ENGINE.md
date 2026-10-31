@@ -26,7 +26,11 @@ WHPX-Sitzung reserviert ihren PC, sodass `RunSteps` nicht gleichzeitig laufen ka
 - Der vorhandene kaskadierte 8259 liefert die IRQ-Vektoren. Die Lane injiziert
   sie nur bei gesetztem IF und ohne Interrupt-Schatten. Ein angehaltener Gast
   kann bis zum nächsten `DeviceScheduler`-Termin laufen und durch dessen IRQ
-  geweckt werden.
+  geweckt werden. Der ownerseitige HLT-Zustand wird auch im Snapshot gespeichert.
+- PC-Sitzungen fangen CPUID, MSR und RDTSC(P) ab. Der 486-Pfad liefert #UD für
+  CPUID/RDTSC/MSR; P54C meldet dieselben Blätter wie der DOSE-Softwarekern.
+  Sein RDTSC und MSR 10h verwenden den nominellen Profiltakt (einschließlich
+  WRMSR-Epoche), unbekannte MSRs lösen #GP aus. RDTSCP ist für P54C #UD.
 - `RunUntilVirtualTime` zählt die Dauer der WHP-Gastausführung auf die virtuelle
   Gerätezeit und lässt Hostarbeit für I/O und MMIO aus. Diese Echtzeit-Semantik
   ist nicht identisch mit den deterministischen CPU-Zyklen von `RunSteps`.
@@ -34,7 +38,7 @@ WHPX-Sitzung reserviert ihren PC, sodass `RunSteps` nicht gleichzeitig laufen ka
   DOSE-Gerätezustand, Scheduler, RAM und die für diese Lane erfassten WHP-Register. `Resume` prüft und
   lädt den Gerätezustand in einen frisch erzeugten, gleich konfigurierten PC und
   setzt dann den WHP-Prozessor fort. `WhpxSnapshotStore` veröffentlicht zusätzlich
-  einen eigenen `.whpxsav`-Ordner mit geprüftem WHP-CPU-Sidecar und einer
+  einen eigenen `.whpxsav`-Ordner (Format 2) mit geprüftem WHP-CPU-Sidecar und einer
   vollständigen verschachtelten `.dossav`-Mediengeneration. Das normale
   `.dossav`-Format und dessen Software-CPU-Bedeutung bleiben unverändert.
 
@@ -43,7 +47,9 @@ WHPX-Sitzung reserviert ihren PC, sodass `RunSteps` nicht gleichzeitig laufen ka
 `dotnet run --project tests/DOSEmulator.Whpx.Tests -c Release` führt auf einem
 Windows-x64-Host mit WHP eigene kurze Gastprogramme aus: RAM/ROM, VGA-artige
 MMIO-Lese- und Schreibzugriffe, Port-I/O, `REP INSB`, A20-Aliasing,
-zeitgesteuerten PIC-IRQ und dessen `IRET`. Ohne WHP meldet der Runner `SKIP`.
+zeitgesteuerten PIC-IRQ und dessen `IRET`, P54C-CPUID/TSC-MSR/RDTSC,
+486-#UD, unbekannten MSR-#GP und HLT-/TSC-Snapshot mit PIC-Wecksignal.
+Ohne WHP meldet der Runner `SKIP`.
 
 Mit `DOSE_WHPX_BOOT_PROBE=1` läuft der eingebaute Demo-PC bis über POST und
 Bootsektor; danach wird ein gestoppter Vollgeräte-Checkpoint in einen neuen
@@ -73,12 +79,13 @@ Softwarepfads liefen nach der Integration ohne Fehler.
 ## Verbleibende Grenze
 
 Ein Start von Windows 95/98 über WHPX ist noch nicht freigegeben. Vorher müssen
-insbesondere CPUID/MSR/P54C-Vertrag, weitere CPU-Zustände einschließlich
-APIC/XSAVE, TSC-Frequenz gegenüber dem nominellen
-100/133-MHz-Gerätetakt, Reset-/Triple-Fault-Domänen und die Fortsetzung eines
+insbesondere weitere CPU-Zustände einschließlich APIC/XSAVE, der P54C-Vertrag
+in Protected Mode/V86, Reset-/Triple-Fault-Domänen und die Fortsetzung eines
 echten Windows-Gasts aus dem neuen Medien-Snapshot geprüft werden. Die WHP-Eigenschaft für eine
 eigene Prozessorfrequenz wurde auf diesem Host beim Partitionsaufbau abgewiesen;
-die Lane verwendet deshalb die tatsächliche WHP-Ausführungsdauer. Auch ein
+RDTSC/MSR melden deshalb einen eigenen nominellen Zähler aus der virtuellen
+Gerätezeit. Die Gerätezeit selbst verwendet weiterhin die tatsächliche
+WHP-Ausführungsdauer und ist nicht zyklusidentisch zum Softwarekern. Auch ein
 Vergleich der Video-/MMIO-Exit-Rate mit einem laufenden Windows-Gast fehlt.
 Ein zusätzlich untersuchter Real-Mode-Zugriff auf einen ungemappten Bereich
 oberhalb des installierten RAM lieferte von WHP keine gültige lineare Adresse;
@@ -89,4 +96,7 @@ Software-CPU-Pfad.
 
 WHP-Referenzen: [GPA-Mapping](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/whvmapgparange),
 [Dirty-Bitmap](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/whvquerygparangedirtybitmap),
-[I/O- und MMIO-Instruktions-Emulator](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-instruction-emulator/funcs/whvemulatortryemulation).
+[I/O- und MMIO-Instruktions-Emulator](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-instruction-emulator/funcs/whvemulatortryemulation),
+[CPUID-Exit](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/cpuidaccess),
+[MSR-Exit](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/msraccess),
+[RDTSC-Exit](https://learn.microsoft.com/en-us/virtualization/api/hypervisor-platform/funcs/rdtsc).

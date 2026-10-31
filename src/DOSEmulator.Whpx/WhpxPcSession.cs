@@ -27,7 +27,9 @@ public sealed class WhpxPcSession : IDisposable
         WhpxMappedMachine? engine = null;
         try
         {
-            engine = new WhpxMappedMachine(pc.Memory, pc.Ports, pc.Pic, pc.Scheduler);
+            engine = new WhpxMappedMachine(pc.Memory, pc.Ports, pc.Pic, pc.Scheduler,
+                pc.Profile.IsP54c ? WhpxCpuContract.IntelP54cB5Subset : WhpxCpuContract.Intel486Dx,
+                pc.Profile.IsP54c ? (uint)pc.Profile.CpuHz : 0);
             if (setResetEntry) engine.SetEntry(0xf000, 0xfff0);
             _whpx = engine;
         }
