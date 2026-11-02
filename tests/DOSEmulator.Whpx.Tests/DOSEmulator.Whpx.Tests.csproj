@@ -5,6 +5,8 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../../artifacts/guests/mmx-voodoo-test.bin" LogicalName="MMX-VOODOO.BIN" />
+    <EmbeddedResource Include="../../artifacts/guests/mmx-voodoo-test.img" LogicalName="MMX-VOODOO.IMG" />
     <ProjectReference Include="../../src/DOSEmulator.Whpx/DOSEmulator.Whpx.csproj" />
     <ProjectReference Include="../../src/DOSEmulator.Core/DOSEmulator.Core.csproj" />
     <ProjectReference Include="../../src/DOSEmulator.Hardware/DOSEmulator.Hardware.csproj" />

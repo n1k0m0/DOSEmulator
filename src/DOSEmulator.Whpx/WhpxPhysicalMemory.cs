@@ -27,6 +27,8 @@ internal sealed unsafe class WhpxPhysicalMemory : IDisposable
     private bool _firmwareInitialized;
     private (bool A20, uint Decoded, uint HoleStart, uint HoleLength)? _topology;
     private bool _disposed;
+    /// <summary>Derived invalidation epoch for stopped-owner translations; every host RAM write and executable/mapping change invalidates reuse.</summary>
+    internal ulong TranslationMemoryVersion { get; private set; }
 
     /// <summary>Allocates aligned CPU RAM and executable own firmware copies, then binds only its own RAM-change observer.</summary>
     internal WhpxPhysicalMemory(nint partition, MemoryBus bus)
@@ -71,6 +73,7 @@ internal sealed unsafe class WhpxPhysicalMemory : IDisposable
     /// <summary>Marks device-written physical pages needed by executable PAM shadow reconciliation.</summary>
     private void OnHostRamWrite(uint address, int length)
     {
+        unchecked { TranslationMemoryVersion++; }
         int first = (int)(address >> 12), last = (int)((address + (uint)length - 1) >> 12);
         for (int page = first; page <= last; page++) _hostTouchedPages.Add(page);
     }
@@ -95,7 +98,10 @@ internal sealed unsafe class WhpxPhysicalMemory : IDisposable
                 _hostFirmwareDecode[start] = config;
             }
             if (all)
+            {
+                unchecked { TranslationMemoryVersion++; }
                 for (uint offset = 0; offset < length; offset++) ((byte*)copy)[offset] = _bus.ReadByte(start + offset);
+            }
             else if (device is Intel82437Fx)
                 foreach (int page in _hostTouchedPages)
                 {
@@ -110,6 +116,7 @@ internal sealed unsafe class WhpxPhysicalMemory : IDisposable
 
         var topology = (_bus.A20Enabled, _bus.DecodedRamBytes, _bus.RamHoleStart, _bus.RamHoleLength);
         if (_topology == topology) return;
+        unchecked { TranslationMemoryVersion++; }
 
         // HIMEM repeatedly toggles A20 while probing RAM. Reuse exact immutable
         // page classifications instead of rebuilding tens of thousands of rows,

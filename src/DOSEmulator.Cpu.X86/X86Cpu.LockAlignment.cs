@@ -27,7 +27,7 @@ public sealed partial class X86Cpu
     {
         if (!_lockPrefix) return;
         bool allowed = extended ? opcode is 0xab or 0xb3 or 0xbb or 0xba or 0xb0 or 0xb1 or 0xc0 or 0xc1
-            || opcode == 0xc7 && Model == X86CpuModel.IntelP54cB5Subset
+            || opcode == 0xc7 && IsPentiumCore
             : opcode == 0x0f || (opcode <= 0x31 && (opcode & 7) <= 1) ||
                 opcode is 0x80 or 0x81 or 0x83 or 0x86 or 0x87 or 0xf6 or 0xf7 or 0xfe or 0xff;
         if (!allowed) InvalidLock();

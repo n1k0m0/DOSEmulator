@@ -174,6 +174,43 @@ start:
     xor eax,eax
     out dx,eax
 %endif
+%ifdef DOSE_VOODOO
+    ; The additional SST-1 target is real PCI function 00:06.0. Reserve its complete
+    ; sixteen-MiB non-VGA window; only the actual guest CF8/CFC operations enable it.
+    mov dx,0cf8h
+    mov eax,080003010h
+    out dx,eax
+    mov dx,0cfch
+    mov eax,0d0000000h
+    out dx,eax
+    mov dx,0cf8h
+    mov eax,080003004h
+    out dx,eax
+    mov dx,0cfch
+    mov ax,2
+    out dx,ax
+    ; The board shares SST-1 INTA with its existing S3/PCI PIRQA wire on IRQ11.
+    ; Keep the chip's power-on IRQ5 value out of the ISA SB16 allocation.
+    mov dx,0cf8h
+    mov eax,08000303ch
+    out dx,eax
+    mov dx,0cfch
+    mov al,11
+    out dx,al
+    mov dx,04d1h
+    in al,dx
+    or al,8
+    out dx,al
+    mov dx,0cf8h
+    mov eax,080003860h
+    out dx,eax
+    mov dx,0cfch
+    mov al,11
+    out dx,al
+    mov dx,0cf8h
+    xor eax,eax
+    out dx,eax
+%endif
     xor di,di
 %ifdef DOSE_NETWORK
     ; Only the optional network ROM assigns its two actual RTL8029 slots.

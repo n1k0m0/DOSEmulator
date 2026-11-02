@@ -408,7 +408,9 @@ try
     var status = machine.GetStatus();
     var frame = machine.CaptureFrame();
     string hash = Convert.ToHexString(SHA256.HashData(System.Runtime.InteropServices.MemoryMarshal.AsBytes(frame.ArgbPixels.AsSpan())));
-    string cpuLimitation = machine.Profile.IsTrio64
+    string cpuLimitation = machine.Profile.IsP55c
+        ? "DOSE MMX subset on the own FX/PIIX/S3 board, at the configured nominal virtual clock. This does not claim a 430TX chipset or complete historical P55C stepping. "
+        : machine.Profile.IsTrio64
         ? "DOSE 430FX/PIIX reset board with original S3 86C764 PCI VGA/bank/LFB/8bpp subset, P54C B5 at nominal 100 MHz with 32 MiB. Acceleration, full S3 and Windows 95 acceptance remain pending. "
         : machine.Profile.IsPiixReset
         ? "DOSE 82437FX / original-PIIX IDE/busmaster and CF9/INIT reset-domain subset, P54C B5 at nominal 100 MHz with 32 MiB. Own pulse timing and external ISA wiring; complete historical chipset/Windows 95 acceptance remain pending. "
@@ -423,7 +425,7 @@ try
         : "Development 486 subset. Documented reference coverage, not a universal CPU/device compatibility claim. ";
     var result = new { status, fullSnapshot = snapshotResult, mediaCheckpoint = mediaCheckpointResult, text = machine.Video.ReadText(), frameHash = hash, frame.Width, frame.Height, frame.ModeGeneration,
         graphicsCapture = graphicsDirectory is null ? null : new { directory = graphicsDirectory, intervalNanoseconds = 100_000_000, maximumFrames = 128, frames = graphicsFrames },
-        cpu = new { machine.Cpu.Model, machine.Cpu.TimestampFrequency, machine.Cpu.Cr4, machine.Cpu.HasTimeStampCounter, machine.Cpu.TimestampCounter,
+        cpu = new { machine.Cpu.Model, machine.Cpu.HasMmx, machine.Cpu.TimestampFrequency, machine.Cpu.Cr4, machine.Cpu.HasTimeStampCounter, machine.Cpu.TimestampCounter,
             machine.Cpu.ProtectedMode, machine.Cpu.CurrentPrivilegeLevel, machine.Cpu.Eip, machine.Cpu.Eflags, machine.Cpu.Cr0, machine.Cpu.Cr2, machine.Cpu.Cr3,
             machine.Cpu.ProtectedModeEntries, machine.Cpu.ProtectedModeExits, machine.Cpu.ProtectedInstructions,
             machine.Cpu.FpuControlWord, machine.Cpu.FpuStatusWord, machine.Cpu.FpuTagWord, machine.Cpu.X87Instructions,

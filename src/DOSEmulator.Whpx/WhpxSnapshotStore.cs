@@ -87,13 +87,13 @@ public static class WhpxSnapshotStore
         if (hardware.Id != manifest.HardwareId) throw new InvalidDataException("Nested hardware snapshot identity differs.");
         var cpu = ReadJson<WhpxCpuState>(cpuBytes);
         WhpxMappedMachine.ValidateCpuState(cpu);
-        if (requireP54c && cpu.Contract != WhpxCpuContract.IntelP54cB5Subset) throw new InvalidDataException("GUI WHPX requires a P54C checkpoint.");
+        if (requireP54c && cpu.Contract is not (WhpxCpuContract.IntelP54cB5Subset or WhpxCpuContract.IntelP55cMmxSubset)) throw new InvalidDataException("GUI WHPX requires a Pentium checkpoint.");
         string mediaDirectory = Path.Combine(source, "hardware.dossav", "media.dosemedia");
         using (var media = new FileStream(Path.Combine(mediaDirectory, "media.json"), FileMode.Open, FileAccess.Read, FileShare.Read))
         {
             var definition = MediaCheckpointStore.ReadSnapshotDefinition(media, mediaDirectory);
-            if (cpu.Contract != (definition.Hardware.IsP54c ? WhpxCpuContract.IntelP54cB5Subset : WhpxCpuContract.Intel486Dx) ||
-                cpu.NominalCpuHz != (definition.Hardware.IsP54c ? (uint)definition.Hardware.CpuHz : 0))
+            if (cpu.Contract != WhpxPcSession.ContractFor(definition.Hardware) ||
+                cpu.NominalCpuHz != (definition.Hardware.IsPentium ? (uint)definition.Hardware.CpuHz : 0))
                 throw new InvalidDataException("Native CPU contract differs from the saved PC profile.");
         }
         PcMachine restored = SnapshotStore.LoadExternalCpu(Path.Combine(source, "hardware.dossav"), branchDirectory);

@@ -36,6 +36,7 @@ public sealed partial class PcMachine
             Floppy.AssertPiixReset(); Keyboard.AssertPiixReset(); Board.ApplyPiixHardReset(); FpuError.ApplyPiixHardReset();
             Dma.ApplyPiixHardReset(); Pit.ApplyPiixHardReset();
             if (S3 is not null) S3.ApplyPiixHardReset(); else Video.ApplyPiixHardReset();
+            Voodoo?.ApplyPiixHardReset();
             HostBridge!.ResetConfiguration(); Pci!.ResetAddress(); PiixIrq!.ApplyPiixHardReset(); Pic.ApplyPiixHardReset();
             _keyboardResetWasAsserted = false; _resetPulseUntil = 0;
             // RTC/battery, external PS/2/gameport pins and already emitted output remain powered.

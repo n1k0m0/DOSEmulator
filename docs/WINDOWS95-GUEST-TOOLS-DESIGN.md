@@ -1,5 +1,7 @@
 # DOSE Tools for Windows 95
 
+The current [Windows 95 and 98 guest installers](GUEST-INSTALLERS.md) provide the existing clock helper, startup selection, MiniGlide, shortcuts and removal with restoration. The file-transfer and clipboard components described below remain a design for future work.
+
 Status: product design, updated 28 October 2026 following the user's installer/background-app/import/export proposal. The installer, guest connection and transfer UI are not implemented yet. All new installer, guest-app and DOSE transfer UI text will be **English**.
 
 ## Version 1: install once, transfer files through DOSE

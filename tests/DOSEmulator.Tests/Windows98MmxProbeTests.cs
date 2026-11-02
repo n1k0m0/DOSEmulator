@@ -48,7 +48,7 @@ internal static class Windows98MmxProbeTests
     /// <summary>Registers modes, exception precedence, exact instruction boundaries and feature-advertisement controls.</summary>
     public static void AddTo(Action<string, Action> test)
     {
-        foreach (X86CpuModel model in Enum.GetValues<X86CpuModel>())
+        foreach (X86CpuModel model in new[] { X86CpuModel.Intel486Dx, X86CpuModel.IntelP54cB5Subset })
         {
             foreach (bool code32 in new[] { false, true })
             foreach (byte[] prefix in new byte[][] { [], [0x66], [0x67, 0xf3], [0xf0] })
@@ -129,7 +129,7 @@ internal static class Windows98MmxProbeTests
             });
             test($"M4 Win98 EMMS correction retains unclaimed neighboring diagnostic model={model}", () =>
             {
-                var (c, _) = ProtectedModeTests.Rig([0x0f, 0x76], model: model);
+                var (c, _) = ProtectedModeTests.Rig([0x0f, 0x70], model: model);
                 try { c.Step(); } catch (UnsupportedInstructionException) { return; }
                 throw new Exception("EMMS correction broadened an unclaimed neighboring opcode.");
             });

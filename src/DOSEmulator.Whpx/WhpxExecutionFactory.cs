@@ -14,7 +14,7 @@ public sealed class WhpxExecutionFactory : IMachineExecutionFactory
     public void ValidateProfile(MachineProfile profile)
     {
         profile.Validate();
-        if (!profile.IsP54c) throw new InvalidOperationException("WHPX requires a Pentium profile. Select SOFTWARE before choosing the 486 platform.");
+        if (!profile.IsPentium) throw new InvalidOperationException("WHPX requires a Pentium profile. Select SOFTWARE before choosing the 486 platform.");
         if (!WhpxRealModeMachine.IsAvailable()) throw new PlatformNotSupportedException("Windows Hypervisor Platform is unavailable. Enable it in Windows Features or start with --engine software.");
     }
     /// <summary>Starts one fresh native CPU without taking over the caller's PC disposal responsibility.</summary>

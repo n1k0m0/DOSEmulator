@@ -73,7 +73,7 @@ Diese Profile sind Entwicklungsziele. Erst nach bestandener Abnahme erscheinen s
 
 `Virtual486AT-v1` ist ausdrücklich eine eigene dokumentierte Referenzplattform mit eigener Firmware. Sie wird nicht als Nachbildung eines konkreten kommerziellen Mainboards ausgegeben. Die Intel-Chipsatzprofile werden erst aktiviert, wenn deren benötigte Register, PCI-Funktionen und Firmwarepfade umgesetzt sind. Vorher gibt es keinen bloß umbenannten „430TX“.
 
-Voodoo Graphics bezeichnet hier die erste 3dfx-Generation. Voodoo2 ist die nächste Ausbaustufe; Banshee und Voodoo3 folgen als eigene 2D-/3D-Kombikarten. „Voodoo 3D“ wird somit sowohl als gewünschte 3D-Beschleunigung als auch als spätere Möglichkeit einer Voodoo3 abgedeckt.
+Voodoo Graphics bezeichnet hier die SST-1-Generation. Voodoo2 ist die nächste Ausbaustufe; Banshee und Voodoo3 folgen als eigene 2D-/3D-Kombikarten. „Voodoo 3D“ wird somit sowohl als gewünschte 3D-Beschleunigung als auch als spätere Möglichkeit einer Voodoo3 abgedeckt.
 
 ### 3.3 Kompatibilitätsregeln
 
@@ -264,7 +264,7 @@ Für jedes Profil existiert ein Firmwaremanifest: System-BIOS, VGA-/weitere Opti
 | 1 | VGA-Referenz | Textmodus, Fonts/Cursor, 16-Farben-Planarmodi, 256-Farben-Modus, Latches, DAC, CRTC, Attribute-/Sequencer-/Graphics-Controller, Chain-4 und unverkettete Modi |
 | 2 | Tseng ET4000AX | Konkrete SVGA-Register, Banking, passende Firmware und Treiber |
 | 3 | S3 Trio64 PCI | PCI, höhere Auflösungen/Farbtiefen, Linear Framebuffer und 2D-Beschleunigung soweit vom Treiber benötigt |
-| 4 | 3dfx Voodoo Graphics PCI | 3D-Zusatzkarte neben VGA/SVGA, Register, Speicher und Rasterizer |
+| 4 | SST-1 Graphics PCI | 3D-Zusatzkarte neben VGA/SVGA, Register, Speicher und Rasterizer |
 | 5 | Voodoo2 | Eigenes Modell; zusätzliche Funktionen, SLI erst nach stabiler Einzelkarte |
 | 6 | Banshee / Voodoo3 | Eigener VGA-/2D-/3D-Pfad und eigene Firmware-/Treibertests |
 | Optional | MDA/Hercules/CGA/EGA und weitere SVGA-Karten | Für ältere Software; jeweils eigene Gerätemodelle |
@@ -288,11 +288,11 @@ Host-Vollbild mit 2560×1440 kann deshalb ein korrekt skaliertes 320×200-Gastbi
 
 CRTC und Rasterzeit laufen im Gerät. Auch Programme, die Retrace abfragen, Register mitten im Bild ändern, Startadressen umschalten oder VGA-Latches benutzen, müssen einen definierten Ablauf erhalten. Ein bloßes Kopieren des Videospeichers einmal pro Hostframe reicht dafür nicht.
 
-### 9.3 3dfx-Pfad
+### 9.3 SST-1-Pfad
 
 Voodoo wird auf Hardwareebene nachgebildet: PCI-Konfiguration, BARs, MMIO, Registerzustand, FIFO/Befehle soweit im Modell vorhanden, Framebuffer-/Texturspeicher, Texturformate, Rasterisierung, Tiefentest, Blending, Dithering, Status-/Busy-Verhalten und Buffer-Swaps. Für Voodoo Graphics/Voodoo2 kommt die Umschaltung zwischen durchgereichtem VGA-Bild und 3D-Ausgabe hinzu.
 
-Ein Gast verwendet seine 3dfx-Treiber und Bibliotheken. Glide ist damit ein API innerhalb des Gasts; Direct3D/OpenGL können ebenfalls über passende Gasttreiber auf dieselbe Karte zugreifen. Eine alleinige Übersetzung von Glide-Aufrufen im Host erfüllt das Ziel vollständiger Hardwareemulation nicht.
+Ein Gast verwendet seine SST-1-Treiber und Bibliotheken. Glide ist damit ein API innerhalb des Gasts; Direct3D/OpenGL können ebenfalls über passende Gasttreiber auf dieselbe Karte zugreifen. Eine alleinige Übersetzung von Glide-Aufrufen im Host erfüllt das Ziel vollständiger Hardwareemulation nicht.
 
 Zwei spätere Ausführungswege teilen den emulierten Gerätezustand:
 

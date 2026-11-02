@@ -41,7 +41,7 @@ public sealed partial class X86Cpu
             // Intel leaves LAR bits 19:16 undefined. DOSE's P54C preserves the raw
             // descriptor nibble for deterministic legacy rights round trips.
             // This compatibility policy is not a measured B5 silicon claim.
-            if (!limit && Width == 4 && Model == X86CpuModel.IntelP54cB5Subset)
+            if (!limit && Width == 4 && IsPentiumCore)
                 value |= descriptor.High & 0x000f0000u;
             WriteRegister((modrm >> 3) & 7, Width, value);
         }

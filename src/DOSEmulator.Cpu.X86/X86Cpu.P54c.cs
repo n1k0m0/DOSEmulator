@@ -3,12 +3,18 @@
 namespace DOSEmulator.Cpu.X86;
 
 /// <summary>Explicit core-development boundaries; the P54C subset is not a complete Pentium platform.</summary>
-public enum X86CpuModel { Intel486Dx, IntelP54cB5Subset }
+public enum X86CpuModel { Intel486Dx, IntelP54cB5Subset, IntelP55cMmxSubset }
 
 public sealed partial class X86Cpu
 {
     /// <summary>Constructor-fixed instruction-set boundary, persisted as a checked snapshot invariant.</summary>
     public X86CpuModel Model { get; }
+
+    /// <summary>Whether this constructor-selected Pentium extension owns the original 57-instruction MMX set.</summary>
+    public bool HasMmx => Model == X86CpuModel.IntelP55cMmxSubset;
+
+    /// <summary>Shared Pentium architectural facilities, independently from the additional MMX instruction set.</summary>
+    private bool IsPentiumCore => Model is X86CpuModel.IntelP54cB5Subset or X86CpuModel.IntelP55cMmxSubset;
 
     /// <summary>Reports only implemented features; no host CPUID or unimplemented P54C facilities are exposed.</summary>
     private void IdentifyCpu()
@@ -23,7 +29,7 @@ public sealed partial class X86Cpu
         else if (leaf == 1)
         {
             // P54C B5 signature. TSC, MSR and DE require this explicitly clock-bound development subset.
-            a = 0x524; d = HasTimeStampCounter ? 0x135u : 0x101u;
+            a = HasMmx ? 0x543u : 0x524u; d = (HasTimeStampCounter ? 0x135u : 0x101u) | (HasMmx ? 1u << 23 : 0);
         }
         // Unsupported leaves use an explicit all-zero DOSE policy, not a stepping-accuracy claim.
         SetRegister(Register.Ax, a); SetRegister(Register.Bx, b);

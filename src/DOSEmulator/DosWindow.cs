@@ -81,7 +81,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
     private int GuestAreaHeight => PixelsHeight - (_showDebugOverlay ? 40 : 0);
 
     /// <summary>Reports the instantiated board and nominal clock without presenting its validation subset as a finished historical PC.</summary>
-    private static string PlatformLabel(MachineProfile? profile) => profile?.IsWindows95Board == true
+    private static string PlatformLabel(MachineProfile? profile) => profile?.IsP55c == true
+        ? $"DOSE MMX / FX + PIIX + S3 / P55C subset / {profile.CpuHz / 1_000_000} MHz" : profile?.IsWindows95Board == true
         ? $"430FX / PIIX / S3 / P54C B5 subset / {profile.CpuHz / 1_000_000} MHz" : profile?.IsPciBiosBoard == true
         ? "430FX / PIIX / S3 / PCI BIOS subset / P54C 100 MHz" : profile?.IsTrio64 == true
         ? "430FX / PIIX / Trio64 subset / P54C 100 MHz" : profile?.IsPiixReset == true
@@ -363,7 +364,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         {
         "MAIN MENU" => ["CONTINUE", "VIDEO SETTINGS", "MACHINE / HARDWARE", "MEDIA", "NETWORK ADAPTERS", "AUDIO SETTINGS", "RESET / POWER", "SAVED MACHINES", "TIME AND SPEED", "EXIT"],
         "UNSAVED HARDWARE CHANGES" => ["APPLY CHANGES / COLD RESTART", "DISCARD CHANGES / CONTINUE", "KEEP EDITING"],
-        "CPU / PLATFORM" => ["PLATFORM: " + (profile.IsWindows95Board ? "PENTIUM PCI / 430FX + PIIX + S3" : profile.IsFxHost ? "FIXED CHIPSET TEST BOARD" : profile.IsP54c ? "PENTIUM ISA AT" : "486 ISA AT"),
+        "CPU / PLATFORM" => ["PLATFORM: " + (profile.IsP55c ? "PENTIUM MMX / OWN FX + PIIX + S3 BOARD" : profile.IsWindows95Board ? "PENTIUM PCI / 430FX + PIIX + S3" : profile.IsFxHost ? "FIXED CHIPSET TEST BOARD" : profile.IsP54c ? "PENTIUM ISA AT" : "486 ISA AT"),
             $"CPU CLOCK: {profile.CpuHz / 1_000_000} MHZ (SUPPORTED TUPLES)", $"RAM: {profile.RamMiB} MIB", "BOARD CHANGE CAN REQUIRE NEW GUEST DRIVERS",
             "DETACH CD MEDIA / PCI CARDS BEFORE AN ISA BOARD", "BACK"],
         "NETWORK HELP" => ["NAT: DHCP / GATEWAY 10.0.2.2 / DNS 10.0.2.3", "ADAPTER 2 NAT USES 10.0.3.0/24",
@@ -384,7 +385,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         "VIDEO SETTINGS" => [$"FILTER          {_settings.Filter.ToUpperInvariant()}", $"UPSCALE         {_settings.Upscale.ToUpperInvariant()}",
             $"ASPECT          {(_settings.CorrectAspect ? "4:3" : "SOURCE PIXELS")}", $"VSYNC           {(_settings.VSync ? "ON" : "OFF")}",
             $"DEBUG OVERLAY   {(_showDebugOverlay ? "ON" : "OFF")}", $"MULTICORE VIDEO {(_parallelVideo ? "ON" : "OFF")}", $"HOST FRAME CAP  {_presentationHz} HZ (GUEST TIME UNCHANGED)", "BACK"],
-        "MACHINE / HARDWARE" => [profile.IsWindows95Board ? $"CPU: PENTIUM {profile.CpuHz / 1_000_000} MHZ / 100 OR 133 (APPLY)" : profile.IsTrio64 ? "CPU: FX/PIIX/S3 / P54C 100 MHZ (FIXED)" : profile.IsPiixReset ? "CPU: FX/PIIX RESET / P54C 100 MHZ (FIXED)" : profile.IsPiixIde ? "CPU: FX/PIIX IDE / P54C 100 MHZ (FIXED)" : profile.IsPiixIrq ? "CPU: FX/PIIX IRQ / P54C 100 MHZ (FIXED)" : profile.IsFxHost ? "CPU: 430FX HOST / P54C 100 MHZ (FIXED)" : profile.IsP54c ? "CPU: DOSE AT / P54C B5 SUBSET 90 MHZ (RESTART)" : "CPU: 486DX / 33 MHZ (RESTART)", $"RAM: {profile.RamMiB} MIB ({(profile.GetSupportedRamMiB().Length == 1 ? "FIXED HOST BOARD" : "CHANGE RESTARTS")})",
+        "MACHINE / HARDWARE" => [profile.IsP55c ? $"CPU: PENTIUM MMX {profile.CpuHz / 1_000_000} MHZ / 166, 200 OR 233 (APPLY)" : profile.IsWindows95Board ? $"CPU: PENTIUM {profile.CpuHz / 1_000_000} MHZ / 100 OR 133 (APPLY)" : profile.IsTrio64 ? "CPU: FX/PIIX/S3 / P54C 100 MHZ (FIXED)" : profile.IsPiixReset ? "CPU: FX/PIIX RESET / P54C 100 MHZ (FIXED)" : profile.IsPiixIde ? "CPU: FX/PIIX IDE / P54C 100 MHZ (FIXED)" : profile.IsPiixIrq ? "CPU: FX/PIIX IRQ / P54C 100 MHZ (FIXED)" : profile.IsFxHost ? "CPU: 430FX HOST / P54C 100 MHZ (FIXED)" : profile.IsP54c ? "CPU: DOSE AT / P54C B5 SUBSET 90 MHZ (RESTART)" : "CPU: 486DX / 33 MHZ (RESTART)", $"RAM: {profile.RamMiB} MIB ({(profile.GetSupportedRamMiB().Length == 1 ? "FIXED HOST BOARD" : "CHANGE RESTARTS")})",
             $"FLOPPY A: {profile.FloppyDriveA.ToUpperInvariant()} (CHANGE RESTARTS)", $"FLOPPY B: {profile.FloppyDriveB.ToUpperInvariant()} (CHANGE RESTARTS)",
             $"BOOT: {profile.BootDevice.ToUpperInvariant()} (CHANGE RESTARTS)",
             profile.SoundCard switch { "adlib-opl2-development" => "SOUND: ADLIB OPL2 MELODIC DEV (RESTART)",
@@ -397,7 +398,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
             $"GAMEPORT: {(profile.Gameport == "none" ? "NONE" : "IBM ANALOG / VIRTUAL INPUT")} (RESTART)",
             $"COM1: {(profile.SerialPort == "none" ? "NONE" : "PC16550D / VIRTUAL INPUT")} (RESTART)",
             $"LPT1: {(profile.ParallelPort == "none" ? "NONE" : "IBM PRINTER / VIRTUAL PINS")} (RESTART)",
-            $"MIDI: {(profile.MidiInterface == "none" ? "NONE" : "CT1740 MPU-UART / VIRTUAL")} (RESTART)", "NETWORK ADAPTERS...", "APPLY CHANGES / COLD RESTART", "DISCARD CHANGES", "BACK"],
+            $"MIDI: {(profile.MidiInterface == "none" ? "NONE" : "CT1740 MPU-UART / VIRTUAL")} (RESTART)", "NETWORK ADAPTERS...", "APPLY CHANGES / COLD RESTART", "DISCARD CHANGES",
+            $"3D ACCELERATOR: {(profile.IsVoodoo ? "VOODOO GRAPHICS 4M / DEVELOPMENT" : "NONE")} (APPLY)", "BACK"],
         "SOUND CARD RESOURCES" => profile.IsSb16
             ? [$"SB16 PORT: {profile.SoundBlasterBasePort:X3}H (CHANGE RESTARTS)",
                 $"SB16 IRQ: {profile.SoundBlasterIrq} (CHANGE RESTARTS)",
@@ -654,7 +656,12 @@ public sealed partial class DosWindow : SharpPixelsWindow
                 case 13: OpenPage("NETWORK"); break;
                 case 14: ApplyConfiguration(); break;
                 case 15: DiscardConfiguration(); break;
-                case 16: OpenPage("MAIN MENU"); break;
+                case 16:
+                    if ((_configurationDraft?.Requested ?? Volatile.Read(ref _status)?.Configuration)?.IsWindows95Board == true)
+                        ChangeProfile(p => p with { ThreeDAccelerator = p.IsVoodoo ? "none" : MachineProfile.VoodooGraphicsId });
+                    else _notice = "SELECT THE PCI/S3 WINDOWS BOARD BEFORE ADDING VOODOO";
+                    break;
+                case 17: OpenPage("MAIN MENU"); break;
             }
         }
         else if (_page == "CPU / PLATFORM")
@@ -995,7 +1002,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
     {
         if (Volatile.Read(ref _status)?.Configuration is { IsAtapi: true } p && p.AtapiSlot == slot)
         { OpenPage("OPTICAL DRIVE"); return; }
-        using var image = new OpenFileDialog { Title = "Festplatte fÃƒÂ¼r IDE " + slot, Filter = "RAW-Festplatten (*.img;*.raw;*.ima)|*.img;*.raw;*.ima" };
+        using var image = new OpenFileDialog { Title = "Festplatte fÃƒÆ’Ã‚Â¼r IDE " + slot, Filter = "RAW-Festplatten (*.img;*.raw;*.ima)|*.img;*.raw;*.ima" };
         if (image.ShowDialog() != DialogResult.OK) return;
         string? overlayPath = null;
         if (writable)

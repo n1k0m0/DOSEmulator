@@ -38,6 +38,11 @@ internal sealed class MachineSettingsDraft
         if (delta == 0) return profile;
         if (profile.IsWindows95Board)
         {
+            if (profile.IsP55c)
+            {
+                int[] mhz = [166, 200, 233]; int at = Array.IndexOf(mhz, profile.CpuHz / 1_000_000);
+                return profile.WithMmxCpu(true, mhz[(at + (delta < 0 ? 2 : 1)) % mhz.Length]);
+            }
             bool fast = profile.Id != MachineProfile.Windows95Profile133Id;
             return profile with { Id = fast ? MachineProfile.Windows95Profile133Id : MachineProfile.Windows95ProfileId,
                 CpuHz = fast ? MachineProfile.Windows95Cpu133Hz : MachineProfile.FxHostCpuHz };
@@ -49,15 +54,17 @@ internal sealed class MachineSettingsDraft
     /// <summary>Selects a complete implemented board tuple; incompatible installed PCI cards must be removed explicitly in the draft.</summary>
     internal static MachineProfile CyclePlatform(MachineProfile profile, int delta)
     {
-        string[] choices = ["virtual486-dev-v1", MachineProfile.P54cProfileId, MachineProfile.Windows95ProfileId, MachineProfile.Windows95Profile133Id];
+        string[] choices = ["virtual486-dev-v1", MachineProfile.P54cProfileId, MachineProfile.Windows95ProfileId, MachineProfile.Windows95Profile133Id,
+            MachineProfile.MmxProfile166Id, MachineProfile.MmxProfile200Id, MachineProfile.MmxProfile233Id];
         int position = Array.IndexOf(choices, profile.Id);
         int next = position < 0 ? (delta < 0 ? choices.Length - 1 : 0) : (position + delta + choices.Length) % choices.Length;
         bool pci = next >= 2;
         if (!pci && profile.NetworkAdapters.Any(adapter => adapter.Model == NetworkAdapterProfile.Rtl8029Pci))
             throw new ArgumentException("Remove PCI network adapters in the draft before selecting an ISA-only board.");
+        if (!pci && profile.IsVoodoo) throw new ArgumentException("Remove the additional Voodoo card in the draft before selecting an ISA-only board.");
         int ram = pci ? Math.Max(16, profile.RamMiB) : Math.Min(16, profile.RamMiB);
-        return profile with { Id = choices[next], Cpu = next == 0 ? "i486dx-development" : MachineProfile.P54cCpuId,
-            CpuHz = next switch { 0 => 33_000_000, 1 => 90_000_000, 2 => 100_000_000, _ => 133_000_000 }, RamMiB = ram,
+        return profile with { Id = choices[next], Cpu = next == 0 ? "i486dx-development" : next >= 4 ? MachineProfile.P55cCpuId : MachineProfile.P54cCpuId,
+            CpuHz = next switch { 0 => 33_000_000, 1 => 90_000_000, 2 => 100_000_000, 3 => 133_000_000, 4 => 166_000_000, 5 => 200_000_000, _ => 233_000_000 }, RamMiB = ram,
             OpticalDrive = pci ? MachineProfile.AtapiCdRomId : "none", AtapiSlot = pci && profile.IsAtapi ? profile.AtapiSlot : 2,
             VideoCard = pci ? MachineProfile.S3Trio64VideoId : profile.IsTrio64 ? "et4000ax-isa-1m-development" : profile.VideoCard };
     }

@@ -14,6 +14,9 @@ public sealed record WhpxPcCheckpoint(HardwareState Hardware, byte[] Ram, WhpxCp
 /// </summary>
 public sealed class WhpxPcSession : IDisposable
 {
+    /// <summary>Maps only a validated constructor-selected CPU model to its distinct native checkpoint contract.</summary>
+    internal static WhpxCpuContract ContractFor(DOSEmulator.Contracts.MachineProfile profile) =>
+        profile.IsP55c ? WhpxCpuContract.IntelP55cMmxSubset : profile.IsP54c ? WhpxCpuContract.IntelP54cB5Subset : WhpxCpuContract.Intel486Dx;
     private readonly PcMachine _pc;
     private readonly WhpxMappedMachine _whpx;
     private readonly object _gate = new();
@@ -31,8 +34,7 @@ public sealed class WhpxPcSession : IDisposable
         try
         {
             engine = new WhpxMappedMachine(pc.Memory, pc.Ports, pc.Pic, pc.Scheduler,
-                pc.Profile.IsP54c ? WhpxCpuContract.IntelP54cB5Subset : WhpxCpuContract.Intel486Dx,
-                pc.Profile.IsP54c ? (uint)pc.Profile.CpuHz : 0, virtualTimeScale);
+                ContractFor(pc.Profile), pc.Profile.IsPentium ? (uint)pc.Profile.CpuHz : 0, virtualTimeScale);
             if (setResetEntry) engine.SetEntry(0xf000, 0xfff0);
             pc.MarkExternalCpuImage();
             _whpx = engine;
@@ -87,8 +89,8 @@ public sealed class WhpxPcSession : IDisposable
             throw new InvalidDataException("Incomplete WHP PC checkpoint.");
         RequireFreshPc(freshPc);
         WhpxMappedMachine.ValidateCpuState(checkpoint.Cpu);
-        var contract = freshPc.Profile.IsP54c ? WhpxCpuContract.IntelP54cB5Subset : WhpxCpuContract.Intel486Dx;
-        uint frequency = freshPc.Profile.IsP54c ? (uint)freshPc.Profile.CpuHz : 0;
+        var contract = ContractFor(freshPc.Profile);
+        uint frequency = freshPc.Profile.IsPentium ? (uint)freshPc.Profile.CpuHz : 0;
         if (checkpoint.Cpu.Contract != contract || checkpoint.Cpu.NominalCpuHz != frequency)
             throw new InvalidDataException("WHP checkpoint CPU contract differs from the fresh PC profile.");
         freshPc.RestoreHardwareState(checkpoint.Hardware, checkpoint.Ram);

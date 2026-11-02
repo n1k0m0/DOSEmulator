@@ -23,23 +23,24 @@ public static partial class DOSEBios
     /// <summary>Chooses only the explicit board firmware variant while retaining the public legacy ROM builder ABI.</summary>
     internal static byte[] CreateBiosForBoard(bool fxHost, int ramMiB, IReadOnlyList<IReadOnlyBlockDevice?> disks,
         FloppyGeometry? floppyA, FloppyGeometry? floppyB, bool bootFloppy, bool ps2Mouse, bool et4000, bool gameport, bool serial, bool parallel,
-        ushort midiPort, byte midiIrq, bool piixIde = false, bool piixReset = false, bool trio64 = false, bool pciBios = false, bool trioVbe = false, bool networkPci = false, bool apm = false)
+        ushort midiPort, byte midiIrq, bool piixIde = false, bool piixReset = false, bool trio64 = false, bool pciBios = false, bool trioVbe = false, bool networkPci = false, bool apm = false, bool voodoo = false)
         => CreateBiosCore(ramMiB, disks.Select(d => d?.SectorCount ?? 0).ToArray(), disks.Select(d => d is IWritableBlockDevice).ToArray(),
-            floppyA, floppyB, bootFloppy, ps2Mouse, et4000, gameport, serial, parallel, midiPort, midiIrq, fxHost, piixIde, piixReset, trio64, pciBios, trioVbe, networkPci, apm);
+            floppyA, floppyB, bootFloppy, ps2Mouse, et4000, gameport, serial, parallel, midiPort, midiIrq, fxHost, piixIde, piixReset, trio64, pciBios, trioVbe, networkPci, apm, voodoo);
 
     /// <summary>Patches immutable ROM configuration, including translated CHS geometry for disks larger than 504 MiB.</summary>
     private static byte[] CreateBiosCore(int ramMiB, long[] capacities, bool[] writableDrives,
-        FloppyGeometry? floppyA, FloppyGeometry? floppyB, bool bootFloppy, bool ps2Mouse, bool et4000, bool gameport, bool serial, bool parallel, ushort midiPort, byte midiIrq, bool fxHost = false, bool piixIde = false, bool piixReset = false, bool trio64 = false, bool pciBios = false, bool trioVbe = false, bool networkPci = false, bool apm = false)
+        FloppyGeometry? floppyA, FloppyGeometry? floppyB, bool bootFloppy, bool ps2Mouse, bool et4000, bool gameport, bool serial, bool parallel, ushort midiPort, byte midiIrq, bool fxHost = false, bool piixIde = false, bool piixReset = false, bool trio64 = false, bool pciBios = false, bool trioVbe = false, bool networkPci = false, bool apm = false, bool voodoo = false)
     {
         if (trioVbe && (!trio64 || !pciBios)) throw new ArgumentException("The own Trio64 VBE ROM requires its constructor-bound PCI-BIOS/S3 board.");
         if (networkPci && !pciBios) throw new ArgumentException("PCI networking requires its real PCI BIOS firmware.");
         if (apm && !trioVbe) throw new ArgumentException("The own APM CPU-idle ROM requires the Windows development board.");
+        if (voodoo && !apm) throw new ArgumentException("The additional Voodoo resource ROM requires the own Windows/APM board.");
         if (midiPort != 0 && (midiPort is not (0x300 or 0x330) || midiIrq is not (5 or 7 or 9 or 10)))
             throw new ArgumentException("Unsupported CT1740 MIDI inventory resources.");
         long sectors = capacities.FirstOrDefault(c => c > 0);
         int first = Array.FindIndex(capacities, c => c > 0);
         bool writable = first >= 0 && writableDrives[first];
-        using var compressed = new MemoryStream(Convert.FromBase64String(apm ? (networkPci ? ApmNetworkWindows95CompressedImage : ApmWindows95CompressedImage) : networkPci ? (trioVbe ? NetworkWindows95CompressedImage : NetworkPciBiosCompressedImage) : trioVbe ? Windows95CompressedImage : pciBios ? PciBiosCompressedImage : trio64 ? Trio64CompressedImage : piixReset ? PiixResetCompressedImage : piixIde ? PiixIdeCompressedImage : fxHost ? FxHostCompressedImage : CompressedImage));
+        using var compressed = new MemoryStream(Convert.FromBase64String(voodoo ? (networkPci ? VoodooNetworkWindows95CompressedImage : VoodooWindows95CompressedImage) : apm ? (networkPci ? ApmNetworkWindows95CompressedImage : ApmWindows95CompressedImage) : networkPci ? (trioVbe ? NetworkWindows95CompressedImage : NetworkPciBiosCompressedImage) : trioVbe ? Windows95CompressedImage : pciBios ? PciBiosCompressedImage : trio64 ? Trio64CompressedImage : piixReset ? PiixResetCompressedImage : piixIde ? PiixIdeCompressedImage : fxHost ? FxHostCompressedImage : CompressedImage));
         using var gzip = new GZipStream(compressed, CompressionMode.Decompress);
         byte[] rom = new byte[65536]; gzip.ReadExactly(rom);
         if (fxHost) ConfigureFxHostRam(rom, ramMiB);
@@ -162,6 +163,14 @@ public static partial class DOSEBios
             " | PCI BIOS CD | Original firmware - 64 KiB ROM"u8);
         ReplaceInventory(rom, "Configured CPU: 486DX / AT development profile"u8,
             "Configured CPU: P54C B5 / PCI BIOS subset"u8);
+    }
+
+    /// <summary>Identifies the own MMX validation board while leaving every older firmware byte stream unchanged.</summary>
+    internal static void ConfigureMmxInventory(byte[] rom)
+    {
+        Span<byte> prior = stackalloc byte["Configured CPU: 486DX / AT development profile"u8.Length];
+        prior.Fill((byte)' '); "Configured CPU: P54C B5 / PCI BIOS subset"u8.CopyTo(prior);
+        ReplaceInventory(rom, prior, "Configured CPU: P55C MMX / DOSE board"u8);
     }
 
     /// <summary>Names the separate original-Trio64 PCI subset board without claiming acceleration or Windows acceptance.</summary>

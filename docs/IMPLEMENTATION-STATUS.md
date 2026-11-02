@@ -1,5 +1,159 @@
 # DOSE – Implementierungsstand
 
+**Ergänzter Quellstand: MiniGlide und Gastinstaller, 2. November 2026:**
+Die [generische Glide-2-Brücke](GLIDE-HOST-BRIDGE.md) bündelt Gastaufrufe und
+verwendet die Host-GPU. Windows 95 und 98 erhalten eigene
+[native Komponenteninstaller](GUEST-INSTALLERS.md) für DOSE Tools, Autostart,
+MiniGlide und optionale APM-Installationsdateien. Installation, Aktualisierung,
+Kaltstart und Wiederherstellung beim Entfernen sind in privaten Gastkopien
+geprüft. Der gemeinsame Release-Build besteht mit 0 Warnungen und Fehlern;
+18.242 Regressionen, die nativen WHPX-Prüfungen und die Quellcodeprüfung bestehen.
+Generierte Pakete, private Medien und Gastinstallationen bleiben außerhalb von Git.
+
+**C58: Motorhead-Engpässe, 2. November 2026:**
+Die [fortgesetzte Profilierung](hardware/VOODOO-PERFORMANCE.md) reduziert
+MemoryBus-Allokationen, native Registercommits, wiederholte Seitentranslationen
+an rein lesenden Gerätegrenzen und wirkungslose Rasterarbeit. Dieselbe DLL mit
+Translationserhalt aus/an liefert in acht seriellen gespiegelten Prozessen
+169 gegen 188 tatsächliche abgeschlossene Pufferwechsel je rund 48 Sekunden:
+3,5207 auf 3,9162/s, +11,23 Prozent. 5120 identische PCI-/MMIO-Rasterszenen je
+Seite brauchen 22,07 Prozent weniger Hostzeit bei vollständiger Bytegleichheit.
+Der zusätzliche Spielvergleich dieser Rasteränderung liegt mit +4 Prozent
+innerhalb deutlicher Streuung. Diese getrennten Kohorten werden nicht
+multipliziert; **flüssige Glide-Spiele bleiben trotz annähernd 1:1-Uhr offen**.
+
+Der größere Arithmetikversuch ist vollständig verworfen; rohe x87-Arithmetik
+und FST-Konvertierung behalten ihre C57-Quellen. Keine geänderten Gast-/GPU-Takte,
+Fristen oder zusätzlichen Worker. Die Speicherzähler und Translationen sind
+abgeleitet, werden bei Änderungen verworfen und überleben keine native
+CPU-Ausführung. Aktuelle Bytes, Rechte, Grenzen und Owner-Commit bleiben geprüft.
+
+Eine neue eigene finale Win98-Kopie erreicht ursprüngliches Herstellerlogo, Motorhead-Rennen,
+Anwendungsschluss und regulären Shutdown. Alle 13 Treiber- und 445 benannten
+Spieldateien bleiben gleich. Zwei strikte Rennimporte vergleichen ganze
+128 MiB und sieben geparkte Gerätefortsetzungen; tatsächliche native Weiterfahrt
+nach einem dritten Factory-Import wird getrennt geprüft. 18241 gemeinsame
+Regressionen, 73 native Standardgruppen und drei Audits bestehen, 0 Warnungen/
+Fehler; 991 Code-/Projektdateien und Zustand 49/992/44 geprüft.
+
+C58 ist separat privat eingefroren: 125 Produkte, 28 Änderungen gegenüber C57.
+Alle 14 Starter, die gemeinsame C54-Auswahl, bekannten alten Produkte und
+Benutzerinstallationen bleiben unverändert. Dieser C58-Nachweis entstand vor der
+gemeinsamen Quellversionierung mit MiniGlide und den Gastinstallern; die Automation bleibt pausiert.
+Privater Nachweis: `artifacts/tests/motorhead-profile-release-path.txt`.
+
+**Historischer C57: originales Herstellerlogo und Voodoo-Ausführung, 1. November 2026:**
+Der [Performance- und Logonachweis](hardware/VOODOO-PERFORMANCE.md) behebt
+die S/T-Chipauswahl und ergänzt die dokumentierte begrenzte
+S/T-Überlaufregel. Das originale Logo läuft jetzt ohne Abschaltoption und
+ohne geänderte Treiberdateien. Eine frische private Windows-98-Kopie mit
+MMX 233 MHz/128 MiB erreicht das originale Motorhead-Rennen, Anwendungsschluss,
+den direkten Original-SDK-Aufruf und regulären Windows-Shutdown. Alle 13
+Treiber- und 445 benannten Spieldateien sind unverändert.
+
+Ganze native CPU-/RAM-Gegenproben sichern die einzelnen echten Vertex-,
+Nullparameter- und x87-Gradientenbefehle sowie ihre Geräte- und Resetgrenzen
+ab. In acht gespiegelten Prozessen desselben finalen Builds steigen die
+tatsächlich abgeschlossenen originalen Spiel-Pufferwechsel von zusammen
+32 auf 65 je rund 32 Hostsekunden: 1,00 auf 2,03/s. Jeder Lauf beginnt nach
+separater JIT-Aufwärmung wieder am identischen vollständigen Rennzustand.
+Zeitgleichlauf 99,994–100 Prozent; **flüssige Glide-Spiele bleiben offen**.
+Andere Rennabschnitte und frühere Prototypkohorten sind getrennte Befunde.
+
+18238 gemeinsame Regressionen, 72 native Standardgruppen und drei Audits
+bestehen; Build ohne Warnungen/Fehler. 991 Code-/Projektdateien ohne
+Quellenprobleme, Zustand weiterhin 49/992/44. Strikte originale Importe
+prüfen ganze 128 MiB und alle Felder; sieben Gerätefortsetzungen bei
+geparkter CPU werden von tatsächlicher nativer Spielfortsetzung getrennt.
+Keine allgemeine native Replay-, physische NaN-/Bus- oder M7-Abnahme.
+
+Alle 13 gemeinsamen C54-Starter, der separate C55-Demostarter sowie
+sämtliche bekannten C54-/C55-/C56-Produkte und Benutzerinstallationen
+bleiben erhalten. C57 ist separat privat eingefroren; die gemeinsame
+Auswahl bleibt C54. Keine Hostfenster, Eingaben, Endpunkte oder Aufnahmen;
+kein Commit/Push. Automation bleibt pausiert. Privater Nachweis:
+`artifacts/tests/voodoo-performance-release-path.txt`.
+
+**Historischer C56: lokaler originaler Voodoo-/Glide-Pfad, 1. November 2026:**
+Der [Originaltreibernachweis](hardware/VOODOO-ORIGINAL-DRIVERS.md) ergänzt
+ICS5342-/TREX-/Speichererkennung, Texturpalette, rechteckige Texturformate,
+Bilinear/Fog/W-Depth, geordnete Uploads und eine an tatsächlicher
+Dreiecksabdeckung und gewählter Grafik-PLL orientierte Entwicklungszeitregel.
+Ein eigener Windows-98-/MMX-233-MHz-/128-MiB-Zweig startet mit unveränderten
+Voodoo-3.01-Treibern das originale Glide-SDK und die originale
+Motorhead-Glide-Demo bis zu texturierten Rennszenen. Die 13 Treiberdateien,
+wirklichen Win32-Prozessrückgaben und originale Glide-Initialisierung und
+Shutdown werden unabhängig geprüft.
+
+18167 gemeinsame Regressionen bestehen auf den bytegleichen fünf VM-Modulen
+des finalen nativen Kandidaten; 67 native Standardgruppen und drei weitere
+Snapshot-Audits bestehen auf dessen tatsächlicher WHPX-DLL. 984
+Code-/Projektdateien ohne Quellenprobleme; Zustand 49/992/44. Native
+x87-MMIO-Zugriffe erhalten rohe Rundung, Status und Pop. Eine nur innerhalb
+eines Befehls gültige Seitentranslationswiederverwendung benötigt in acht
+gespiegelten festen FST-Prozessen 37,52 Prozent weniger Hostzeit bei ganz
+gleichem CPU-/RAM-/Karten-Endzustand.
+
+Der Originalspielpfad ist **noch keine ausreichende Spieleperformance**:
+Ein erster Achtsekundenlauf hält 99,934 Prozent Zeitgleichlauf, aber nur etwa
+ein geändertes Bild pro Hostsekunde. Das ursprüngliche Standardlogo bleibt offen;
+die erfolgreiche Vertikale verwendet die originale Option
+`FX_GLIDE_NO_SPLASH=1`. Weitere Spiele, Win95-3D-Treiber, physische
+FIFO-/Bus-/Analogpräzision und die übrigen M7-Kriterien bleiben offen.
+Strikte originale Rennimporte prüfen ganze 128 MiB RAM und alle Felder;
+deterministische Gerätefortsetzungen bei geparkter nativer CPU werden von
+funktionaler nativer Spielfortsetzung getrennt. Keine allgemeine native
+Replay- oder 100-Prozent-3D-Zusage.
+
+Alle 13 gemeinsamen C54-Starter, 124 gemeinsamen C54-Produkte und 125
+eingefrorenen C55-Produkte bleiben erhalten; ebenso der separate C55-
+Demostarter, vorhandene Installationen und die elf alten ROM-Nutzbilder.
+Keine zusätzlichen Hostendpunkte, Eingaben, Fenster oder Aufnahmen; kein
+Commit/Push. Automation bleibt pausiert. Privater Nachweis:
+`artifacts/tests/voodoo-glide-release-path.txt`.
+
+**C55: erster eigener MMX-/Voodoo-Hardwarepfad, 1. November 2026:**
+Der [genaue Entwicklungsumfang](hardware/MMX-AND-VOODOO.md) ergänzt die
+ursprünglichen 57 MMX-Mnemonics mit rohem physischem x87-Alias und EMMS,
+166/200/233-MHz-Profile auf dem vorhandenen eigenen FX-/PIIX-/S3-Board sowie
+eine zusätzliche SST-1-PCI-/MMIO-Karte mit 2 MiB FBI und 2 MiB TMU.
+Das ersetzt das im Konzept noch offene 430TX-/PIIX4-Board nicht.
+Ein englischer Hardwareeintrag schaltet die Voodoo zusätzlich zur S3.
+`run-voodoo-demo.cmd` startet nur eine eigene schreibgeschützte Testdiskette
+über eine getrennte C55-Laufzeitwahl. Die 13 bisherigen Starter und sämtliche
+124 bekannten ausgewählten C54-Produkte bleiben unverändert.
+
+18073/18073 gemeinsame Regressionen und 65 native WHPX-Prüfgruppen bestehen;
+Build ohne Warnungen/Fehler. Die 1936 tatsächlichen nativen MMX-Vektoren
+vergleichen auch alle 80 rohen Aliasbytes. Der eigene 704-Byte-Gast zeichnet
+Gouraud und eine tatsächlich hochgeladene RGB565-Schachbretttextur; echte
+ROM-/FDC-Starts bei 166/233 MHz bestehen alle 307200 unabhängigen Bildpunkte.
+Volle Software- und native Fortsetzungen mit aktiver Voodoo-Warteschlange
+und belegten MMX-Registern bestehen. Zustand 49 Typen/974 Mitglieder/44
+Callbacks; die 43 vorherigen Callbackkörper und elf vorherigen ROM-Nutzbilder
+bleiben unverändert. 975 Code-/Projektdateien bestehen die Quellenprüfung.
+
+Je ein eigener Windows-95-/98-Kaltstart mit MMX/233 MHz und 64/128 MiB
+erreicht den S3-Desktop, echte AVI-Wiedergabe mit SB16 und regulären Shutdown.
+Die begrenzten 5-/8-Sekunden-Proben liefern 99,946/99,930 Prozent
+Zeitgleichlauf, 101/158 beobachtete Quellbilder und 55141/88200 tatsächliche
+11025-Hz-DSP-Samples. Diese Proben verwenden S3 und prüfen keine
+Voodoo-Treiber- oder bestimmte MMX-Codec-Nutzung. Der wirkliche separate
+Demo-CLI-Pfad liefert das gesamte unabhängige Sollbild. Ein neuer
+64-MiB-CLI-Schnitt besteht 10001 direkt gegen 10000 plus Laden plus 1 mit
+bytegleichem ganzen RAM/Zustand und 37 gleichen übrigen Berichtsfeldern;
+ein echter alter C54-Import wird vor Zweiganlage mit bestehendem CLR-Abbruch
+verworfen, ohne Migrations- oder kontrollierte Exit-1-Zusage.
+
+Originale Glide-/Windows-3D-Treiber, Spiele und weitere SST-1-Pipeline-/FIFO-/
+Stall-/DAC-/Filterpräzision sind offen. Historische MMX-Präfixsonderfälle sind
+im Softwarekern geprüft, aber nicht allgemein als natives P55C-Verhalten
+abgenommen. Kein allgemeines 233-MHz-/3D-/100-Prozent-Leistungsprädikat und
+keine vollständige M6-/M7-Abnahme. Keine Migration alter Speicherstände,
+keine neuen Hostendpunkte oder nativen Bedien-/GL-/Audio-Abnahmen.
+Arbeit bleibt lokal; Automation weiterhin pausiert.
+Privater Nachweis: `artifacts/tests/mmx-voodoo-release-path.txt`.
+
 **C54: Gesamtaudit vom 31. Oktober / 1. November 2026:**
 Der [Auditbericht](AUDIT-2026-10-31.md) dokumentiert fünf behobene P2-Befunde:
 native DLL-Identität, dauerhafte Snapshot-Payloads, eindeutiges JSON,

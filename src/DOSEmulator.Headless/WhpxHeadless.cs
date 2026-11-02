@@ -31,7 +31,7 @@ internal static class WhpxHeadless
                 get("--snapshot-branch") ?? throw new ArgumentException("--load-whpx-snapshot requires a new --snapshot-branch directory."));
             if (source is null && get("--snapshot-branch") is not null) throw new ArgumentException("--snapshot-branch requires --load-whpx-snapshot in this runner.");
             using var pc = loaded?.Pc ?? MachineLaunch.Open(get);
-            if (!pc.Profile.IsP54c) throw new InvalidOperationException("WHPX full-PC execution currently requires the P54C profile. The 486 flag/CPUID admission remains on the software engine.");
+            if (!pc.Profile.IsPentium) throw new InvalidOperationException("WHPX full-PC execution requires a Pentium profile. The 486 flag/CPUID admission remains on the software engine.");
             using var started = loaded is null ? WhpxPcSession.Start(pc) : null;
             var session = loaded ?? started!;
             var frameBuffer = new VgaFrameBuffer(); long frames = 0, audioFrames = 0;

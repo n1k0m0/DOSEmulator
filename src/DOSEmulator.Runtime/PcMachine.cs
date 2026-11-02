@@ -43,6 +43,8 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
     public VgaAdapter Video { get; }
     /// <summary>Fixed original-Trio64 PCI target and VGA/LFB gates of the separate S3 board.</summary>
     public S3Trio64? S3 { get; }
+    /// <summary>Optional additional SST-1 card; VGA remains the boot/desktop adapter until guest software selects 3D output.</summary>
+    public VoodooGraphics? Voodoo { get; }
     /// <summary>Primary IDE channel with independent master/slave task engines.</summary>
     public AtaPioController Ata { get; }
     /// <summary>Installed SFF-8020i packet target, independent from whether its tray contains media.</summary>
@@ -136,6 +138,7 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
         Memory = new(profile.RamMiB * 1024 * 1024);
         Video = profile.IsTrio64 ? new(Scheduler, false, true) : new(Scheduler, profile.IsEt4000);
         if (profile.IsTrio64) S3 = new(Memory, Video);
+        if (profile.IsVoodoo) Voodoo = new(Memory, Scheduler);
         var geometryA = FloppyGeometry.FromId(profile.FloppyDriveA); var geometryB = FloppyGeometry.FromId(profile.FloppyDriveB);
         byte[] bios = DOSEBios.CreateBiosForBoard(profile.IsFxHost, profile.RamMiB, _disks,
             geometryA, geometryB, profile.BootDevice == "floppy-a", profile.Mouse == "ps2-two-button", profile.IsEt4000,
@@ -143,7 +146,7 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
             profile.ParallelPort == ParallelPrinterPort.ProfileId,
             profile.MidiInterface == Mpu401Uart.ProfileId ? (ushort)profile.MidiBasePort : (ushort)0,
             profile.MidiInterface == Mpu401Uart.ProfileId ? (byte)profile.SoundBlasterIrq : (byte)0, profile.IsPiixIde, profile.IsPiixReset, profile.IsTrio64, profile.IsPciBiosBoard, profile.IsWindows95Board,
-            profile.NetworkAdapters.Any(n => n.Model == NetworkAdapterProfile.Rtl8029Pci), profile.IsWindows95Board);
+            profile.NetworkAdapters.Any(n => n.Model == NetworkAdapterProfile.Rtl8029Pci), profile.IsWindows95Board, profile.IsVoodoo);
         foreach (var nic in profile.NetworkAdapters.Where(n => n.Model == NetworkAdapterProfile.Rtl8029Pci))
             System.Buffers.Binary.BinaryPrimitives.WriteUInt16LittleEndian(bios.AsSpan(0xe0a0 + nic.Slot * 2), (ushort)nic.IoBase);
         if (profile.IsPciBiosBoard) DOSEBios.ConfigurePciBiosInventory(bios);
@@ -154,12 +157,14 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
         else if (profile.IsPiixIrq) DOSEBios.ConfigurePiixIrqInventory(bios);
         else if (profile.IsFxHost) DOSEBios.ConfigureFxHostInventory(bios);
         else if (profile.IsP54c) DOSEBios.ConfigureP54cInventory(bios);
+        if (profile.IsP55c) DOSEBios.ConfigureMmxInventory(bios);
         var rom = new RomDevice(bios);
         if (profile.IsFxHost)
         {
             HostBridge = new(Memory, bios);
             Pci = new(); Pci.RegisterFunction(0, 0, 0, HostBridge);
             if (S3 is not null) Pci.RegisterFunction(0, 3, 0, S3);
+            if (Voodoo is not null) Pci.RegisterFunction(0, 6, 0, Voodoo);
             if (profile.IsPiixIrq)
             {
                 PiixIrq = new(Pic, profile.IsPiixIde); Pci.RegisterFunction(0, 7, 0, PiixIrq);
@@ -170,11 +175,12 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
             Memory.Map(0x000c0000, 262144, HostBridge, "82437FX PAM and system ROM");
         }
         else Memory.Map(0x000f0000, 65536, rom, "System BIOS");
-        Memory.Map(0xffff0000, 65536, rom, profile.IsP54c ? "P54C reset ROM alias" : "486 reset ROM alias");
+        Memory.Map(0xffff0000, 65536, rom, profile.IsPentium ? "P54C reset ROM alias" : "486 reset ROM alias");
         // This reference board also decodes its reset ROM when address line 20 is masked.
         Memory.Map(0xffef0000, 65536, rom, "A20-masked reset ROM alias");
         Memory.Map(0x000a0000, 131072, (IMemoryDevice?)S3 ?? Video, "VGA memory aperture");
         if (S3 is not null) Memory.MapDynamic(S3);
+        if (Voodoo is not null) Memory.MapDynamic(Voodoo);
         // Installed DRAM is not decoded in the ISA option-memory window.
         // This board has no option ROMs or shadow RAM here. EMM386 supplies
         // UMB/EMS backing by paging real extended RAM into these addresses.
@@ -276,8 +282,8 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
         Ports.Map(0x70, 2, Rtc);
         Ports.Map(0, 16, Dma); Ports.Map(0xc0, 32, Dma);
         foreach (ushort port in new ushort[] { 0x81, 0x82, 0x83, 0x87, 0x89, 0x8a, 0x8b, 0x8f }) Ports.Map(port, 1, Dma);
-        Cpu = profile.IsP54c
-            ? new(Memory, Ports, X86CpuModel.IntelP54cB5Subset, Scheduler, (uint)profile.CpuHz)
+        Cpu = profile.IsPentium
+            ? new(Memory, Ports, profile.IsP55c ? X86CpuModel.IntelP55cMmxSubset : X86CpuModel.IntelP54cB5Subset, Scheduler, (uint)profile.CpuHz)
             : new(Memory, Ports);
         if (profile.IsPiixReset) Cpu.ResetSignal();
         FpuError = new(high => SetIsaInterrupt(13, high), high => Cpu.IgnoreNumericError = high);
@@ -468,11 +474,12 @@ public sealed partial class PcMachine : IDisposable, IPiixResetOwner
         HardwareResetOccurred?.Invoke();
     }
     /// <summary>Captures the current guest scanout at the machine's actual virtual time.</summary>
-    public VideoFrame CaptureFrame() => Video.Capture(Scheduler.Now);
+    public VideoFrame CaptureFrame() => CaptureFrame(new VgaFrameBuffer());
     /// <summary>Captures the current guest scanout at the machine's actual virtual time.</summary>
-    public VideoFrame CaptureFrame(VgaFrameBuffer buffer) => Video.Capture(Scheduler.Now, buffer);
+    public VideoFrame CaptureFrame(VgaFrameBuffer buffer) => CaptureFrame(buffer, null);
     /// <summary>Completes an optional parallel host scanout at the same owner boundary and guest timestamp.</summary>
-    public VideoFrame CaptureFrame(VgaFrameBuffer buffer, JoinedWorker? worker) => Video.Capture(Scheduler.Now, buffer, worker);
+    public VideoFrame CaptureFrame(VgaFrameBuffer buffer, JoinedWorker? worker) => Voodoo is { OutputEnabled: true } card
+        ? card.Capture(Scheduler.Now, buffer) : Video.Capture(Scheduler.Now, buffer, worker);
     /// <summary>Prepares fresh volatile hardware while acquiring safe leases for the existing attached media.</summary>
     public PcMachine CreatePowerCycle(MachineProfile profile)
     {

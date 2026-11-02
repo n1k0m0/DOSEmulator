@@ -24,7 +24,8 @@ internal static class SettingsRevisionTests
         string directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "net10.0-windows"));
         var gui = Load(Path.Combine(directory, "DOSEmulator.dll"));
         var contracts = Load(Path.Combine(directory, "DOSEmulator.Contracts.dll"));
-        action(gui, contracts.GetType("DOSEmulator.Contracts.MachineProfile", true)!);
+        try { action(gui, contracts.GetType("DOSEmulator.Contracts.MachineProfile", true)!); }
+        catch (TargetInvocationException error) { throw new InvalidOperationException("Compiled settings: " + error.GetBaseException(), error); }
         Check((int)context.GetType().GetProperty("NativeAttempts")!.GetValue(context)! == 0, "Settings policy attempted native code or a host window.");
     }
 
@@ -115,6 +116,30 @@ internal static class SettingsRevisionTests
             object slow = cycle.Invoke(null, [fast, -1])!;
             Check(JsonSerializer.Serialize(slow, profileType) == JsonSerializer.Serialize(initial, profileType), "Windows clock round trip changed devices.");
         }));
+        test("Settings MMX compiled clocks and Voodoo selection retain S3 and RAM", () => Gui((gui, profileType) =>
+        {
+            var own = new MachineProfile { Id = MachineProfile.MmxProfile166Id, Cpu = MachineProfile.P55cCpuId, CpuHz = 166_000_000,
+                RamMiB = 64, VideoCard = MachineProfile.S3Trio64VideoId, OpticalDrive = MachineProfile.AtapiCdRomId };
+            object profile = JsonSerializer.Deserialize(JsonSerializer.Serialize(own), profileType)!;
+            var cycle = gui.GetType("DOSEmulator.MachineSettingsDraft", true)!.GetMethod("CycleCpu", BindingFlags.Static | BindingFlags.NonPublic)!;
+            foreach (int hz in new[] { 200_000_000, 233_000_000, 166_000_000 })
+            {
+                profile = cycle.Invoke(null, [profile, 1])!; profileType.GetMethod("Validate")!.Invoke(profile, null);
+                Check((int)profileType.GetProperty("CpuHz")!.GetValue(profile)! == hz && (int)profileType.GetProperty("RamMiB")!.GetValue(profile)! == 64, "MMX clock selection changed RAM or identity.");
+            }
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var type = gui.GetType("DOSEmulator.DosWindow", true)!; object window = RuntimeHelpers.GetUninitializedObject(type); GC.SuppressFinalize(window);
+            type.GetField("_networkRefreshAt", flags)!.SetValue(window, long.MaxValue);
+            object draft = Activator.CreateInstance(gui.GetType("DOSEmulator.MachineSettingsDraft", true)!, flags, null, [profile, 1L], null)!;
+            type.GetField("_configurationDraft", flags)!.SetValue(window, draft); type.GetField("_page", flags)!.SetValue(window, "MACHINE / HARDWARE");
+            type.GetField("_selected", flags)!.SetValue(window, 16); type.GetMethod("RebuildItems", flags)!.Invoke(window, null);
+            type.GetMethod("Activate", flags)!.Invoke(window, [1]);
+            object requested = draft.GetType().GetProperty("Requested", flags)!.GetValue(draft)!;
+            Check((bool)profileType.GetProperty("IsVoodoo")!.GetValue(requested)! && (string)profileType.GetProperty("VideoCard")!.GetValue(requested)! == MachineProfile.S3Trio64VideoId, "Voodoo menu did not preserve primary S3.");
+            type.GetMethod("Activate", flags)!.Invoke(window, [1]);
+            requested = draft.GetType().GetProperty("Requested", flags)!.GetValue(draft)!;
+            Check(!(bool)profileType.GetProperty("IsVoodoo")!.GetValue(requested)!, "Voodoo menu did not remove its own additional card.");
+        }));
         test("Settings actual compiled hardware/network pages expose every edit and Apply action", () => Gui((gui, profileType) =>
         {
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
@@ -133,7 +158,7 @@ internal static class SettingsRevisionTests
                 type.GetMethod("RebuildItems", flags)!.Invoke(window, null);
                 string[] items = (string[])type.GetField("_items", flags)!.GetValue(window)!;
                 Check(items.Length > 0 && items[^1] == "BACK", "Actual settings page has an unreachable or missing Back row: " + page);
-                if (page == "MACHINE / HARDWARE") Check(items.Length == 17 && items[14].Contains("APPLY", StringComparison.Ordinal), "Hardware Apply action is missing.");
+                if (page == "MACHINE / HARDWARE") Check(items.Length == 18 && items[16].Contains("3D ACCELERATOR", StringComparison.Ordinal) && items[14].Contains("APPLY", StringComparison.Ordinal), "Hardware Apply action is missing.");
                 if (page == "NETWORK / ADAPTER 1") Check(items.Length == 13 && items[3].Contains("EDIT", StringComparison.Ordinal) &&
                     items[7].Contains("EDIT", StringComparison.Ordinal) && items[10].Contains("APPLY", StringComparison.Ordinal), "Network fields remain read-only or lack Apply.");
             }
@@ -152,7 +177,7 @@ internal static class SettingsRevisionTests
         {
             var cycle = gui.GetType("DOSEmulator.MachineSettingsDraft", true)!.GetMethod("CyclePlatform", BindingFlags.Static | BindingFlags.NonPublic)!;
             object profile = Activator.CreateInstance(profileType)!;
-            foreach (string id in new[] { MachineProfile.P54cProfileId, MachineProfile.Windows95ProfileId, MachineProfile.Windows95Profile133Id, "virtual486-dev-v1" })
+            foreach (string id in new[] { MachineProfile.P54cProfileId, MachineProfile.Windows95ProfileId, MachineProfile.Windows95Profile133Id, MachineProfile.MmxProfile166Id, MachineProfile.MmxProfile200Id, MachineProfile.MmxProfile233Id, "virtual486-dev-v1" })
             {
                 profile = cycle.Invoke(null, [profile, 1])!;
                 profileType.GetMethod("Validate")!.Invoke(profile, null);

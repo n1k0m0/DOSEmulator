@@ -227,6 +227,7 @@ public sealed partial class X86Cpu
         byte opcode = FetchByte(); int w = Width;
         if (_checkpointProtected && NeedsTwoByteControlCheckpoint(opcode)) EnsureControlCheckpoint();
         ValidateLockOpcode(opcode, true);
+        if (IsMmxOpcode(opcode)) { ExecuteMmx(opcode); return; }
         if (opcode is >= 0x80 and <= 0x8f)
         {
             int displacement = w == 2 ? (short)Immediate(2) : unchecked((int)Immediate(4));
@@ -273,8 +274,6 @@ public sealed partial class X86Cpu
             case 0x31: ReadTimeStampCounter(); return;
             case 0x32: TransferTimestampMsr(false); return;
             case 0xc7: CompareExchangeEightBytes(); return;
-            // Neither implemented CPU model has MMX: the original Win98 feature probe must receive restartable #UD.
-            case 0x77: throw new CpuFaultException(6);
             // Reserved on the 486/P54C: fault after both opcode bytes, without a later-generation UD0 operand fetch.
             case 0xff: throw new CpuFaultException(6);
             default: throw Unsupported($"Two-byte opcode 0F {opcode:X2} is not implemented.");

@@ -27,7 +27,7 @@ internal static class HostNativeRepeatTests
         {
             string candidate = Path.Combine(directory, name.Name + ".dll");
             if (File.Exists(candidate)) return LoadGuarded(candidate);
-            if (name.Name is "System.Windows.Forms" or "System.Windows.Forms.Primitives" or "System.Drawing.Common" or "Microsoft.Win32.SystemEvents" or "Accessibility")
+            if (name.Name is "System.Private.Windows.Core" or "System.Windows.Forms" or "System.Windows.Forms.Primitives" or "System.Drawing.Common" or "Microsoft.Win32.SystemEvents" or "Accessibility")
             {
                 string runtime = Path.TrimEndingDirectorySeparator(RuntimeEnvironment.GetRuntimeDirectory());
                 string root = Path.GetFullPath(Path.Combine(runtime, "..", "..", "Microsoft.WindowsDesktop.App"));

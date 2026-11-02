@@ -598,6 +598,17 @@
       "callback": "CompleteAutoload",
       "start": 8528,
       "end": 8599
+    },
+    {
+      "file": "src/DOSEmulator.Hardware/VoodooGraphics.cs",
+      "owner": "DOSEmulator.Hardware.VoodooGraphics",
+      "operation": "complete",
+      "arguments": [],
+      "receiver": "_clock",
+      "delay": "delay",
+      "callback": "CompleteCommand",
+      "start": 11197,
+      "end": 11259
     }
   ]
 }

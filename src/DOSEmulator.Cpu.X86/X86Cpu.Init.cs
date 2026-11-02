@@ -81,10 +81,12 @@ public sealed partial class X86Cpu
             void ZeroI(string field) => Require(r.Value<int>(field) == 0, field);
             // Require a pin, execution latch or suspended-work flag to be clear.
             void False(string field) => Require(!r.Value<bool>(field), field);
-            Require(r.Value<X86CpuModel>("Model") == X86CpuModel.IntelP54cB5Subset, "Model");
+            var model = r.Value<X86CpuModel>("Model");
+            Require(model is X86CpuModel.IntelP54cB5Subset or X86CpuModel.IntelP55cMmxSubset, "Model");
             uint[] registers = r.Value<uint[]>("_registers");
             Require(registers is { Length: 8 }, "_registers shape");
-            for (int i = 0; i < registers.Length; i++) Require(registers[i] == (i == (int)Register.Dx ? 0x524u : 0), "GPR " + i);
+            uint signature = model == X86CpuModel.IntelP55cMmxSubset ? 0x543u : 0x524u;
+            for (int i = 0; i < registers.Length; i++) Require(registers[i] == (i == (int)Register.Dx ? signature : 0), "GPR " + i);
             Require(r.Value<uint>("Eip") == 0xfff0 && r.Value<uint>("Eflags") == 2, "EIP/EFLAGS");
             Require(r.Value<uint>("Cr0") == 0x60000010, "CR0"); ZeroU("Cr2"); ZeroU("Cr3"); ZeroU("Cr4"); ZeroI("_cpl");
             False("Halted"); False("TripleFaulted");
@@ -133,7 +135,7 @@ public sealed partial class X86Cpu
     /// <summary>Rejects unsupported models and callback reentry before changing any state.</summary>
     private void RequireP54cSignalBoundary()
     {
-        if (Model != X86CpuModel.IntelP54cB5Subset)
+        if (!IsPentiumCore)
             throw new InvalidOperationException("INIT/CPURST signals require the explicitly selected P54C subset.");
         if (_timestampSource?.IsDispatching == true)
             throw new InvalidOperationException("INIT/CPURST signals require an owner boundary outside a dispatched callback.");

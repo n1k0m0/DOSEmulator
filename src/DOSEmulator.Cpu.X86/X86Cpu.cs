@@ -61,7 +61,7 @@ public sealed partial class X86Cpu
     /// <summary>Binds only an explicit virtual scheduler/nominal frequency; the existing constructors retain their contracts.</summary>
     public X86Cpu(MemoryBus memory, IoPortBus io, X86CpuModel model, DeviceScheduler? timestampSource, uint timestampFrequency)
     {
-        if (model is not (X86CpuModel.Intel486Dx or X86CpuModel.IntelP54cB5Subset)) throw new ArgumentOutOfRangeException(nameof(model));
+        if (model is not (X86CpuModel.Intel486Dx or X86CpuModel.IntelP54cB5Subset or X86CpuModel.IntelP55cMmxSubset)) throw new ArgumentOutOfRangeException(nameof(model));
         if ((timestampSource is null) != (timestampFrequency == 0) || model == X86CpuModel.Intel486Dx && timestampSource is not null)
             throw new ArgumentException("The P54C timestamp subset requires an explicit virtual clock/frequency pair.");
         Model = model; _timestampSource = timestampSource; TimestampFrequency = timestampFrequency;
@@ -84,7 +84,7 @@ public sealed partial class X86Cpu
         ResetSystemRegisters();
         Cr4 = 0; _tscEpochTicks = timestampEpoch;
         ResetPaging();
-        _registers[(int)Register.Dx] = Model == X86CpuModel.Intel486Dx ? 0x00000400u : 0x00000524u;
+        _registers[(int)Register.Dx] = Model == X86CpuModel.Intel486Dx ? 0x00000400u : HasMmx ? 0x00000543u : 0x00000524u;
         Halted = false;
         _interruptShadow = 0;
         _instructionBytes = 0; _instructionStart = 0;

@@ -274,6 +274,7 @@ public sealed partial class MemoryBus
     /// <summary>Reads a little-endian word through a checked contiguous-RAM path or the ordered byte bus.</summary>
     public ushort ReadWord(uint address) => TryRamRange(address, 2, out int offset)
         ? BinaryPrimitives.ReadUInt16LittleEndian(PhysicalRam.Slice(offset, 2))
+        : TransactionDecoder(address, 2, out uint physical) is { } peer ? (ushort)peer.ReadDecoded(physical, 2)
         : (ushort)(ReadByte(address) | ReadByte(unchecked(address + 1)) << 8);
     /// <summary>Non-invasive RAM/ROM inspection; refuses devices with read side effects.</summary>
     public bool TryPeekByte(uint address, out byte value)
@@ -294,6 +295,7 @@ public sealed partial class MemoryBus
     /// <summary>Reads a little-endian doubleword without bypassing A20, mapping or range boundaries.</summary>
     public uint ReadDword(uint address) => TryRamRange(address, 4, out int offset)
         ? BinaryPrimitives.ReadUInt32LittleEndian(PhysicalRam.Slice(offset, 4))
+        : TransactionDecoder(address, 4, out uint physical) is { } peer ? peer.ReadDecoded(physical, 4)
         : (uint)ReadByte(address) | (uint)ReadByte(unchecked(address + 1)) << 8 |
           (uint)ReadByte(unchecked(address + 2)) << 16 | (uint)ReadByte(unchecked(address + 3)) << 24;
     /// <summary>Offers an aligned word only to one complete fixed mapping, retaining ordered byte effects on decline or at boundaries.</summary>
@@ -316,6 +318,7 @@ public sealed partial class MemoryBus
     {
         if (TryRamRange(address, 2, out int offset)) { BinaryPrimitives.WriteUInt16LittleEndian(PhysicalRam.Slice(offset, 2), value); PhysicalRamWrite?.Invoke((uint)offset, 2); return; }
         if (TryWriteMappedWord(address, value)) return;
+        if (TransactionDecoder(address, 2, out uint physical) is { } peer) { peer.WriteDecoded(physical, value, 2); return; }
         WriteByte(address, (byte)value);
         WriteByte(unchecked(address + 1), (byte)(value >> 8));
     }
@@ -323,6 +326,7 @@ public sealed partial class MemoryBus
     public void WriteDword(uint address, uint value)
     {
         if (TryRamRange(address, 4, out int offset)) { BinaryPrimitives.WriteUInt32LittleEndian(PhysicalRam.Slice(offset, 4), value); PhysicalRamWrite?.Invoke((uint)offset, 4); return; }
+        if (TransactionDecoder(address, 4, out uint physical) is { } peer) { peer.WriteDecoded(physical, value, 4); return; }
         WriteByte(address, (byte)value);
         WriteByte(unchecked(address + 1), (byte)(value >> 8));
         WriteByte(unchecked(address + 2), (byte)(value >> 16));

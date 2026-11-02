@@ -112,7 +112,7 @@ internal static class SelectorStackTests
                 PagingTests.Pte(m, 0x10000, 0x10000, 0); c.SetRegister(Register.Ax, c.Cr3); PagingTests.At(c, m, [0x0f, 0x22, 0xd8]);
                 PagingTests.User(c, m); m.Ram.AsSpan(0, 32).Fill(0xa5); m.Ram[0x10000] = m.Ram[0x10001] = 0xa5;
                 c.Step();
-                if (model == X86CpuModel.IntelP54cB5Subset)
+                if (model != X86CpuModel.Intel486Dx)
                     Check(c.TripleFaulted && c.CurrentPrivilegeLevel == 3 && m.Ram.AsSpan(0, 32).ToArray().All(v => v == 0xa5), "P54C wrote an earlier frame before the missing high error word was checked");
                 else Check(!c.TripleFaulted && c.CurrentPrivilegeLevel == 0 && c.Eip == 0x6000 && (c.GetRegister(Register.Sp) & 0xffff) == 0xfffe && m.ReadWord(0xfffe) == 0);
                 Check(m.Ram[0x10000] == 0xa5 && m.Ram[0x10001] == 0xa5);

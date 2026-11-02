@@ -27,6 +27,8 @@ public sealed class WhpxMappedMachine : IDisposable
         WhpxNative.PendingInterruption, WhpxNative.InterruptState, WhpxNative.PendingEvent,
         WhpxNative.DeliverabilityNotifications
     ];
+    private static readonly uint[] GlideInputRegisters = [WhpxNative.Rax, WhpxNative.Rcx, 6];
+    private static readonly uint[] GlideOutputRegisters = [WhpxNative.Rax, WhpxNative.Rip];
     /// <summary>Services the owning board reset edges before another native opcode; true inhibits fetch while RESET is held.</summary>
     internal Func<bool>? ServiceHardwareBoundary { get; set; }
     private readonly IoPortBus _ports;
@@ -36,9 +38,13 @@ public sealed class WhpxMappedMachine : IDisposable
     private readonly WhpxCpuContract _cpuContract;
     private readonly uint _nominalCpuHz;
     private readonly byte[] _exit = new byte[4096];
+    private readonly WhpxNative.RegisterValue[] _glideInputValues = new WhpxNative.RegisterValue[3];
+    private readonly WhpxNative.RegisterValue[] _glideOutputValues = new WhpxNative.RegisterValue[2];
     private readonly WhpxPhysicalMemory _memory;
     private readonly WhpxInstructionEmulator _emulator;
     private readonly WhpxVideoBatch _videoBatch;
+    private readonly WhpxGlideBatch _glideBatch;
+    private readonly WhpxGlidePassThrough? _glidePassThrough;
     private readonly bool _enableVideoBatch = Environment.GetEnvironmentVariable("DOSE_WHPX_VIDEO_BATCH") != "0";
     private readonly WhpxRealtimeClock _clock = new();
     private readonly WhpxDeadlineTimer _deadlineTimer;
@@ -46,6 +52,7 @@ public sealed class WhpxMappedMachine : IDisposable
     private readonly uint _timeScale;
     private nint _partition;
     private ulong _tscEpochTicks;
+    private long _processorGeneration;
     private bool _vp, _running, _disposed, _halted, _interruptWindowArmed, _realtimeWindow, _busWritesOnly;
 
     /// <summary>Builds one native CPU with explicit instruction exits and the owning DOSE physical device graph.</summary>
@@ -57,7 +64,7 @@ public sealed class WhpxMappedMachine : IDisposable
         ArgumentNullException.ThrowIfNull(ports);
         ArgumentNullException.ThrowIfNull(pic);
         ArgumentNullException.ThrowIfNull(scheduler);
-        if (cpuContract == WhpxCpuContract.IntelP54cB5Subset ? nominalCpuHz == 0 : nominalCpuHz != 0)
+        if (cpuContract is WhpxCpuContract.IntelP54cB5Subset or WhpxCpuContract.IntelP55cMmxSubset ? nominalCpuHz == 0 : nominalCpuHz != 0)
             throw new ArgumentException("Only the P54C contract accepts a positive nominal CPU frequency.", nameof(nominalCpuHz));
         if (!Enum.IsDefined(cpuContract)) throw new ArgumentOutOfRangeException(nameof(cpuContract));
         if (virtualTimeScale != 1) throw new ArgumentOutOfRangeException(nameof(virtualTimeScale), "WHP real-time execution requires an exact 1:1 clock; synthetic time multipliers are unsupported.");
@@ -98,11 +105,17 @@ public sealed class WhpxMappedMachine : IDisposable
             _memory = mappedMemory;
             _emulator = instructionEmulator;
             _videoBatch = new WhpxVideoBatch(_partition, memory);
+            _glideBatch = new WhpxGlideBatch(_partition,memory,_clock.Observe)
+            { ReadBoundaryMemoryVersion=()=>_memory.TranslationMemoryVersion };
+            string? glideHost = Environment.GetEnvironmentVariable("DOSE_GLIDE_HOST_DLL");
+            if (!string.IsNullOrWhiteSpace(glideHost))
+                _glidePassThrough = new WhpxGlidePassThrough(_partition, memory, glideHost);
             deadlineTimer = new WhpxDeadlineTimer(_partition);
             _deadlineTimer = deadlineTimer;
         }
         catch
         {
+            _glidePassThrough?.Dispose();
             deadlineTimer?.Dispose();
             instructionEmulator?.Dispose();
             if (_vp) WhpxNative.WHvDeleteVirtualProcessor(_partition, 0);
@@ -123,6 +136,8 @@ public sealed class WhpxMappedMachine : IDisposable
                 new(0, 0xffffUL | (0x93UL << 48)), new(0, 0xffffUL | (0x93UL << 48)),
                 new(0, 0xffffUL | (0x93UL << 48)), new(0x8000)];
         WhpxNative.Check(WhpxNative.WHvSetVirtualProcessorRegisters(_partition, 0, names, (uint)names.Length, values), "set mapped entry");
+        if (_cpuContract == WhpxCpuContract.IntelP55cMmxSubset && cs == 0xf000 && ip == 0xfff0)
+            SetRegister(WhpxNative.Rdx, new(0x543));
         _halted = false;
         if (_nominalCpuHz != 0) _tscEpochTicks = _scheduler.ClockTicks(_nominalCpuHz);
     }
@@ -158,6 +173,7 @@ public sealed class WhpxMappedMachine : IDisposable
         _halted = state.Halted;
         _tscEpochTicks = state.TscEpochTicks;
         _interruptWindowArmed = (state.Registers.Single(item => item.Name == WhpxNative.DeliverabilityNotifications).Low & 2) != 0;
+        _processorGeneration++;
     }
 
     /// <summary>Rejects malformed clock policies and complete register topologies before opening a snapshot media branch.</summary>
@@ -165,7 +181,7 @@ public sealed class WhpxMappedMachine : IDisposable
     {
         if (state is null || state.ClockPolicy != "host-monotonic-1:1-v1" || state.VirtualTimeScale != 1 ||
             !Enum.IsDefined(state.Contract) ||
-            (state.Contract == WhpxCpuContract.IntelP54cB5Subset ? state.NominalCpuHz == 0 : state.NominalCpuHz != 0) ||
+            (state.Contract is WhpxCpuContract.IntelP54cB5Subset or WhpxCpuContract.IntelP55cMmxSubset ? state.NominalCpuHz == 0 : state.NominalCpuHz != 0) ||
             state.Registers is null || state.Registers.Length != SavedRegisters.Length ||
             state.Registers.Where((item, index) => item.Name != SavedRegisters[index]).Any())
             throw new InvalidDataException("Invalid WHP CPU topology or real-time policy.");
@@ -206,6 +222,7 @@ public sealed class WhpxMappedMachine : IDisposable
     /// <summary>Resets the native CPU at a completed exit while preserving mapped RAM and powered devices.</summary>
     internal void ResetProcessor(bool init = false)
     {
+        _processorGeneration++;
         uint[] retainedNames = init ? SavedRegisters.Where(n => n >= 0x1000 && n <= 0x1019).ToArray() : [];
         var retained = new WhpxNative.RegisterValue[retainedNames.Length];
         ulong cr0 = init ? (ReadRegister(0x1c).Low & 0x60000000) | 0x10 : 0x60000010;
@@ -213,7 +230,7 @@ public sealed class WhpxMappedMachine : IDisposable
         WhpxNative.Check(WhpxNative.WHvDeleteVirtualProcessor(_partition, 0), "reset native VP"); _vp = false;
         WhpxNative.Check(WhpxNative.WHvCreateVirtualProcessor(_partition, 0, 0), "recreate native VP"); _vp = true;
         uint[] names = [WhpxNative.Cs, WhpxNative.Rip, WhpxNative.Rflags, WhpxNative.Rdx, 0x1c];
-        WhpxNative.RegisterValue[] values = [new(0xf0000, 0xffffUL | (0xf000UL << 32) | (0x9bUL << 48)), new(0xfff0), new(2), new(0x524), new(cr0)];
+        WhpxNative.RegisterValue[] values = [new(0xf0000, 0xffffUL | (0xf000UL << 32) | (0x9bUL << 48)), new(0xfff0), new(2), new(_cpuContract == WhpxCpuContract.IntelP55cMmxSubset ? 0x543UL : 0x524UL), new(cr0)];
         WhpxNative.Check(WhpxNative.WHvSetVirtualProcessorRegisters(_partition, 0, names, (uint)names.Length, values), "native reset vector");
         if (init) WhpxNative.Check(WhpxNative.WHvSetVirtualProcessorRegisters(_partition, 0, retainedNames, (uint)retainedNames.Length, retained), "restore INIT x87");
         _halted = false; _interruptWindowArmed = false;
@@ -256,6 +273,7 @@ public sealed class WhpxMappedMachine : IDisposable
         _running = true;
         int io = 0, mmio = 0, interrupts = 0;
         using var deadline = new CancellationTokenSource(timeout);
+        Func<ulong>? glideBoundary=null;
         try
         {
             _memory.ActivateSharedRam();
@@ -293,10 +311,31 @@ public sealed class WhpxMappedMachine : IDisposable
                 switch (reason)
                 {
                     case 1:
+                        _emulator.ClearFpuContinuation();
+                        // Admission is checked before instruction emulation: a stalled access has no partial register or memory effects.
+                        if (WaitForMemoryAdmission(virtualDeadline, deadline.Token)) { mmio++; break; }
                         try
                         {
-                            if (!_enableVideoBatch || _pic.HasPending || _interruptWindowArmed || !_videoBatch.TryRun(_exit))
+                            ulong blockEnd=Math.Min(virtualDeadline??ulong.MaxValue,_scheduler.NextEventTime??ulong.MaxValue);
+                            glideBoundary??=()=>
+                            {
+                                long generation=_processorGeneration;deadline.Token.ThrowIfCancellationRequested();
+                                SynchronizeClock(virtualDeadline);_memory.Refresh();
+                                bool held=ServiceHardwareBoundary?.Invoke()==true;
+                                if(held||generation!=_processorGeneration||_pic.HasPending||_interruptWindowArmed||
+                                    virtualDeadline is {} until&&_scheduler.Now>=until)return 0;
+                                return Math.Min(virtualDeadline??ulong.MaxValue,_scheduler.NextEventTime??ulong.MaxValue);
+                            };
+                            if (_pic.HasPending || _interruptWindowArmed ||
+                                !_glideBatch.TryRun(_exit,blockEnd,glideBoundary)&&(!_enableVideoBatch||!_videoBatch.TryRun(_exit)))
                                 _emulator.Emulate(_exit);
+                            // The VP stays stopped. Every additional instruction has its own current code/data checks, real bus write and owner time boundary.
+                            for(int assisted=0;assisted<8&&_emulator.HasFpuContinuation;assisted++)
+                            {
+                                SynchronizeClock(virtualDeadline);_memory.Refresh();
+                                if(ServiceHardwareBoundary?.Invoke()==true||_pic.HasPending||_interruptWindowArmed||
+                                    virtualDeadline is {} end&&_scheduler.Now>=end||!_emulator.TryCompleteConsecutiveFpuStore())break;
+                            }
                         }
                         catch (NotSupportedException error)
                         {
@@ -361,6 +400,32 @@ public sealed class WhpxMappedMachine : IDisposable
         }
     }
 
+    /// <summary>Waits on the existing host-paced owner clock while prior device work blocks a new MMIO transaction; no guest opcode is skipped or retired.</summary>
+    private bool WaitForMemoryAdmission(ulong? virtualDeadline, CancellationToken cancellation)
+    {
+        if(_bus.DynamicDecoderCount==0)return false;
+        ulong address=BinaryPrimitives.ReadUInt64LittleEndian(_exit.AsSpan(72));
+        if(address>uint.MaxValue)return false;
+        uint access=BinaryPrimitives.ReadUInt32LittleEndian(_exit.AsSpan(68))&3;
+        if(access>1)return false;
+        if(_bus.TransactionReadyAt((uint)address,access==1) is null)return false;
+        var initialCs=ReadRegister(WhpxNative.Cs);ulong initialRip=ReadRegister(WhpxNative.Rip).Low;
+        while(_bus.TransactionReadyAt((uint)address,access==1) is { } ready)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            _deadlineTimer.Disarm();SynchronizeClock(virtualDeadline);_memory.Refresh();
+            if(ServiceHardwareBoundary?.Invoke()==true)return true;
+            var currentCs=ReadRegister(WhpxNative.Cs);
+            if(currentCs.Low!=initialCs.Low||currentCs.High!=initialCs.High||ReadRegister(WhpxNative.Rip).Low!=initialRip)return true;
+            if(virtualDeadline is { } end&&_scheduler.Now>=end)return true;
+            if(_bus.TransactionReadyAt((uint)address,access==1) is null)return false;
+            ulong wake=Math.Min(ready,_scheduler.NextEventTime??ready);
+            if(virtualDeadline is { } target)wake=Math.Min(wake,target);
+            _deadlineTimer.WaitHalted(Math.Min(_clock.Remaining(wake),10_000_000));
+        }
+        return false;
+    }
+
     /// <summary>Acknowledges a real pending PIC vector only when the native CPU can accept it, otherwise requests a delivery window.</summary>
     private bool TryInjectPic()
     {
@@ -409,7 +474,7 @@ public sealed class WhpxMappedMachine : IDisposable
         uint leaf = (uint)ReadRegister(WhpxNative.Rax).Low;
         uint eax = 0, ebx = 0, ecx = 0, edx = 0;
         if (leaf == 0) { eax = 1; ebx = 0x756e6547; edx = 0x49656e69; ecx = 0x6c65746e; }
-        else if (leaf == 1) { eax = 0x524; edx = 0x135; }
+        else if (leaf == 1) { eax = _cpuContract == WhpxCpuContract.IntelP55cMmxSubset ? 0x543u : 0x524u; edx = 0x135u | (_cpuContract == WhpxCpuContract.IntelP55cMmxSubset ? 1u << 23 : 0); }
         SetRegister(WhpxNative.Rax, new(eax)); SetRegister(WhpxNative.Rbx, new(ebx));
         SetRegister(WhpxNative.Rcx, new(ecx)); SetRegister(WhpxNative.Rdx, new(edx));
         AdvanceInterceptedInstruction();
@@ -583,9 +648,25 @@ public sealed class WhpxMappedMachine : IDisposable
         if (length is < 1 or > 15 || width is not (1 or 2 or 4))
             throw new NotSupportedException("Malformed WHP I/O exit.");
         ushort port = BinaryPrimitives.ReadUInt16LittleEndian(_exit.AsSpan(72));
+        ulong nextIp = BinaryPrimitives.ReadUInt64LittleEndian(_exit.AsSpan(32)) + (uint)length;
+        if ((info & 1) != 0 && port == WhpxGlidePassThrough.Port && width == 4)
+        {
+            if (_glidePassThrough is null)
+                throw new InvalidOperationException("The guest Glide bridge was called without DOSE_GLIDE_HOST_DLL configured.");
+            WhpxNative.Check(WhpxNative.WHvGetVirtualProcessorRegisters(_partition, 0,
+                GlideInputRegisters, 3, _glideInputValues),
+                "read Glide call registers");
+            uint result = _glidePassThrough.Invoke((uint)_glideInputValues[0].Low,
+                (uint)_glideInputValues[1].Low, (uint)_glideInputValues[2].Low);
+            _glideOutputValues[0] = new(result);
+            _glideOutputValues[1] = new(nextIp);
+            WhpxNative.Check(WhpxNative.WHvSetVirtualProcessorRegisters(_partition, 0,
+                GlideOutputRegisters, 2, _glideOutputValues),
+                "complete Glide host call");
+            return;
+        }
         ulong rax = ReadRegister(WhpxNative.Rax).Low;
         uint mask = width == 4 ? uint.MaxValue : (uint)((1UL << (width * 8)) - 1);
-        ulong nextIp = BinaryPrimitives.ReadUInt64LittleEndian(_exit.AsSpan(32)) + (uint)length;
         if ((info & 1) != 0)
         {
             _ports.Write(port, (uint)rax & mask, width);
@@ -645,6 +726,7 @@ public sealed class WhpxMappedMachine : IDisposable
         PauseRealtime(); RequireCheckpointBoundary();
         _disposed = true;
         _deadlineTimer.Dispose();
+        _glidePassThrough?.Dispose();
         _emulator.Dispose();
         if (_vp) WhpxNative.WHvDeleteVirtualProcessor(_partition, 0);
         _memory.Dispose();
@@ -655,7 +737,7 @@ public sealed class WhpxMappedMachine : IDisposable
 public readonly record struct WhpxMappedRunResult(int IoExits, int MmioExits, int PicInterrupts,
     int TotalExits, ulong Rip, ulong VirtualNanoseconds);
 
-public enum WhpxCpuContract { Host, Intel486Dx, IntelP54cB5Subset }
+public enum WhpxCpuContract { Host, Intel486Dx, IntelP54cB5Subset, IntelP55cMmxSubset }
 public sealed record WhpxCpuState(WhpxRegisterState[] Registers, WhpxCpuContract Contract,
     uint NominalCpuHz, uint VirtualTimeScale, ulong TscEpochTicks, bool Halted, string ClockPolicy = "host-monotonic-1:1-v1");
 public readonly record struct WhpxRegisterState(uint Name, ulong Low, ulong High);

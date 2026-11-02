@@ -16,6 +16,23 @@ if (!WhpxRealModeMachine.IsAvailable())
     return;
 }
 
+if (args.Length == 1 && args[0] == "--mmx-checks") { NativeMmxChecks.Run(); return; }
+if (args.Length == 1 && args[0] == "--voodoo-checks") { NativeVoodooChecks.Run(); return; }
+if (args.Length == 1 && args[0] == "--fst-continuation-checks") { NativeFpuContinuationChecks.Run(); return; }
+if (args.Length == 1 && args[0] == "--glide-batch-checks") { NativeGlideBatchChecks.Run(); NativeGlideBoundaryChecks.Run(); return; }
+if (args.Length == 1 && args[0] == "--fst-mmio-checks") { NativeFpuConversionChecks.Run(); NativeFpuContinuationChecks.Run(); NativeFpuMmioChecks.Run(); NativeFpuPageChecks.Run(); return; }
+if (args.Length == 1 && args[0] == "--voodoo-bus-checks") { NativeVoodooBusChecks.Run(); return; }
+
+NativeMmxChecks.Run();
+NativeFpuConversionChecks.Run();
+NativeFpuContinuationChecks.Run();
+NativeGlideBatchChecks.Run();
+NativeGlideBoundaryChecks.Run();
+NativeFpuMmioChecks.Run();
+NativeFpuPageChecks.Run();
+NativeVoodooChecks.Run();
+NativeVoodooBusChecks.Run();
+
 var ports = new IoPortBus();
 var device = new ProofPort();
 ports.Map(0xe9, 1, device);

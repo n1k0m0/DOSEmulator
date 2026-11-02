@@ -5360,6 +5360,12 @@
           "type": "bool",
           "mode": "excluded",
           "reason": "Host-only ownership guard; native register images require the separately versioned WHPX CPU sidecar and cannot resume as a software CPU after detach."
+        },
+        {
+          "name": "Voodoo",
+          "type": "VoodooGraphics?",
+          "mode": "excluded",
+          "reason": "fixed separately owned card; exact presence and PCI/MMIO/clock peers checked by PcMachine"
         }
       ],
       "sourceFiles": [
@@ -6408,6 +6414,209 @@
         "src/DOSEmulator.Hardware/Rtl8029.Validation.cs"
       ],
       "primaryParameters": []
+    },
+    "DOSEmulator.Hardware.VoodooGraphics": {
+      "namespace": "DOSEmulator.Hardware",
+      "type": "VoodooGraphics",
+      "fields": [
+        {
+          "name": "_memory",
+          "type": "MemoryBus",
+          "mode": "excluded",
+          "reason": "fixed resource peer checked by the PC"
+        },
+        {
+          "name": "_clock",
+          "type": "DeviceScheduler",
+          "mode": "excluded",
+          "reason": "fixed guest-time owner checked by the PC"
+        },
+        {
+          "name": "_config",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_registers",
+          "type": "uint[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_fbi",
+          "type": "byte[][]",
+          "mode": "planes",
+          "reason": null
+        },
+        {
+          "name": "_texture",
+          "type": "byte[][]",
+          "mode": "planes",
+          "reason": null
+        },
+        {
+          "name": "_clut",
+          "type": "uint[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_texturePalette",
+          "type": "uint[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_commands",
+          "type": "Queue<uint[]>",
+          "mode": "queue",
+          "reason": null
+        },
+        {
+          "name": "_front",
+          "type": "int",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_event",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_frameId",
+          "type": "long",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_deadline",
+          "type": "ulong",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_revision",
+          "type": "long",
+          "mode": "excluded",
+          "reason": "derived scanout invalidation; incremented after restore"
+        },
+        {
+          "name": "_dacPll",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_dacPalette",
+          "type": "byte[]",
+          "mode": "array",
+          "reason": null
+        },
+        {
+          "name": "_dacReadIndex",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dacWriteIndex",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dacReadPhase",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dacWritePhase",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dacPaletteReadIndex",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dacPaletteWriteIndex",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dacPaletteReadPhase",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dacPaletteWritePhase",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dacReadLatch",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dacCommand",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_dacMask",
+          "type": "byte",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_nonfiniteParameters",
+          "type": "uint",
+          "mode": "value",
+          "reason": null
+        },
+        {
+          "name": "_fifoWords",
+          "type": "int",
+          "mode": "excluded",
+          "reason": "Derived exact sum of saved command-array lengths; rebuilt and checked after load."
+        },
+        {
+          "name": "_commandScratch",
+          "type": "uint[]",
+          "mode": "excluded",
+          "reason": "Derived single-owner expansion buffer, cleared before every command and after load; original compact operands remain authoritative in _commands."
+        },
+        {
+          "name": "_pendingSwaps",
+          "type": "int",
+          "mode": "excluded",
+          "reason": "Derived exact count of saved SWAP command tags, rebuilt after load; prevents a queue scan in every original-driver status poll."
+        }
+      ],
+      "sourceFiles": [
+        "src/DOSEmulator.Hardware/VoodooGraphics.cs",
+        "src/DOSEmulator.Hardware/VoodooGraphics.Memory.cs",
+        "src/DOSEmulator.Hardware/VoodooGraphics.Raster.cs",
+        "src/DOSEmulator.Hardware/VoodooGraphics.Dac.cs",
+        "src/DOSEmulator.Hardware/VoodooGraphics.Coverage.cs"
+      ],
+      "primaryParameters": [],
+      "afterLoad": [
+        "ValidateState();"
+      ]
     }
   }
 }

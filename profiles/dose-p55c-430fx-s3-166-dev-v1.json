@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "dose-p55c-430fx-s3-166-dev-v1",
+  "name": "DOSE MMX / own FX-PIIX-S3 board / 166MHz",
+  "cpu": "p55c-mmx-subset-development",
+  "cpuHz": 166000000,
+  "ramMiB": 64,
+  "floppyDriveA": "none",
+  "floppyDriveB": "none",
+  "bootDevice": "ide",
+  "soundCard": "sb16-ct1740-dsp405-development",
+  "soundBlasterBasePort": 544,
+  "soundBlasterIrq": 5,
+  "soundBlasterDmaChannel": 1,
+  "soundBlasterDma16Channel": 5,
+  "videoCard": "s3-trio64-86c764-pci-2m-development",
+  "opticalDrive": "sff8020i-rev25-pio-development",
+  "atapiSlot": 2,
+  "mouse": "ps2-two-button"
+}

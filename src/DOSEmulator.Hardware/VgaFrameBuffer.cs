@@ -7,7 +7,7 @@ namespace DOSEmulator.Hardware;
 /// <summary>Reusable owner-thread surface. A reader must hold its exchange lease through GPU upload.</summary>
 public sealed class VgaFrameBuffer
 {
-    internal VgaAdapter? Owner;
+    internal object? Owner;
     internal long Revision;
     internal ulong Phase;
     internal int Width, Height;

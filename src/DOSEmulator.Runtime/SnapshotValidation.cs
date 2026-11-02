@@ -126,8 +126,8 @@ internal static partial class SnapshotValidation
             state.Scheduler.CachedFrequency != 0 && state.Scheduler.CachedFrequency != (uint)profile.CpuHz)
             throw new InvalidDataException("Snapshot RAM or clock differs from its PC profile.");
         var reader = new StateReader(cpu, "DOSEmulator.Cpu.X86.X86Cpu");
-        reader.Invariant("Model", profile.IsP54c ? X86CpuModel.IntelP54cB5Subset : X86CpuModel.Intel486Dx);
-        reader.Invariant("TimestampFrequency", profile.IsP54c ? (uint)profile.CpuHz : 0u);
+        reader.Invariant("Model", profile.IsP55c ? X86CpuModel.IntelP55cMmxSubset : profile.IsP54c ? X86CpuModel.IntelP54cB5Subset : X86CpuModel.Intel486Dx);
+        reader.Invariant("TimestampFrequency", profile.IsPentium ? (uint)profile.CpuHz : 0u);
         if (!state.Components.TryGetValue("memory", out var memory)) throw new InvalidDataException("Snapshot memory decoder is absent.");
         var memoryReader = new StateReader(memory, "DOSEmulator.Core.MemoryBus");
         uint top = memoryReader.Value<uint>("DecodedRamBytes");
@@ -158,6 +158,7 @@ internal static partial class SnapshotValidation
         CheckIdeDma(state, profile);
         CheckPiixReset(state, profile);
         CheckTrio64(state, profile);
+        CheckVoodoo(state, profile);
         // Remaining fields still pass the complete typed loader and exact round-trip check.
     }
 

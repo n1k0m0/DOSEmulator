@@ -11,6 +11,9 @@
     %undef PCI_BIOS_ROUTE_BYTES
     %define PCI_BIOS_ROUTE_BYTES 80
 %endif
+%ifdef DOSE_VOODOO
+    %assign PCI_BIOS_ROUTE_BYTES PCI_BIOS_ROUTE_BYTES+16
+%endif
 
 ; One canonical twelve-dword table supplies both ROM data and the DS-independent
 ; 16-bit compatibility path. Each entry specifies its byte offset and dword value.
@@ -37,6 +40,20 @@
     %1 68, 8
     %1 72, 0
     %1 76, 0
+%endif
+%ifdef DOSE_VOODOO
+    ; SST-1 INTA shares the actual board PIRQA/IRQ11 allocation. Its ASIC does not assert interrupts.
+%ifdef DOSE_NETWORK
+    %1 80, 000603000h
+    %1 84, 8
+    %1 88, 0
+    %1 92, 0
+%else
+    %1 48, 000603000h
+    %1 52, 8
+    %1 56, 0
+    %1 60, 0
+%endif
 %endif
 %endmacro
 
@@ -204,6 +221,13 @@ bits %1
 %ifdef DOSE_NETWORK
     mov dword [ss:PBASE+PLEFT], 6
 %endif
+%ifdef DOSE_VOODOO
+%ifdef DOSE_NETWORK
+    mov dword [ss:PBASE+PLEFT], 7
+%else
+    mov dword [ss:PBASE+PLEFT], 5
+%endif
+%endif
 %if %1 = 16
     mov dword [ss:PBASE+PPACK], PCI_BIOS_TOPOLOGY
 %else
@@ -213,8 +237,18 @@ bits %1
 %endif
     call %%save_cf8
 %%find_next:
+%ifdef DOSE_VOODOO
+    cmp dword [ss:PBASE+PLEFT], 1
+    jne %%voodoo_topology_ready
+    mov dword [ss:PBASE+PPACK], 000000030h
+%%voodoo_topology_ready:
+%endif
 %ifdef DOSE_NETWORK
+%ifdef DOSE_VOODOO
+    cmp dword [ss:PBASE+PLEFT], 3
+%else
     cmp dword [ss:PBASE+PLEFT], 2
+%endif
     jne %%network_topology_ready
     mov dword [ss:PBASE+PPACK], 000004840h
 %%network_topology_ready:
@@ -391,6 +425,10 @@ bits %1
     jmp %%success
 
 %%set_route:
+%ifdef DOSE_VOODOO
+    cmp word [ss:PBASE-16], 0030h
+    je %%route_device_ready
+%endif
 %ifdef DOSE_NETWORK
     cmp word [ss:PBASE-16], 0040h
     je %%route_device_ready
@@ -399,9 +437,7 @@ bits %1
 %endif
     cmp word [ss:PBASE-16], 0018h
     jne %%set_failed
-%ifdef DOSE_NETWORK
 %%route_device_ready:
-%endif
     cmp word [ss:PBASE-8], 00b0ah
     jne %%set_failed
     ; PIIX ELCR is external to the PIC; leave PIC modes/masks and PCI3C to caller.

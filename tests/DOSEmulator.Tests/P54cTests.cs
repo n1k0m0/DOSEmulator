@@ -75,7 +75,7 @@ internal static class P54cTests
             test("M4 P54C reset identity and fixed subset " + model, () =>
             {
                 var cpu = new X86Cpu(new(2 * 1024 * 1024), new(), model);
-                Check(cpu.GetRegister(Register.Dx) == (model == Model ? 0x524u : 0x400u));
+                Check(cpu.GetRegister(Register.Dx) == (model == X86CpuModel.IntelP55cMmxSubset ? 0x543u : model == Model ? 0x524u : 0x400u));
                 Check(cpu.Model == model && cpu.Eflags == 2 && cpu.Cr0 == 0x60000010 && cpu.PhysicalInstructionAddress == 0xfffffff0);
                 cpu.SetRegister(Register.Ax, 0xdeadbeef); cpu.Reset(); Check(cpu.Model == model && cpu.GetRegister(Register.Ax) == 0);
             });

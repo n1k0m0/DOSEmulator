@@ -1,0 +1,20 @@
+#include <windows.h>
+100 DIALOG 0, 0, 300, 235
+STYLE DS_MODALFRAME | DS_CENTER | DS_SETFONT | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "DOSE Tools and MiniGlide Setup"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT "Select the components to install in this Windows guest.", -1, 12, 10, 276, 20
+    GROUPBOX "Components", -1, 12, 33, 276, 111
+    AUTOCHECKBOX "DOSE Tools - clock synchronization and C:\\Share", 101, 20, 47, 260, 12, WS_TABSTOP
+    LTEXT "Time synchronization; file transfer is not included.", -1, 32, 62, 248, 12
+    AUTOCHECKBOX "Start DOSE Tools with Windows", 102, 32, 78, 248, 12, WS_TABSTOP
+    AUTOCHECKBOX "MiniGlide - Glide 2 DLL, preview and game shortcut", 103, 20, 99, 260, 12, WS_TABSTOP
+    AUTOCHECKBOX "APM installation files (manual hardware setup)", 104, 20, 120, 260, 12, WS_TABSTOP
+    LTEXT "MiniGlide needs a DOSE host configured for the Glide bridge. Close running Glide games before installing or removing it.", -1, 12, 151, 276, 26
+    LTEXT "Tools: C:\\DOSETOOLS    |    DLL: Windows System directory", -1, 12, 181, 276, 12
+    LTEXT "Choose Install to continue. Existing files are backed up.", 105, 12, 197, 276, 15
+    PUSHBUTTON "Remove...", 106, 12, 216, 65, 14, WS_TABSTOP
+    DEFPUSHBUTTON "Install", IDOK, 158, 216, 60, 14, WS_TABSTOP
+    PUSHBUTTON "Close", IDCANCEL, 228, 216, 60, 14, WS_TABSTOP
+END

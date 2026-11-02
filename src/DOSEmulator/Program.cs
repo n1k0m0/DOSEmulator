@@ -54,7 +54,7 @@ internal static class Program
             string? machinePath = Value("--machine");
             using PcMachine opened = Value("--remember-configuration") is { } rememberedDirectory
                 ? MachineLaunch.OpenPersistent(Value, rememberedDirectory, out machinePath) : MachineLaunch.Open(Value);
-            using PcMachine? upgraded = engine == "whpx" && !opened.Profile.IsP54c
+            using PcMachine? upgraded = engine == "whpx" && !opened.Profile.IsPentium
                 ? UpgradeStartupMachine(opened) : null;
             var machine = upgraded ?? opened;
             if (upgraded is not null) machinePath = null; // Retain the original 486 definition; only an explicit Save PC persists this native profile.

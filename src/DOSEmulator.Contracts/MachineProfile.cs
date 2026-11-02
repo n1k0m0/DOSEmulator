@@ -38,28 +38,48 @@ public sealed record MachineProfile
     public const string Windows95Profile133Id = "dose-430fx-piix-s3-win95-133-dev-v1";
     /// <summary>Nominal owner/TSC rate reserved for the separate 133 MHz development identifier.</summary>
     public const int Windows95Cpu133Hz = 133_000_000;
+    /// <summary>Original MMX extension on an explicitly own board retaining the qualified 430FX/PIIX devices, not a 430TX claim.</summary>
+    public const string P55cCpuId = "p55c-mmx-subset-development";
+    /// <summary>Own MMX/S3 board at nominal 166 MHz; chipset, RAM and media contracts retain the existing implemented devices.</summary>
+    public const string MmxProfile166Id = "dose-p55c-430fx-s3-166-dev-v1";
+    /// <summary>Own MMX/S3 development tuple at nominal 200 MHz.</summary>
+    public const string MmxProfile200Id = "dose-p55c-430fx-s3-200-dev-v1";
+    /// <summary>Own MMX/S3 development tuple at nominal 233 MHz.</summary>
+    public const string MmxProfile233Id = "dose-p55c-430fx-s3-233-dev-v1";
+    /// <summary>Whether one matching MMX CPU and explicitly own board tuple was selected.</summary>
+    public bool IsP55c => (Id is MmxProfile166Id or MmxProfile200Id or MmxProfile233Id) && Cpu == P55cCpuId;
+    /// <summary>Either implemented Pentium family, with model-specific MMX and reset identity kept separate.</summary>
+    public bool IsPentium => IsP54c || IsP55c;
     /// <summary>Whether this explicitly identified candidate selects the new S3-VBE firmware while retaining all fixed chipset peers.</summary>
-    public bool IsWindows95Board => (Id is Windows95ProfileId or Windows95Profile133Id) && Cpu == P54cCpuId;
+    public bool IsWindows95Board => (Id is Windows95ProfileId or Windows95Profile133Id) && Cpu == P54cCpuId || IsP55c;
     /// <summary>Whether this fixed board exposes the own PCI BIOS and BIOS32 firmware interfaces.</summary>
-    public bool IsPciBiosBoard => (Id == PciBiosProfileId || IsWindows95Board) && Cpu == P54cCpuId;
+    public bool IsPciBiosBoard => Id == PciBiosProfileId && Cpu == P54cCpuId || IsWindows95Board;
     /// <summary>Whether this is the explicitly validated packet-device board tuple.</summary>
-    public bool IsAtapiBoard => (Id == AtapiProfileId || IsPciBiosBoard) && Cpu == P54cCpuId;
+    public bool IsAtapiBoard => Id == AtapiProfileId && Cpu == P54cCpuId || IsPciBiosBoard;
     /// <summary>Whether one installed packet target is selected, independently from inserted media.</summary>
     public bool IsAtapi => OpticalDrive == AtapiCdRomId;
     /// <summary>Whether this is a separately validated board containing the fixed Trio64 tuple.</summary>
-    public bool IsS3Trio64Board => (Id == S3Trio64ProfileId || IsAtapiBoard) && Cpu == P54cCpuId;
+    public bool IsS3Trio64Board => Id == S3Trio64ProfileId && Cpu == P54cCpuId || IsAtapiBoard;
     /// <summary>Whether the profile explicitly selects the original two-MiB Trio64 PCI adapter.</summary>
     public bool IsTrio64 => VideoCard == S3Trio64VideoId;
     /// <summary>Whether the board explicitly wires CF9 to the P54C and the reviewed PCI/ISA reset domains.</summary>
-    public bool IsPiixReset => (Id == PiixResetProfileId || IsS3Trio64Board) && Cpu == P54cCpuId;
+    public bool IsPiixReset => Id == PiixResetProfileId && Cpu == P54cCpuId || IsS3Trio64Board;
     /// <summary>Whether this tuple constructs both original PIIX functions and DMA-capable ATA channels.</summary>
-    public bool IsPiixIde => (Id == PiixIdeProfileId || IsPiixReset) && Cpu == P54cCpuId;
+    public bool IsPiixIde => Id == PiixIdeProfileId && Cpu == P54cCpuId || IsPiixReset;
     /// <summary>Whether this tuple contains the explicitly capable PIC/PIRQ bridge, including the separate IDE board.</summary>
-    public bool IsPiixIrq => (Id == PiixIrqProfileId || IsPiixIde) && Cpu == P54cCpuId;
+    public bool IsPiixIrq => Id == PiixIrqProfileId && Cpu == P54cCpuId || IsPiixIde;
     /// <summary>Whether the board contains the fixed 82437FX host controller.</summary>
-    public bool IsFxHost => (Id == FxHostProfileId || IsPiixIrq) && Cpu == P54cCpuId;
+    public bool IsFxHost => Id == FxHostProfileId && Cpu == P54cCpuId || IsPiixIrq;
     /// <summary>Whether the profile selects one matching board and the limited P54C CPU implementation.</summary>
     public bool IsP54c => (Id == P54cProfileId || IsFxHost) && Cpu == P54cCpuId;
+    /// <summary>Stages an actual CPU/model/clock change on the own MMX board while preserving installed media and peripherals.</summary>
+    public MachineProfile WithMmxCpu(bool enabled, int mhz = 166)
+    {
+        if (!IsWindows95Board) throw new InvalidOperationException("MMX requires the implemented PCI/S3 Windows board.");
+        if (!enabled) return this with { Id = Windows95ProfileId, Cpu = P54cCpuId, CpuHz = FxHostCpuHz };
+        string id = mhz switch { 166 => MmxProfile166Id, 200 => MmxProfile200Id, 233 => MmxProfile233Id, _ => throw new ArgumentOutOfRangeException(nameof(mhz)) };
+        return this with { Id = id, Cpu = P55cCpuId, CpuHz = mhz * 1_000_000 };
+    }
     /// <summary>Selects a complete supported CPU/platform/clock tuple for a later validated cold power cycle, preserving user names and devices.</summary>
     public MachineProfile WithDevelopmentCpu(bool useP54c)
     {
@@ -158,6 +178,13 @@ public sealed record MachineProfile
     /// <summary>Whether the selected profile instantiates the limited ET4000AX ISA reference adapter.</summary>
     public bool IsEt4000 => VideoCard == "et4000ax-isa-1m-development";
 
+    /// <summary>Explicit optional first-generation SST-1 hardware subset beside the primary S3 adapter.</summary>
+    public const string VoodooGraphicsId = "voodoo-graphics-sst1-4m-development";
+    /// <summary>Additional PCI 3D card, independent from the VGA/SVGA adapter and host renderer.</summary>
+    public string ThreeDAccelerator { get; init; } = "none";
+    /// <summary>Whether the original four-MiB Voodoo Graphics development card is installed.</summary>
+    public bool IsVoodoo => ThreeDAccelerator == VoodooGraphicsId;
+
     /// <summary>Whether the selected profile instantiates the concrete CT1740/DSP4.05 sound-card model.</summary>
     public bool IsSb16 => SoundCard == "sb16-ct1740-dsp405-development";
     /// <summary>Builds the DOS BLASTER variable for the selected concrete card and its configured resources.</summary>
@@ -172,9 +199,10 @@ public sealed record MachineProfile
     /// <summary>Rejects unsupported CPU/platform/clock tuples before optional drive-geometry inference opens any media.</summary>
     public void ValidateCpuSelection()
     {
-        if (SchemaVersion != 1 || !(Id == "virtual486-dev-v1" && Cpu == "i486dx-development" || IsP54c))
+        if (SchemaVersion != 1 || !(Id == "virtual486-dev-v1" && Cpu == "i486dx-development" || IsPentium))
             throw new ArgumentException("Use a matching implemented DOSE platform and CPU model.");
-        int expectedHz = IsWindows95Board && Id == Windows95Profile133Id ? Windows95Cpu133Hz :
+        int expectedHz = IsP55c ? Id == MmxProfile166Id ? 166_000_000 : Id == MmxProfile200Id ? 200_000_000 : 233_000_000 :
+            IsWindows95Board && Id == Windows95Profile133Id ? Windows95Cpu133Hz :
             IsFxHost ? FxHostCpuHz : IsP54c ? P54cCpuHz : 33_000_000;
         if (CpuHz != expectedHz)
             throw new ArgumentException("The selected development CPU requires its fixed nominal virtual clock.");
@@ -186,6 +214,8 @@ public sealed record MachineProfile
             throw new ArgumentException("The packet CD-ROM requires its fixed S3/PIIX board and one valid IDE slot.");
         if (IsTrio64 != IsS3Trio64Board)
             throw new ArgumentException("The original Trio64 adapter requires its fixed 430FX/PIIX/S3 board tuple.");
+        if (ThreeDAccelerator is not ("none" or VoodooGraphicsId) || IsVoodoo && !IsWindows95Board)
+            throw new ArgumentException("Voodoo Graphics requires the implemented PCI/S3 Windows board.");
         ValidateNetworkAdapters();
     }
 

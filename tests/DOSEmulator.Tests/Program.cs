@@ -60,6 +60,12 @@ void Test(string name, Action action) => tests.Add((name, () => { action(); retu
 // Registers one named asynchronous regression in the surrounding runner.
 void AsyncTest(string name, Func<Task> action) => tests.Add((name, action));
 CowDurabilityTests.AddTo(Test);
+MmxTests.AddTo(Test);
+MmxBoundaryTests.AddTo(Test);
+VoodooDacTests.AddTo(Test);
+VoodooTexturePipelineTests.AddTo(Test);
+VoodooCoverageTests.AddTo(Test);
+VoodooOriginalPerformanceTests.AddTo(Test);
 // Compares expected and actual regression values using their normal equality contract.
 static void Equal<T>(T expected, T actual) { if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new Exception($"Expected {expected}, got {actual}."); }
 // Requires a regression condition to hold before the test continues.
@@ -144,7 +150,7 @@ Test("INT and IRET use guest vector table", () => { var (c,m,_) = Rig(0xcd,0x21,
 Test("REP zero count performs no access", () => { var (c,m,_) = Rig(0xf3,0xab,0xf4); c.SetRegister(Register.Di,0x300); c.SetRegister(Register.Ax,0x1234); Run(c); Equal((ushort)0,m.ReadWord(0x300)); Equal(0x300u,c.GetRegister(Register.Di)); });
 Test("REP executes one element at a time", () => { var (c,m,_) = Rig(0xf3,0xab,0xf4); c.SetRegister(Register.Cx,2); c.SetRegister(Register.Di,0x300); c.SetRegister(Register.Ax,0x1234); c.Step(); Equal(1u,c.GetRegister(Register.Cx)); Equal(0x1000u,c.Eip); Equal((ushort)0x1234,m.ReadWord(0x300)); Equal((ushort)0,m.ReadWord(0x302)); Run(c); Equal((ushort)0x1234,m.ReadWord(0x302)); });
 Test("REP MOVS honors direction flag", () => { var (c,m,_) = Rig(0xfd,0xf3,0xa4,0xf4); c.SetRegister(Register.Cx,2); c.SetRegister(Register.Si,0x301); c.SetRegister(Register.Di,0x401); m.WriteWord(0x300,0xabcd); Run(c); Equal((ushort)0xabcd,m.ReadWord(0x400)); Equal(0x2ffu,c.GetRegister(Register.Si)); });
-Test("unclaimed instructions stop explicitly", () => { var (c,_,_) = Rig(0x0f,0xfe); Throws<UnsupportedInstructionException>(() => c.Step()); Equal(0x1000u,c.Eip); Equal(0L,c.Instructions); });
+Test("unclaimed instructions stop explicitly", () => { var (c,_,_) = Rig(0x0f,0x70); Throws<UnsupportedInstructionException>(() => c.Step()); Equal(0x1000u,c.Eip); Equal(0L,c.Instructions); });
 Test("profile rejects unimplemented Pentium", () => Throws<ArgumentException>(() => (new MachineProfile { Cpu = "pentium" }).Validate()));
 Test("invalid PCM blocks rejected", () => { Throws<ArgumentException>(() => new AudioBlock(0,48000,2,[1]).Validate()); Throws<ArgumentException>(() => new AudioBlock(0,48000,1,[float.NaN]).Validate()); new AudioBlock(0,48000,2,[0,0]).Validate(); });
 Test("ATA read waits for virtual time, then transfers exactly a sector", () =>
@@ -339,6 +345,8 @@ AtapiTests.AddTo(Test);
 AtapiSnapshotTests.AddTo(Test);
 AtapiMediaTests.AddTo(Test);
 S3Trio64Tests.AddTo(Test);
+VoodooGraphicsTests.AddTo(Test);
+MemoryTransactionTests.AddTo(Test);
 S3Trio64PcTests.AddTo(Test);
 PiixIdeTests.AddTo(Test);
 PiixIdePcTests.AddTo(Test);

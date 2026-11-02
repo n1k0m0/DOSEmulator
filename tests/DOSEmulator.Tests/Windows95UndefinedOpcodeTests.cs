@@ -88,7 +88,7 @@ internal static class Windows95UndefinedOpcodeTests
             });
             test($"M4 Win95 reserved0FFF fix retains explicit unsupported diagnostic for unclaimed neighboring encoding model={model}", () =>
             {
-                var (cpu, _) = ProtectedModeTests.Rig([0x0f, 0xfe], model: model);
+                var (cpu, _) = ProtectedModeTests.Rig([0x0f, 0x70], model: model);
                 try { cpu.Step(); } catch (UnsupportedInstructionException) { return; }
                 throw new Exception("The reserved0FFF fix silently broadened neighboring opcode support.");
             });

@@ -7,7 +7,7 @@ using DOSEmulator.Core;
 namespace DOSEmulator.Whpx;
 
 /// <summary>WHP's instruction decoder forwards an entire MMIO instruction through the physical DOSE bus.</summary>
-internal sealed unsafe class WhpxInstructionEmulator : IDisposable
+internal sealed unsafe partial class WhpxInstructionEmulator : IDisposable
 {
     private const string Library = "WinHvEmulation.dll";
     private readonly nint _partition;
@@ -28,6 +28,10 @@ internal sealed unsafe class WhpxInstructionEmulator : IDisposable
     private string? _videoFallbackRejection;
     private ulong _lastGva, _lastGpa;
     private uint _lastTranslation;
+    private ulong _exitGva, _exitGpa;
+    private uint _exitAccess;
+    /// <summary>Counts checked exit-page translations reused without another native translation query.</summary>
+    internal long ExitTranslationHits { get; private set; }
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
     private delegate int IoCallback(nint context, byte* access);
@@ -242,6 +246,12 @@ internal sealed unsafe class WhpxInstructionEmulator : IDisposable
         _callbackFailure = null;
         _memoryOperations = 0;
         _videoFallbackRejection = null;
+        // WHP has already translated the faulting operand before it reports a memory exit.
+        // This mapping is valid only for this instruction and this exact operand/direction.
+        _exitGva = BinaryPrimitives.ReadUInt64LittleEndian(exit.AsSpan(80));
+        _exitGpa = BinaryPrimitives.ReadUInt64LittleEndian(exit.AsSpan(72));
+        _exitAccess = BinaryPrimitives.ReadUInt32LittleEndian(exit.AsSpan(68)) & 3;
+        if (TryCompleteProtectedFpuStore(exit)) return;
         fixed (byte* pointer = exit)
         {
             WhpxNative.Check(WHvEmulatorTryMmioEmulation(_emulator, 0, pointer + 8, pointer + 48, out uint status), "emulate MMIO");
@@ -398,10 +408,15 @@ internal sealed unsafe class WhpxInstructionEmulator : IDisposable
             if (address > uint.MaxValue || width is < 1 or > 8 || address + (uint)width > 0x1_0000_0000UL)
                 throw new NotSupportedException("MMIO access outside the 32-bit physical bus.");
             if (access[8] == 0) // WHvEmulatorMemoryAccessRead
-                for (int lane = 0; lane < width; lane++) access[10 + lane] = _bus.ReadByte((uint)address + (uint)lane);
+            {
+                if (width == 2) *(ushort*)(access + 10) = _bus.ReadWord((uint)address);
+                else if (width == 4) *(uint*)(access + 10) = _bus.ReadDword((uint)address);
+                else for (int lane = 0; lane < width; lane++) access[10 + lane] = _bus.ReadByte((uint)address + (uint)lane);
+            }
             else if (access[8] == 1) // WHvEmulatorMemoryAccessWrite
             {
                 if (width == 2) _bus.WriteWord((uint)address, *(ushort*)(access + 10));
+                else if (width == 4) _bus.WriteDword((uint)address, *(uint*)(access + 10));
                 else for (int lane = 0; lane < width; lane++) _bus.WriteByte((uint)address + (uint)lane, access[10 + lane]);
             }
             else throw new NotSupportedException("Unknown WHP memory direction.");
@@ -421,6 +436,15 @@ internal sealed unsafe class WhpxInstructionEmulator : IDisposable
     /// <summary>Uses WHP's actual virtual-to-physical translation rather than the independent software CPU.</summary>
     private int Translate(nint context, ulong gva, uint flags, uint* result, ulong* gpa)
     {
+        if (gva == _exitGva && flags == (_exitAccess == 1 ? 0x12u : 0x11u) &&
+            _exitAccess <= 1 && (_exitGpa & 4095) == (gva & 4095))
+        {
+            *result = 0;
+            *gpa = _exitGpa & ~4095UL;
+            _lastGva = gva; _lastGpa = _exitGpa; _lastTranslation = 0;
+            ExitTranslationHits++;
+            return 0;
+        }
         int hr = WhpxNative.WHvTranslateGva(_partition, 0, gva, flags, out ulong translation, out ulong address);
         if (hr < 0) return hr;
         *result = (uint)translation;

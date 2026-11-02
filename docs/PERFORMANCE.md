@@ -1,5 +1,57 @@
 # Performance: gemessene Interpreter- und Geräteoptimierungen
 
+## C58: original Motorhead bottlenecks, 2 November 2026
+
+The [qualified separate development candidate](hardware/VOODOO-PERFORMANCE.md)
+removes captured MemoryBus predicates and redundant native register commits,
+retains permission-specific translations across proven read-only serviced
+boundaries inside one assist block, and reduces ineffective raster work.
+Real RAM writes, writable leases and changed firmware/A20/DRB/hole mappings
+invalidate reuse. Native execution starts cold; live bytes, rights, dirty
+effects, segment bounds, complete partial commits and deadlines remain intact.
+The attempted wider x87 arithmetic change was discarded after worse throughput;
+the original C57 Float80 arithmetic and FST conversion source bytes are retained.
+
+Separate serial mirrored cohorts use normal .NET tiering, a sacrificial
+20-second warmup and a fresh complete original game state for each measurement.
+The same C7 DLL with read-only translation retention disabled/enabled completes
+169/188 real buffer swaps in approximately 48 host seconds per mode:
+3.5207/3.9162 swaps/s, +11.23%. Individual ranges remain 3.333–3.666 and
+3.665–4.500/s; clock following is 99.958–100%. Private affinity is not a product
+setting. These data capsules are not strict old-product imports or migrations.
+
+In a separate equal-work PCI/MMIO hardware cohort, 5120 scenes per side have
+identical whole card fields, VRAM, textures and pixels. Raster host time falls
+from 1.7930384 to 1.3973766 seconds, 22.07%. The corresponding separate actual
+game C7/C8 comparison is only +4.00% (2.6238/2.7287 swaps/s) within substantial
+variance, with no robust extra general game-FPS claim. An earlier C4/C57 cohort
+is +55.57% (0.9370/1.4577 swaps/s), while the rejected arithmetic cohort is
+−8.90%. Host conditions and game phases differ: do not combine absolute rates
+or multiply these ratios. Early short probes remain exploratory.
+
+A genuine final Win98 cold start and three actual strict native imports are
+qualified separately. Original logo, race, natural close and regular shutdown
+pass with unchanged original files. All 18241 common tests, 73 native groups
+and three audits pass. Existing C54 launchers and installations are unchanged;
+C58 is separately frozen. Fluid original Glide games and the universal real
+100% load target remain open. Clock following alone does not prove fluidity.
+
+## C57: original Voodoo game, 1 November 2026
+
+The [original-logo and instruction-path evidence](hardware/VOODOO-PERFORMANCE.md)
+uses eight mirrored serial processes, the same final native DLL, an identical
+transparent SST peer and full identical original Motorhead source imports.
+Each process warms normal .NET on a separate four-second branch, then measures
+eight seconds from a fresh original source branch. Actual completed buffer
+swaps rise from 32 to 65 across approximately 32 host seconds per mode:
+1.00 to 2.03 swaps/s. Individual ranges remain 0.75–1.50 and 1.87–2.37/s;
+clock following stays 99.994–100%. Private affinity is not a product setting.
+
+This isolates the guarded parameter-instruction assists; it is not a general
+C56-to-C57 Windows FPS result. Earlier cross-runtime and late-admission
+prototype cohorts remain exploratory. Genuine cold-start and functional
+restore observations are separate phases. Fluid Glide gameplay remains open.
+
 ## C54 audit: actual guest progress, 31 October / 1 November 2026
 
 The [comprehensive audit](AUDIT-2026-10-31.md) repeats finite native game/video

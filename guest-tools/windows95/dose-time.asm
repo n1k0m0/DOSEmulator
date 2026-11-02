@@ -6,6 +6,9 @@
 ; FileTime conversions compare two local CIVIL calendars, not UTC/time-zone policy.
 BITS 32
 ORG 0
+%ifndef DOSE_WINDOWS98
+%define DOSE_WINDOWS98 0
+%endif
 %define IMAGE_BASE 0x00400000
 %define RVA(x) ((x)-section_start+0x1000)
 %define VA(x) (IMAGE_BASE+RVA(x))
@@ -56,7 +59,11 @@ mov ah,9
 int 0x21
 mov ax,0x4c01
 int 0x21
+%if DOSE_WINDOWS98
+db 'DOSE Tools requires Windows 98.',13,10,'$'
+%else
 db 'DOSE Tools requires Windows 95.',13,10,'$'
+%endif
 times 0x80-($-$$) db 0
 BITS 32
 pe_header:
@@ -92,7 +99,11 @@ entry:
     mov [VA(p_version)],eax
     test eax,0x80000000
     jz .unsupported
+%if DOSE_WINDOWS98
+    cmp ax,0x0a04
+%else
     cmp ax,4
+%endif
     jne .unsupported
     or dword [VA(p_flags)],F_VERSION
     mov dword [VA(p_stage)],1
@@ -1128,7 +1139,11 @@ month_lengths: db 31,28,31,30,31,30,31,31,30,31,30,31
 arg_once: db '/once',0
 arg_background: db '/background',0
 title: db 'DOSE Tools - Time Synchronization',0
+%if DOSE_WINDOWS98
+msg_version: db 'This clock helper supports the explicitly installed DOSE Windows 98 PC only.',0
+%else
 msg_version: db 'This clock helper supports the explicitly installed DOSE Windows 95 PC only.',0
+%endif
 ; Standard DLGTEMPLATE with Unicode strings even for DialogBoxIndirectParamA.
 ; WS_POPUP/CAPTION/SYSMENU + DS_MODALFRAME/SETFONT/CENTER; all controls fit the classic800x600 desktop.
 align 4,db 0
@@ -1142,7 +1157,11 @@ align 4,db 0
     dd 0x50000000,0
     dw 12,12,316,106,0xffff
     dw 0xffff,0x0082
+%if DOSE_WINDOWS98
+    dw __utf16__('Install DOSE time synchronization for this Windows 98 PC?'),13,10,13,10
+%else
     dw __utf16__('Install DOSE time synchronization for this Windows 95 PC?'),13,10,13,10
+%endif
     dw __utf16__('The clock helper will start automatically and check the DOSE RTC every 500 ms.'),13,10
     dw __utf16__('Creates C:\DOSETOOLS and C:\Share. Existing shared files are preserved.'),13,10
     dw __utf16__('No file transfer component is included.'),0

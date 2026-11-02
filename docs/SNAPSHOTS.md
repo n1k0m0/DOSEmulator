@@ -1,5 +1,41 @@
 # Vollständige lokale DOSE-Snapshots
 
+## C58: read-only native boundary translation reuse
+
+The [Motorhead candidate](hardware/VOODOO-PERFORMANCE.md) retains translations
+only within one assisted block and only across owner-observed read-only
+boundaries. RAM/lease writes and changed mappings invalidate them. The memory
+epoch, translation plans and counters are derived and unsaved; a new loaded
+owner starts cold, and translations never survive native execution. Full
+partial CPU commits still precede device service;
+the reviewed state interface remains 49 types / 992 members / 44 operations.
+
+Two real strict C58 race imports preserve every native CPU field, all 128 MiB
+and the complete device/scheduler graph. Seven parked-CPU device futures,
+all pixels, 2400 timed later RAM stereo frames per side and all end media are
+equal without excluded fields. The source SST queue is empty, not an active
+FIFO qualification. A separate actual GUI factory import continues the native
+race for eight seconds with changing images and 384000 later RAM stereo frames.
+Functional native progress is not deterministic running-native replay.
+
+The actual old C57 CLI import fails with observed controlled exit 1 and
+`WHPX: Unsupported WHP checkpoint format.` before branch creation. Formats
+and strict executed-module identity remain unchanged; there is no migration.
+The known old frozen products and all existing launchers are preserved.
+
+## C57: bounded native Voodoo instruction assists
+
+The [Voodoo helpers](hardware/VOODOO-PERFORMANCE.md) commit complete partial
+native integer/raw-x87 progress before due device callbacks. Reset generation
+changes stop the block without restoring stale registers. Page/context caches
+and diagnostic counters are derived, remain unsaved and start cold after load.
+The typed format remains unchanged and bound to actual modules. A real older
+C12 native CLI import is rejected with controlled exit 1 before branch creation.
+Two genuine C57 game imports compare every original CPU/128-MiB/hardware field
+and seven complete parked-CPU device futures, pixels, later timed RAM PCM and
+end media. Actual native game continuation is a separate functional proof;
+deterministic running-native replay is not claimed.
+
 ## C54: native checkpoint audit
 
 The [audit](AUDIT-2026-10-31.md) fixes executed-module identity after DLL

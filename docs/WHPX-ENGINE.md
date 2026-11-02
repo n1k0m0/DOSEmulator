@@ -1,5 +1,26 @@
 # WHPX GUI and launchers — C54
 
+## Separate C58 Motorhead development path
+
+The [new profiling step](hardware/VOODOO-PERFORMANCE.md) is separately frozen
+and does not change the common C54 selection or any existing launcher/PC.
+Within one guarded instruction assist, an owner-observed memory epoch permits
+translation reuse across serviced read-only boundaries. Actual RAM/lease
+writes and changed firmware/A20/DRB/hole mappings invalidate it. Every native
+execution/new assist entry starts cold; live instruction/data bytes and separate
+read/write/execute permissions remain checked. Partial CPU state is committed
+before owner device service; reset generation, PIC, deadlines and raw x87
+semantics are retained. No additional device worker or saved cache state.
+
+The same-DLL cache comparison improves original Motorhead completed swaps by
+11.23% in its eight-process cohort. Equal-work raster host time falls 22.07%,
+but its separate extra game result is within variance. Fluid gameplay remains
+open. Final native qualification includes 73 standard groups, three audits,
+a genuine Win98 cold start and three strict actual game imports, separating
+parked-CPU device equality from functional native continuation. Old checkpoints
+keep their exact old runtime; the observed C57 CLI load is rejected with exit 1
+before branch creation. No migration or deterministic native replay claim.
+
 ## C54: comprehensive audit
 
 The [DOS/Windows/game/hardware audit](AUDIT-2026-10-31.md) fixes five native

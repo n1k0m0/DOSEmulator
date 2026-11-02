@@ -7,5 +7,6 @@
     <Compile Include="../../src/SharpPixels/GpuSourceRevision.cs" Link="Host/GpuSourceRevision.cs" />
     <Compile Include="../../src/SharpPixels/KeyRepeatClock.cs" Link="Host/KeyRepeatClock.cs" />
     <EmbeddedResource Include="../../artifacts/drivers/DOSECD.SYS" LogicalName="DOSECD.SYS" />
+    <EmbeddedResource Include="../../artifacts/guests/mmx-voodoo-test.bin" LogicalName="MMX-VOODOO.BIN" />
   </ItemGroup>
 </Project>

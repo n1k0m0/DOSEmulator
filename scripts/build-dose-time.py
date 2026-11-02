@@ -151,6 +151,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', required=True, type=Path, help='NEW directory beneath repository/artifacts')
     parser.add_argument('--nasm', type=Path, help='Explicit NASM executable; otherwise PATH nasm')
+    parser.add_argument('--windows-version', choices=('95', '98'), default='95')
     args = parser.parse_args()
     output = args.output.resolve()
     require(output != ROOT/'artifacts' and output.is_relative_to((ROOT/'artifacts').resolve()),
@@ -165,6 +166,8 @@ def main() -> None:
     executable = output/'DOSETIME.EXE'
     listing = output/'DOSETIME.lst'
     command = [str(nasm), '-Werror', '-f', 'bin', str(SOURCE), '-o', str(executable), '-l', str(listing)]
+    if args.windows_version == '98':
+        command += ['-DDOSE_WINDOWS98=1']
     completed = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=60, check=False)
     (output/'assemble.log').write_text(completed.stdout+completed.stderr, encoding='utf-8', newline='\n')
     require(completed.returncode == 0, 'NASM failed; see new private assemble.log')
@@ -175,7 +178,8 @@ def main() -> None:
         'program': str(executable), 'programBytes': len(binary), 'programSha256': sha(binary),
         'listing': str(listing), 'builderSha256': sha(Path(__file__).read_bytes()),
         'onlyNasmExecuted': True, 'guestExecuted': False, 'hostPeExecuted': False,
-        'supportedOs': 'Windows95 GetVersion major4/minor0/highBit1', 'timerMilliseconds': 500,
+        'supportedOs': 'Windows' + args.windows_version + ' GetVersion major4/minor' +
+            ('10' if args.windows_version == '98' else '0') + '/highBit1', 'timerMilliseconds': 500,
         'centuryRegister': 0x32, 'calendarRange': [1601,9999], 'verificationMax100ns': 10000000,
         'precision': 'Absolute difference of actual local civil calendars <=1second; RTC has whole-second resolution',
         'installer': 'CopyFile fail-if-exists; own HKLM Run value; C:\\Share contents preserved; no file transfer',
