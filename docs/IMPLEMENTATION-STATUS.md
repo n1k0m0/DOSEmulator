@@ -1,5 +1,62 @@
 # DOSE – Implementierungsstand
 
+**Unreal unter Win95/Win98, 3. November 2026 – Messung des unveränderten MiniGlide-Kandidaten:**
+Die [neue Lastmessung](UNREAL-MINIGLIDE-MEASUREMENTS.md) umfasst 18 Abschnitte
+auf zwei frischen eigenen Kaltstarts: Kameraflug, feste Vortex2-Ansicht und
+fortlaufende Kameradrehung bei 512×384. Win95/Unreal205/P54C100/64MiB erreicht
+51,77 / 32,72 / 54,58 tatsächliche Glide-Pufferwechsel/s; die vorhandene
+Win98/Unreal226/P55C233/128MiB-Konfiguration 48,13 / 58,58 / 59,29. Die
+Grafikpresets und Spielversionen unterscheiden sich; dies ist kein isolierter
+OS-Vergleich und kein neuer Vorher-/Nachher-Codegewinn. Ganze Bildvergleiche
+zeigen auch wiederholte Frontendbilder und einzelne längere Bildabstände.
+
+Die virtuelle Uhr hält ungefähr 1:1 zur Hostzeit. Zwei zusätzliche gekoppelte
+Uhrenkontrollen belegen dagegen unter Kameradrehung einen Rückstand normaler
+Windows-QPC-/Tick-Zähler: Win95 zählt 11,43 Sekunden in 20,35 realen Sekunden,
+Win98 16,55 in 20,22. Zwei tatsächliche Gast-Portzugriffe begrenzen den
+jeweiligen API-Lesezeitpunkt auf etwa 16 Mikrosekunden. Der Befund entsteht
+somit nicht allein durch verspätetes Ablesen eines Hintergrundbeobachters.
+Unreals interne Simulationszeit wurde nicht direkt gemessen; diese Werte sind
+keine behauptete Spieltempoquote. Der allgemeine 1:1-Nachweis unter Windows-
+Last bleibt offen; PIT-/IRQ0-Fortschreibung über synchrone native Glide-Arbeit
+hinweg ist der nächste konkrete Prüfpunkt.
+
+Produkt-DLLs, Gast-DLL3, bisherige Starter und Installationen bleiben unverändert.
+Die vier erfolgreichen Test-PCs erreichen normalen Anwendungsschluss und
+Windows-Shutdown. Keine neue Produktkompilierung oder Vollsuite; die folgende
+C9-Abnahme gilt weiter. Privater Messnachweis:
+`artifacts/tests/unreal-measurement-release-path.txt`. Automation bleibt pausiert.
+
+**MiniGlide-Anzeige und Motorhead, 3. November 2026 – lokaler Folgestand:**
+Die [neue Win95- und Motorhead-Prüfung](MINIGLIDE-PERFORMANCE.md) besteht auf
+eigenen Sicherheitskopien. Unter Windows 95 erscheinen laufendes Unreal,
+Statuszeile und DOSE-Menü im Emulatorfenster; Pause/Fortsetzen, echte
+Gasttasten, Anwendungsschluss und regulärer Windows-Shutdown sind geprüft.
+Der endgültige Szenenabschnitt liefert 1386 tatsächliche Pufferwechsel in
+31,2447 Hostsekunden bei 31,248 emulierten Sekunden. Der gültige, zunächst
+unberührte Windows-Texturpuffer besteht nach normalen Gastseitenfehlern;
+derselbe Prüfer scheitert an der alten Brücke.
+
+Motorheads getrennte Zeigerdreiecke werden vollständig und geordnet
+gebündelt. Ganze Texturen, partielle Paletten, Metadatenabfragen und
+wiederverwendete LFB-/Batch-Puffer behalten ihre Byte- und ABI-Prüfungen.
+In vier seriellen, gespiegelten Kaltstarts steigt der MiniGlide-Durchsatz von
+36,36 auf 491,66 tatsächliche Pufferwechsel/s; das Frontend zeigt bis zu
+60 Bilder/s. Der zusätzliche endgültige Lauf liefert 35,968 Gastsekunden in
+35,9680145 Hostsekunden, mit passenden normalen Windows-QPC-/Tickabfragen und
+fortlaufenden SB16-Samples. Das sind Host-GPU-/API-Ergebnisse; der ursprüngliche
+SST-1-Pfad und die weiterhin offene allgemeine Spiele-/M7-Abnahme bleiben getrennt.
+
+Der eingefrorene lokale Build besteht mit 0 Warnungen/Fehlern,
+18243/18243 gemeinsamen Regressionen, 76 nativen Gruppen, drei Snapshot-Audits
+und acht Kontrollen der wirklich kompilierten Gast-DLL. Die neue
+Quellprüfung besteht für 1023 Dateien (537 C#), Zustand weiterhin 49/992/44.
+Aktive Host-Glide-Zustände erhalten keine neue Snapshot-Unterstützung.
+Eigene neue Teststarter werden separat bereitgestellt; alle bisherigen
+Starter, Installationen, die gemeinsame C54-Auswahl und der C58-Hardwarestand
+bleiben erhalten. Automation bleibt pausiert, keine neue Commit-/Push-Freigabe.
+Privater Nachweis: `artifacts/tests/miniglide-win95-motorhead-release-path.txt`.
+
 **Projektumzug und gemeinsame Quellen, 3. November 2026:**
 Das Projekt liegt jetzt auf `K:`. [Relative MiniGlide-Starter und ein geprüfter
 Kompatibilitätslink](WORKSPACE-RELOCATION.md) erhalten ältere absolute Pfade,
@@ -10,7 +67,8 @@ Starterauswahl bleibt C54, C58 und MiniGlide bleiben getrennte Entwicklungswege.
 Der neue MiniGlide-Bildpfad im Emulatorfenster und die freien Gaststarthelfer
 werden zusammen mit diesen Reparaturen versioniert. Ihre vorhandenen
 Win95-/Win98-Installer- und Win98-Spielnachweise behalten ihren jeweiligen
-Buildbezug; ein neuer interaktiver Win95-Spieltest ist weiterhin offen.
+Buildbezug; der damals offene neue Win95-Spieltest ist im obigen Folgestand
+mit eigenem Buildbezug ergänzt.
 Der frische Release-Build besteht mit 0 Warnungen/Fehlern, 18242/18242
 Regressionen, 73 nativen Gruppen und drei Snapshot-Audits. 1020 Code-/
 Projektdateien (534 C#) bestehen die Quellprüfung. Beide neu gebauten

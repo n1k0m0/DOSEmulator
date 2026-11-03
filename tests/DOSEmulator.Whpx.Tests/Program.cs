@@ -22,6 +22,14 @@ if (args.Length == 1 && args[0] == "--fst-continuation-checks") { NativeFpuConti
 if (args.Length == 1 && args[0] == "--glide-batch-checks") { NativeGlideBatchChecks.Run(); NativeGlideBoundaryChecks.Run(); return; }
 if (args.Length == 1 && args[0] == "--fst-mmio-checks") { NativeFpuConversionChecks.Run(); NativeFpuContinuationChecks.Run(); NativeFpuMmioChecks.Run(); NativeFpuPageChecks.Run(); return; }
 if (args.Length == 1 && args[0] == "--voodoo-bus-checks") { NativeVoodooBusChecks.Run(); return; }
+if (args.Length == 1 && args[0] == "--glide-transport-checks") { NativeGlideTransportChecks.Run(); return; }
+if (args.Length == 3 && args[0] == "--glide-guest-checks") { NativeGlideGuestChecks.Run(args[1], args[2] == "scalar"); return; }
+if (args.Length is 1 or 2 && args[0] == "--glide-allocation-checks")
+{
+    try { NativeGlideAllocationChecks.Run(args.Length == 2 ? args[1] : "all"); }
+    catch (Exception error) { Console.Error.WriteLine("FAIL: " + error.Message); Environment.ExitCode = 1; }
+    return;
+}
 
 NativeMmxChecks.Run();
 NativeFpuConversionChecks.Run();
@@ -32,6 +40,8 @@ NativeFpuMmioChecks.Run();
 NativeFpuPageChecks.Run();
 NativeVoodooChecks.Run();
 NativeVoodooBusChecks.Run();
+NativeGlideTransportChecks.Run();
+NativeGlideAllocationChecks.Run();
 
 var ports = new IoPortBus();
 var device = new ProofPort();

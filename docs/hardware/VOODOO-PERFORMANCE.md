@@ -1,5 +1,10 @@
 # Voodoo Graphics: Logo und Ausführungskosten
 
+Die [MiniGlide-Fortsetzung vom 3. November](../MINIGLIDE-PERFORMANCE.md)
+optimiert den getrennten Glide-API-Pfad zur Host-GPU. Ihre deutlich höheren
+Motorhead-Raten sind kein neuer Durchsatznachweis dieser emulierten SST-1.
+Die folgenden C58- und früheren Hardwaremessungen behalten ihren Buildbezug.
+
 ## C58: Motorhead-Profilierung, 2. November 2026
 
 Der separate Entwicklungskandidat `c58-20261102-motorhead-performance-dev`

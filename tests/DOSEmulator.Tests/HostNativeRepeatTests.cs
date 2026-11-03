@@ -235,6 +235,23 @@ internal static class HostNativeRepeatTests
     /// <summary>Registers the real-handler reproduction plus fresh-event, held-set and monotonic-clock controls.</summary>
     public static void AddTo(Action<string, Action> test)
     {
+        test("Host audio explicit disabled backend constructs and closes with zero native attempts", () =>
+        {
+            string directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "net10.0-windows"));
+            var context = new ManagedUiContext(directory);
+            var type = context.LoadGuarded(Path.Combine(directory, "DOSEmulator.dll")).GetType("DOSEmulator.HostAudioOutput", true)!;
+            using (var audio = (IDisposable)Activator.CreateInstance(type, new object?[] { null, "none" })!)
+            {
+                Check((bool)type.GetProperty("Available")!.GetValue(audio)! == false, "Disabled audio opened an endpoint.");
+                Check(type.GetProperty("Fault")!.GetValue(audio) is null, "Explicit disabled audio is not a backend failure.");
+                Check(type.GetField("_output", InstanceMembers)!.GetValue(audio) is null &&
+                    type.GetField("_endpoint", InstanceMembers)!.GetValue(audio) is null &&
+                    type.GetField("_recording", InstanceMembers)!.GetValue(audio) is null, "Disabled audio retained a native device or recorder.");
+            }
+            try { Activator.CreateInstance(type, new object?[] { "disabled-audio-must-not-create.wav", "none" }); throw new Exception("Disabled recording was accepted."); }
+            catch (TargetInvocationException error) when (error.InnerException is ArgumentException) { }
+            Check(context.NativeAttempts == 0, "Disabled backend attempted a native import during construction or disposal.");
+        });
         test("Host native repeat fresh down/up callbacks use the actual compiled handler without a window", () =>
         {
             var rig = new Rig(); rig.Down(false);

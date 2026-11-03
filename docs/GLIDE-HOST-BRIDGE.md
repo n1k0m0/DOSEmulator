@@ -1,5 +1,12 @@
 # MiniGlide unter Windows 95 und Windows 98 mit der Host-GPU
 
+Der lokale [Folgestand vom 3. November](MINIGLIDE-PERFORMANCE.md) prüft die
+integrierte Anzeige jetzt auch mit laufendem Unreal unter Windows 95 und
+ergänzt Motorheads tatsächlich benötigte Transfers und Dreiecksbündelung.
+Die darin benannten neuen Testkopien und Starter bleiben getrennt von den
+hier beschriebenen bisherigen Installationen. Die gemeinsame Starterauswahl
+wird nicht automatisch umgestellt.
+
 ## Einrichtung und Start
 
 Die Starter funktionieren auch nach dem [Projektumzug](WORKSPACE-RELOCATION.md).
@@ -29,6 +36,14 @@ Die eigene DLL zeichnet beim ersten `grGlideInit` ein eigenes MiniGlide-Logo mit
 
 Die Versionsabfrage meldet `2.43 MiniGlide 1.0`. Die deutsch- und englischsprachige Unreal-Rendererauswahl heißt ebenfalls MiniGlide; ihre ursprünglichen Texte werden als `before-miniglide-GlideDrv.int` und `.det` neben der Testmaschine gesichert. Das Setup schaltet die optionalen Startlogos und Wasserzeichen des Host-Renderers über dessen öffentliche Konfiguration in `artifacts/glide-bridge/host/dgVoodoo.conf` ab. Eine vorhandene Textkonfiguration wird zuvor einmal als `dgVoodoo.before-miniglide.conf` gesichert. Technische Konfigurationsschlüssel, ABI-Exportnamen und Quellen- und Lizenzangaben behalten ihre korrekte Bezeichnung. Die unveränderte Host-Bibliothek bleibt eine separate Fremdkomponente; das MiniGlide-Logo ersetzt keine Lizenzprüfung für diese oder die installierten Spiele.
 
+Neue Pakete verwenden den englischen Untertitel `3D GRAPHICS ACCELERATION`.
+Nach erfolgreichem Glide-WinOpen aktiviert die Gast-DLL ausschließlich ein
+Fenster ihres eigenen Gastprozesses. Die neue Host-Konfiguration setzt
+`ForceVerticalSync = false`, wenn diese Option noch nicht angegeben wurde;
+eine ausdrücklich vorhandene Auswahl bleibt erhalten. Das verhindert in
+dem geprüften Motorhead-Pfad zusätzliche erzwungene Host-Present-Wartezeiten.
+Das DOSE-Frontend besitzt weiterhin seine eigene VSync-Einstellung.
+
 Die folgenden Aufnahmen und Hashes dokumentieren den früheren Branding-Build mit separater Host-Anzeige; der aktuelle Paketnachweis steht in der [Installer-Anleitung](GUEST-INSTALLERS.md).
 
 Die [Windows-95-Aufnahme](../artifacts/glide-bridge/branding-test/win95-ia32/miniglide-direct-start.png) und die [Windows-98-Aufnahme](../artifacts/glide-bridge/branding-test/MiniGlide-Windows98.png) zeigen das Logo beim direkten Unreal-Start über die installierte DLL. Auch die separate Vorschau bestand in beiden Gästen. Danach zählte der Host 767 beziehungsweise 837 Bildwechsel ohne Gastfehler; das sind Starttests und keine neuen vergleichbaren FPS-Messungen. [Win95-Prüfbericht](../artifacts/glide-bridge/branding-test/win95-ia32/result.json), [Win98-Prüfbericht](../artifacts/glide-bridge/branding-test/win98-final/result.json). Das [damalige Host-Spielbild](../artifacts/glide-bridge/branding-test/win98-final/game-host.png) zeigt noch das separate Fenster. Nach dem erneuten Kaltstart blieb die Windows-98-DLL bytegleich bei 15.872 Byte und vier FAT32-Clustern; beide FAT-Kopien stimmten überein und eine erneute Installation veränderte das Overlay nicht ([Dateiprüfung](../artifacts/glide-bridge/branding-test/win98-final/post-boot-file-proof.json)). Die PE32-Datei besitzt weiterhin alle 162 unveränderten ABI-Exportnamen und Ordnungszahlen sowie die Mindestversion 4.0. Ihr SHA-256 lautet `1C2972835A82B55487F5B1C77B9A74A5D386459334CFEDAE48959E280ECD997F`.
@@ -37,9 +52,17 @@ Die [Windows-95-Aufnahme](../artifacts/glide-bridge/branding-test/win95-ia32/min
 
 Die 32-Bit-Gast-DLL stellt alle 162 Namen und Ordnungszahlen der verwendeten Glide-2-ABI bereit. Aufrufe gehen über I/O-Port `F110h` an den WHPX-Host. Dieser übersetzt Gastadressen, prüft Zeiger und Transferlängen und ruft die 64-Bit-Glide-Bibliothek auf. Häufige Zustandswechsel, `grTexSource` und begrenzte Polygon-Vertexlisten werden in Gast-Reihenfolge gebündelt; Transfer-, Abfrage- und Bildwechselaufrufe leeren die Warteschlange. Die neue Zeichenlisten-Bündelung senkt die Zahl einzelner Portübergänge. Unreals eigene `GLIDEDRV.DLL` und das Spielprogramm wurden für diese Brücke nicht angepasst. Die Host-Bibliothek rendert über Direct3D.
 
+Zusätzlich werden Linien und Dreiecke mit getrennten Vertexzeigern beim
+Gastaufruf vollständig kopiert und geordnet gebündelt. Ganze Mipmapketten
+behalten ihr dicht gepacktes Host-Datenlayout, partielle Paletten ihre
+ursprünglichen Tabellenindizes. Speichergrößenabfragen verbrauchen nur die
+wirklichen Metadaten. Normale Gastzugriffe materialisieren gültige, noch nicht
+vorhandene Textur- und LFB-Seiten, bevor die geprüfte Host-Adressübersetzung
+beginnt. Die vorhandenen Rechte- und RAM-Grenzen bleiben erhalten.
+
 Das Frontend liest die Clientfläche des Host-Renderers pro Bildwechsel aus und zeichnet sie durch denselben GPU-Bildpfad wie das emulierte Grafikbild in den Gast-Viewport. Das Emulator-Overlay wird anschließend darüber gezeichnet. Das technische Rendererfenster bleibt außerhalb des sichtbaren Desktops; die Host-Konfiguration deaktiviert Vollbild und eigene Mausübernahme. Die Bildkopie kann zusätzliche Host-Leistung kosten. Im interaktiven Windows-98-Test erschienen Unreal, Statuszeile und Emulator-Menü zusammen im Emulatorfenster; Escape öffnete das Spielmenü, ein Klick aktivierte die Mausübernahme, und die Pfeiltaste nach oben veränderte im laufenden Spiel sichtbar die Position. Die Frontend-Anzeige lag im geprüften Spielabschnitt zwischen 49 und 60 FPS bei ungefähr 100 % Emulationsgeschwindigkeit. Das ist kein neuer Unreal-Benchmark. Danach wurde der Gast regulär heruntergefahren.
 
-Die Brücke ist eine Glide-2-API-Übersetzung, kein allgemeiner Windows-95/98-Direct3D- oder OpenGL-Anzeigetreiber. Der Host-Transport behandelt die 54 Funktionen, die Unreals `GLIDEDRV.DLL` importiert. Andere Glide-Spiele können weitere Argumentübersetzungen benötigen; nicht unterstützte Aufrufe melden einen ausdrücklichen Fehler. Die ursprüngliche emulierte SST-1-Karte bleibt in den unveränderten Maschinen verfügbar.
+Die Brücke ist eine Glide-2-API-Übersetzung, kein allgemeiner Windows-95/98-Direct3D- oder OpenGL-Anzeigetreiber. Der Host-Transport behandelt die überprüften Unreal-Aufrufe und die zusätzlich von Motorhead benötigten Argumentübersetzungen. Alle 162 ABI-Namen sind exportiert, jedoch nicht alle Funktionen implementiert; nicht unterstützte Aufrufe melden einen ausdrücklichen Fehler. Andere Glide-Spiele können weitere Übersetzungen benötigen. Die ursprüngliche emulierte SST-1-Karte bleibt in den unveränderten Maschinen verfügbar. Aktive Host-Glide-Zustände haben weiterhin keine Snapshot-Abnahme.
 
 ## Gemessene Spielbildraten
 

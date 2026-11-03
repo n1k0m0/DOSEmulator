@@ -64,7 +64,7 @@ internal static class Program
             using var window = new DosWindow(machine, settings, settingsFile, storage ?? acceptance ?? Value("--smoke-test"),
                 acceptance is not null, Value("--type-file") is { } typePath ? File.ReadAllText(typePath) : null, Value("--capture-after"),
                 Value("--audio-out"), args.Contains("--audio-acceptance"), Value("--scenario") is { } scenarioPath ? GuestTestScenario.Load(scenarioPath) : null,
-                args.Contains("--sb2-resource-acceptance"), args.Contains("--mouse-native-acceptance"), storage is not null, machinePath, engine, upgraded is null ? null : "WHPX: PENTIUM 90 MHZ / ORIGINAL 486 CONFIGURATION RETAINED");
+                args.Contains("--sb2-resource-acceptance"), args.Contains("--mouse-native-acceptance"), storage is not null, machinePath, engine, upgraded is null ? null : "WHPX: PENTIUM 90 MHZ / ORIGINAL 486 CONFIGURATION RETAINED", enableHostAudio: !args.Contains("--no-host-audio"));
             window.Run();
             return 0;
         }

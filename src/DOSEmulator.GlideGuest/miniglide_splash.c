@@ -72,7 +72,7 @@ static void DrawWords(HDC dc)
     TextOutA(dc, 153, 74, "MiniGlide", 9);
     SelectObject(dc, subtitle);
     SetTextColor(dc, RGB(122, 165, 180));
-    TextOutA(dc, 156, 132, "3D GRAFIKBESCHLEUNIGUNG", sizeof("3D GRAFIKBESCHLEUNIGUNG") - 1);
+    TextOutA(dc, 156, 132, "3D GRAPHICS ACCELERATION", sizeof("3D GRAPHICS ACCELERATION") - 1);
     SelectObject(dc, oldFont);
     DeleteObject(title);
     DeleteObject(subtitle);
@@ -100,6 +100,7 @@ void __stdcall MiniGlideShowSplash(void)
     HINSTANCE instance = GetModuleHandleA(0);
     WNDCLASSA klass;
     HWND window;
+    HWND previous = GetForegroundWindow();
     DWORD began;
     MSG message;
     char inherited[2];
@@ -136,6 +137,36 @@ void __stdcall MiniGlideShowSplash(void)
         Sleep(10);
     }
     DestroyWindow(window);
+    if (previous && IsWindow(previous)) SetForegroundWindow(previous);
 
     UnregisterClassA(klass.lpszClassName, instance);
+}
+
+/* Locate only this guest process's own visible top-level input window when
+   an old Glide client passes zero as its fullscreen window argument. */
+static BOOL CALLBACK OwnGameWindow(HWND window, LPARAM destination)
+{
+    DWORD process;
+    GetWindowThreadProcessId(window, &process);
+    if (process != GetCurrentProcessId() || !IsWindowVisible(window) || GetWindow(window, GW_OWNER)) return TRUE;
+    *(HWND *)destination = window;
+    return FALSE;
+}
+
+/* The host renderer uses a separate HWND. Keyboard/DirectInput ownership
+   belongs to the real guest game window, including after our splash. */
+void __stdcall MiniGlideActivateWindow(unsigned long value)
+{
+    HWND window = (HWND)value;
+    DWORD process = 0;
+    if (window) GetWindowThreadProcessId(window, &process);
+    if (!IsWindow(window) || process != GetCurrentProcessId()) {
+        window = 0;
+        EnumWindows(OwnGameWindow, (LPARAM)&window);
+    }
+    if (!window) return;
+    ShowWindow(window, SW_SHOW);
+    SetForegroundWindow(window);
+    SetActiveWindow(window);
+    SetFocus(window);
 }

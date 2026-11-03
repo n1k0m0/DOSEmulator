@@ -54,6 +54,7 @@ def generate(exports: list[tuple[int, str, int]], destination: Path) -> None:
         "/* Guest-addressable staging for Glide LFB locks. The host fills it on",
         "   read locks and consumes it on write unlocks. */",
         "unsigned char GlideLfbBuffer[4 * 1024 * 1024];",
+        '#include "miniglide_memory.h"',
         "void __stdcall MiniGlideVersion(char *destination) {",
         '    const char version[] = "2.43 MiniGlide 1.0";',
         "    DWORD i;",
@@ -110,6 +111,24 @@ def generate(exports: list[tuple[int, str, int]], destination: Path) -> None:
         "    BridgeBatchWords = at;",
         "    return 1;",
         "}",
+        "/* Copy separately addressed vertices at call time, before the caller",
+        "   can reuse them. The native function still performs its own clipping.",
+        "   The compile-time scalar control is used only for matched probes. */",
+        "int __stdcall BridgeQueuePointers(DWORD id, const DWORD *arguments) {",
+        "#ifdef MINIGLIDE_NO_POINTER_BATCH",
+        "    (void)id; (void)arguments; BridgeFlush(); return 0;",
+        "#else",
+        "    DWORD count = id == 32 ? 2 : 3;",
+        "    DWORD at = BridgeBatchWords;",
+        "    if (at + 2 + count * 15 > 4096) { BridgeFlush(); at = 0; }",
+        "    BridgeBatch[at++] = id; BridgeBatch[at++] = count;",
+        "    for (DWORD vertex = 0; vertex < count; ++vertex) {",
+        "        const DWORD *source = (const DWORD *)arguments[vertex];",
+        "        for (DWORD word = 0; word < 15; ++word) BridgeBatch[at++] = source[word];",
+        "    }",
+        "    BridgeBatchWords = at; return 1;",
+        "#endif",
+        "}",
         "/* EAX = operation, ECX = pointer to the caller's 32-bit arguments.",
         "   A single OUT enters the host; it replaces EAX with the return bits. */",
     ]
@@ -132,24 +151,31 @@ def generate(exports: list[tuple[int, str, int]], destination: Path) -> None:
         lfb_lock = export == "_grLfbLock@24"
         tex_source = export == "_grTexSource@16"
         draw_list = ordinal in (34, 37)
+        draw_pointers = ordinal in (32, 38, 107)
+        draw = draw_list or draw_pointers
         batched = export[1:].split("@")[0] in BATCHED or tex_source
         c.extend([
             f"__declspec(naked) void __stdcall {symbol}(void) {{",
             "    __asm {",
-            *([] if batched or draw_list else ["        call BridgeFlush"]),
+            *([] if batched or draw else ["        call BridgeFlush"]),
             *(["        call MiniGlideShowSplash"] if ordinal == 46 else []),
             *(["        push esi", "        mov esi, offset GlideLfbBuffer"] if lfb_lock else []),
             f"        mov eax, {ordinal}",
             "        lea ecx, [esp+8]" if lfb_lock else "        lea ecx, [esp+4]",
-            *(["        push ecx", "        push eax", "        call BridgeQueueDraw",
+            *(["        push ecx", "        push eax", "        call " + ("BridgeQueueDraw" if draw_list else "BridgeQueuePointers"),
                "        test eax, eax", f"        jnz queued_{ordinal}",
                f"        mov eax, {ordinal}", "        lea ecx, [esp+4]",
                f"        mov dx, {PORT}", "        out dx, eax",
-               f"    queued_{ordinal}:"] if draw_list else
+               f"    queued_{ordinal}:"] if draw else
               ["        push ecx", "        call BridgeQueueTexSource"] if tex_source else
               [f"        push {stack_bytes // 4}", "        push ecx", "        push eax", "        call BridgeQueue"]
-              if batched else [f"        mov dx, {PORT}", "        out dx, eax"]),
+              if batched else ["        push ecx", "        push eax", "        call BridgePrepare",
+                               "        mov ecx, eax", f"        mov eax, {ordinal}",
+                               f"        mov dx, {PORT}", "        out dx, eax"]),
             *(["        pop esi"] if lfb_lock else []),
+            *(["        test eax, eax", "        jz opened_79", "        push eax",
+               "        push dword ptr [esp+8]", "        call MiniGlideActivateWindow", "        pop eax",
+               "    opened_79:"] if ordinal == 79 else []),
             *(["        push eax", "        fld dword ptr [esp]", "        add esp, 4"] if export in FLOAT_RETURNS else []),
             f"        ret {stack_bytes}",
             "    }",

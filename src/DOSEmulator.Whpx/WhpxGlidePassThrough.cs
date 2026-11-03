@@ -23,6 +23,9 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
     private readonly nint _library;
     private readonly nint[] _functions = new nint[Glide2Exports.Names.Length];
     private readonly long[] _counts = new long[Glide2Exports.Names.Length];
+    private long _transportExits, _batchExits;
+    private readonly byte[] _batchBytes = new byte[4096 * 4];
+    private byte[] _lfbPixels = [];
     private readonly string? _tracePath;
     private readonly ManualResetEventSlim _windowReady = new(false);
     private Thread? _windowThread;
@@ -50,7 +53,8 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
     /// <summary>Translates one guest ABI call or ordered batch into bounded native renderer operations.</summary>
     internal uint Invoke(uint operation, uint guestArguments, uint guestLfbBuffer)
     {
-        if (operation == BatchOperation) return InvokeBatch(guestArguments, guestLfbBuffer);
+        _transportExits++;
+        if (operation == BatchOperation) { _batchExits++; return InvokeBatch(guestArguments, guestLfbBuffer); }
         if (operation == 0 || operation >= Glide2Exports.Names.Length)
             throw new NotSupportedException($"Unknown Glide 2 operation {operation}.");
         int id = (int)operation;
@@ -70,6 +74,7 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
         nint function = Function(id);
         ulong result = id switch
         {
+            32 or 38 or 107 => DrawPointers(function, args),
             34 or 37 => DrawVertexList(function, args),
             39 => CallScalar(function, [0]), // A guest function pointer cannot be called by the host.
             42 => CallWithBuffer(function, args, 0, ReadGuest((uint)args[0], 64)),
@@ -79,17 +84,19 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
             55 => LfbUnlock(function, args),
             68 or 69 => QueryHardware(function, args),
             79 => OpenWindow(function, args),
+            85 => DownloadMipMap(function, args),
             86 or 87 => DownloadLevel(function, args),
-            88 => DownloadTable(function, args),
+            88 or 89 => DownloadTable(function, args),
             91 => LodBias(function, args),
             98 => TextureSource(function, args),
+            99 => TextureMemoryRequired(function, args),
             116 => FogTableIndexToW(function, args),
             9 or 10 or 12 or 13 or 14 or 15 or 16 or 18 or 19 or 21 or 22 or 24 or 26 or 27 or 28 or 29
-                or 31 or 40 or 41 or 46 or 49 or 50 or 71 or 72 or 73 or 78 or 80 or 81 or 82
+                or 31 or 40 or 41 or 46 or 49 or 50 or 63 or 64 or 71 or 72 or 73 or 78 or 80 or 81 or 82
                 or 90 or 92 or 93 or 94 or 104 or 105 or 126 => CallScalar(function, args),
             _ => throw new NotSupportedException($"Glide 2 {Glide2Exports.Names[id]} requires a bridge implementation.")
         };
-        if (id == 78) CloseWindow();
+        if (id is 49 or 78) CloseWindow();
         return (uint)result;
     }
 
@@ -97,24 +104,35 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
     private uint InvokeBatch(uint guestBuffer, uint words)
     {
         if (words is 0 or > 4096) throw new InvalidDataException("Invalid Glide state batch length.");
-        byte[] raw = ReadGuest(guestBuffer, checked((int)words * 4));
+        byte[] raw = _batchBytes;
+        ReadGuest(guestBuffer, raw.AsSpan(0, checked((int)words * 4)));
         Span<ulong> arguments = stackalloc ulong[16];
         Span<byte> nativeTextureInfo = stackalloc byte[24];
         int at = 0;
         while (at < words)
         {
             int id = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(raw.AsSpan(at * 4)));
-            if (id is 34 or 37)
+            if (id is 32 or 34 or 37 or 38 or 107)
             {
                 if (at + 2 > words) throw new InvalidDataException("Truncated batched Glide draw header.");
                 uint vertexCount = BinaryPrimitives.ReadUInt32LittleEndian(raw.AsSpan((at + 1) * 4));
                 if (vertexCount is 0 or > 270 || at + 2 + vertexCount * 15 > words)
                     throw new InvalidDataException("Invalid batched Glide vertex list.");
-                arguments[0] = vertexCount;
+                bool pointers = id is 32 or 38 or 107;
+                if (pointers && vertexCount != (id == 32 ? 2u : 3u))
+                    throw new InvalidDataException("Invalid batched Glide pointer-vertex count.");
                 fixed (byte* vertices = &raw[(at + 2) * 4])
                 {
-                    arguments[1] = (ulong)vertices;
-                    CallScalar(Function(id), arguments.Slice(0, 2));
+                    if (pointers)
+                    {
+                        for (int i = 0; i < vertexCount; i++) arguments[i] = (ulong)(vertices + i * 60);
+                        CallScalar(Function(id), arguments.Slice(0, (int)vertexCount));
+                    }
+                    else
+                    {
+                        arguments[0] = vertexCount; arguments[1] = (ulong)vertices;
+                        CallScalar(Function(id), arguments.Slice(0, 2));
+                    }
                 }
                 _counts[id]++;
                 at += checked((int)(2 + vertexCount * 15));
@@ -222,6 +240,58 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
         return CallWithBuffer(function, args, 1, vertices);
     }
 
+    /// <summary>Copies each separately addressed line or triangle vertex, preserving the provider's clipping operation.</summary>
+    private ulong DrawPointers(nint function, Span<ulong> args)
+    {
+        Span<byte> vertices = stackalloc byte[180];
+        for (int i = 0; i < args.Length; i++)
+            ReadGuest((uint)args[i], vertices.Slice(i * 60, 60));
+        fixed (byte* first = vertices)
+        {
+            for (int i = 0; i < args.Length; i++) args[i] = (ulong)(first + i * 60);
+            return CallScalar(function, args);
+        }
+    }
+
+    /// <summary>Expands only the four metadata words needed by texture queries and selections; the data pointer is not consumed.</summary>
+    private byte[] TextureInfo(uint address)
+    {
+        byte[] info = new byte[24];
+        ReadGuest(address, info.AsSpan(0, 16));
+        uint small = BinaryPrimitives.ReadUInt32LittleEndian(info), large = BinaryPrimitives.ReadUInt32LittleEndian(info.AsSpan(4));
+        uint aspect = BinaryPrimitives.ReadUInt32LittleEndian(info.AsSpan(8)), format = BinaryPrimitives.ReadUInt32LittleEndian(info.AsSpan(12));
+        if (small > 8 || large > small || aspect > 6 || format > 15)
+            throw new InvalidDataException("Unsupported Glide texture metadata.");
+        return info;
+    }
+
+    /// <summary>Passes the pointer-sized host texture record to the provider's original TMU allocation-size query.</summary>
+    private ulong TextureMemoryRequired(nint function, Span<ulong> args) =>
+        CallWithBuffer(function, args, 1, TextureInfo((uint)args[1]));
+
+    /// <summary>Transfers tightly packed host-image levels, including levels skipped by the TMU parity mask, without reading TMU alignment padding.</summary>
+    private ulong DownloadMipMap(nint function, Span<ulong> args)
+    {
+        uint address = (uint)args[3];
+        byte[] info = TextureInfo(address);
+        int small = (int)BinaryPrimitives.ReadUInt32LittleEndian(info), large = (int)BinaryPrimitives.ReadUInt32LittleEndian(info.AsSpan(4));
+        int aspect = (int)BinaryPrimitives.ReadUInt32LittleEndian(info.AsSpan(8));
+        int bytesPerTexel = BinaryPrimitives.ReadUInt32LittleEndian(info.AsSpan(12)) >= 8 ? 2 : 1;
+        int length = 0;
+        for (int lod = large; lod <= small; lod++)
+        {
+            int dimension = 256 >> lod;
+            length += Math.Max(1, dimension >> Math.Max(0, aspect - 3)) *
+                Math.Max(1, dimension >> Math.Max(0, 3 - aspect)) * bytesPerTexel;
+        }
+        byte[] pixels = ReadGuest(BinaryPrimitives.ReadUInt32LittleEndian(ReadGuest(checked(address + 16), 4)), length);
+        fixed (byte* data = pixels)
+        {
+            BinaryPrimitives.WriteUInt64LittleEndian(info.AsSpan(16), (ulong)data);
+            return CallWithBuffer(function, args, 3, info);
+        }
+    }
+
     /// <summary>Validates dimensions and partial rows before transferring a texture level.</summary>
     private ulong DownloadLevel(nint function, Span<ulong> args)
     {
@@ -258,18 +328,29 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
     /// <summary>Copies the selected palette or conversion table into native-accessible storage.</summary>
     private ulong DownloadTable(nint function, Span<ulong> args)
     {
+        if (args[1] > 2) throw new InvalidDataException("Unsupported Glide texture table.");
         int bytes = args[1] == 2 ? 1024 : 112;
-        byte[] table = ReadGuest((uint)args[2], bytes);
+        byte[] table;
+        if (args.Length == 5 && args[1] == 2)
+        {
+            uint first = checked((uint)args[3]), last = checked((uint)args[4]);
+            if (first > last || last > 255) throw new InvalidDataException("Invalid partial Glide palette range.");
+            table = new byte[bytes];
+            ReadGuest(checked((uint)args[2] + first * 4), table.AsSpan((int)first * 4, checked((int)(last - first + 1) * 4)));
+        }
+        else
+        {
+            if (args.Length == 5 && (args[3] != 0 || args[4] != 11))
+                throw new InvalidDataException("Invalid partial Glide NCC range.");
+            table = ReadGuest((uint)args[2], bytes);
+        }
         return CallWithBuffer(function, args, 2, table);
     }
 
     /// <summary>Expands guest texture metadata into the native pointer-sized structure.</summary>
     private ulong TextureSource(nint function, Span<ulong> args)
     {
-        byte[] guestInfo = ReadGuest((uint)args[3], 20);
-        byte[] nativeInfo = new byte[24];
-        guestInfo.AsSpan(0, 16).CopyTo(nativeInfo);
-        return CallWithBuffer(function, args, 3, nativeInfo);
+        return CallWithBuffer(function, args, 3, TextureInfo((uint)args[3]));
     }
 
     /// <summary>Reads a bounded native framebuffer region back into checked guest RAM.</summary>
@@ -302,11 +383,11 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
         _lfbLength = checked(stride * height);
         if (_nativeLfb == 0 || _lfbLength is <= 0 or > MaxTransfer)
             throw new InvalidDataException("Host Glide returned an invalid LFB allocation.");
+        if (_lfbPixels.Length < _lfbLength) _lfbPixels = new byte[_lfbLength];
         if ((_lfbLockType & 1) == 0)
         {
-            byte[] pixels = new byte[_lfbLength];
-            Marshal.Copy(_nativeLfb, pixels, 0, pixels.Length);
-            WriteGuest(_guestLfb, pixels);
+            Marshal.Copy(_nativeLfb, _lfbPixels, 0, _lfbLength);
+            WriteGuest(_guestLfb, _lfbPixels.AsSpan(0, _lfbLength));
         }
         byte[] guestInfo = new byte[20];
         BinaryPrimitives.WriteInt32LittleEndian(guestInfo, 20);
@@ -322,8 +403,8 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
         if (_nativeLfb == 0) return CallScalar(function, args);
         if ((_lfbLockType & 1) != 0)
         {
-            byte[] pixels = ReadGuest(_guestLfb, _lfbLength);
-            Marshal.Copy(pixels, 0, _nativeLfb, pixels.Length);
+            ReadGuest(_guestLfb, _lfbPixels.AsSpan(0, _lfbLength));
+            Marshal.Copy(_lfbPixels, 0, _nativeLfb, _lfbLength);
         }
         ulong result = CallScalar(function, args);
         _nativeLfb = 0;
@@ -488,6 +569,8 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
         _windowThread = null;
         _windowThreadId = 0;
         _window = 0;
+        _windowProcedure = null;
+        _previousWindowProcedure = 0;
     }
 
     /// <summary>Closes presentation, writes optional call counts and releases the host library once.</summary>

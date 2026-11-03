@@ -27,6 +27,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
     private readonly CancellationTokenSource _stop = new();
     private readonly string _settingsPath;
     private readonly string? _smokeDirectory;
+    private readonly bool _enableHostAudio;
     private readonly Stopwatch _elapsed = Stopwatch.StartNew();
     private Task? _worker;
     private JoinedWorker? _videoWorker;
@@ -96,7 +97,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
     protected override bool KeyRepeatsEnabled => IsFocused && (_page.Length != 0 || Volatile.Read(ref _guestRepeatEnabled) != 0);
 
     /// <summary>Initializes DosWindow and connects the supplied dependencies before the component is used.</summary>
-    public DosWindow(PcMachine machine, HostSettings settings, string settingsPath, string? smokeDirectory, bool freeDosAcceptance = false, string? automaticText = null, string? captureAfter = null, string? audioOutPath = null, bool audioAcceptance = false, GuestTestScenario? scenario = null, bool resourceAcceptance = false, bool nativeMouseAcceptance = false, bool storageAcceptance = false, string? machinePath = null, string engine = "software", string? startupNotice = null)
+    public DosWindow(PcMachine machine, HostSettings settings, string settingsPath, string? smokeDirectory, bool freeDosAcceptance = false, string? automaticText = null, string? captureAfter = null, string? audioOutPath = null, bool audioAcceptance = false, GuestTestScenario? scenario = null, bool resourceAcceptance = false, bool nativeMouseAcceptance = false, bool storageAcceptance = false, string? machinePath = null, string engine = "software", string? startupNotice = null, bool enableHostAudio = true)
         : base(960, 720, DOSEIdentity.DisplayName + " - " + PlatformLabel(machine.Profile))
     {
         if (startupNotice is not null) _notices.Enqueue(startupNotice);
@@ -109,6 +110,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         _parallelVideo = LoadVideoPreference(settingsPath, "parallelVideo", false);
         _presentationHz = LoadPresentationRate(settingsPath);
         _smokeDirectory = smokeDirectory;
+        _enableHostAudio = enableHostAudio;
         _freeDosAcceptance = freeDosAcceptance;
         _captureAfter = captureAfter;
         _audioOutPath = audioOutPath; _audioAcceptance = audioAcceptance;
@@ -129,7 +131,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
     /// <summary>Initializes renderer/session integration on the window's owning UI thread.</summary>
     public override void OnUserInitialize()
     {
-        var audio = _audio = new HostAudioOutput(_audioOutPath);
+        var audio = _audio = new HostAudioOutput(_audioOutPath, _enableHostAudio ? "wasapi" : "none");
         ApplyAudioLevels();
         if (audio.Fault is { } audioFault) _notices.Enqueue("AUDIO UNAVAILABLE: " + audioFault);
         PresentationVSyncEnabled = _settings.VSync;

@@ -9,6 +9,7 @@ int __stdcall DllMain(void *module, DWORD reason, void *reserved) {
 /* Guest-addressable staging for Glide LFB locks. The host fills it on
    read locks and consumes it on write unlocks. */
 unsigned char GlideLfbBuffer[4 * 1024 * 1024];
+#include "miniglide_memory.h"
 void __stdcall MiniGlideVersion(char *destination) {
     const char version[] = "2.43 MiniGlide 1.0";
     DWORD i;
@@ -65,6 +66,24 @@ int __stdcall BridgeQueueDraw(DWORD id, const DWORD *arguments) {
     BridgeBatchWords = at;
     return 1;
 }
+/* Copy separately addressed vertices at call time, before the caller
+   can reuse them. The native function still performs its own clipping.
+   The compile-time scalar control is used only for matched probes. */
+int __stdcall BridgeQueuePointers(DWORD id, const DWORD *arguments) {
+#ifdef MINIGLIDE_NO_POINTER_BATCH
+    (void)id; (void)arguments; BridgeFlush(); return 0;
+#else
+    DWORD count = id == 32 ? 2 : 3;
+    DWORD at = BridgeBatchWords;
+    if (at + 2 + count * 15 > 4096) { BridgeFlush(); at = 0; }
+    BridgeBatch[at++] = id; BridgeBatch[at++] = count;
+    for (DWORD vertex = 0; vertex < count; ++vertex) {
+        const DWORD *source = (const DWORD *)arguments[vertex];
+        for (DWORD word = 0; word < 15; ++word) BridgeBatch[at++] = source[word];
+    }
+    BridgeBatchWords = at; return 1;
+#endif
+}
 /* EAX = operation, ECX = pointer to the caller's 32-bit arguments.
    A single OUT enters the host; it replaces EAX with the return bits. */
 __declspec(naked) void __stdcall bridge_1(void) {
@@ -72,6 +91,11 @@ __declspec(naked) void __stdcall bridge_1(void) {
         call BridgeFlush
         mov eax, 1
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 1
         mov dx, 61712
         out dx, eax
         ret 64
@@ -82,6 +106,11 @@ __declspec(naked) void __stdcall bridge_2(void) {
         call BridgeFlush
         mov eax, 2
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 2
         mov dx, 61712
         out dx, eax
         ret 16
@@ -92,6 +121,11 @@ __declspec(naked) void __stdcall bridge_3(void) {
         call BridgeFlush
         mov eax, 3
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 3
         mov dx, 61712
         out dx, eax
         ret 20
@@ -102,6 +136,11 @@ __declspec(naked) void __stdcall bridge_4(void) {
         call BridgeFlush
         mov eax, 4
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 4
         mov dx, 61712
         out dx, eax
         ret 8
@@ -112,6 +151,11 @@ __declspec(naked) void __stdcall bridge_5(void) {
         call BridgeFlush
         mov eax, 5
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 5
         mov dx, 61712
         out dx, eax
         ret 4
@@ -122,6 +166,11 @@ __declspec(naked) void __stdcall bridge_6(void) {
         call BridgeFlush
         mov eax, 6
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 6
         mov dx, 61712
         out dx, eax
         ret 12
@@ -132,6 +181,11 @@ __declspec(naked) void __stdcall bridge_7(void) {
         call BridgeFlush
         mov eax, 7
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 7
         mov dx, 61712
         out dx, eax
         ret 8
@@ -142,6 +196,11 @@ __declspec(naked) void __stdcall bridge_8(void) {
         call BridgeFlush
         mov eax, 8
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 8
         mov dx, 61712
         out dx, eax
         ret 24
@@ -163,6 +222,11 @@ __declspec(naked) void __stdcall bridge_10(void) {
         call BridgeFlush
         mov eax, 10
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 10
         mov dx, 61712
         out dx, eax
         ret 20
@@ -173,6 +237,11 @@ __declspec(naked) void __stdcall bridge_11(void) {
         call BridgeFlush
         mov eax, 11
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 11
         mov dx, 61712
         out dx, eax
         ret 4
@@ -205,6 +274,11 @@ __declspec(naked) void __stdcall bridge_14(void) {
         call BridgeFlush
         mov eax, 14
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 14
         mov dx, 61712
         out dx, eax
         ret 12
@@ -215,6 +289,11 @@ __declspec(naked) void __stdcall bridge_15(void) {
         call BridgeFlush
         mov eax, 15
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 15
         mov dx, 61712
         out dx, eax
         ret 0
@@ -225,6 +304,11 @@ __declspec(naked) void __stdcall bridge_16(void) {
         call BridgeFlush
         mov eax, 16
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 16
         mov dx, 61712
         out dx, eax
         ret 4
@@ -235,6 +319,11 @@ __declspec(naked) void __stdcall bridge_17(void) {
         call BridgeFlush
         mov eax, 17
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 17
         mov dx, 61712
         out dx, eax
         ret 4
@@ -267,6 +356,11 @@ __declspec(naked) void __stdcall bridge_20(void) {
         call BridgeFlush
         mov eax, 20
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 20
         mov dx, 61712
         out dx, eax
         ret 16
@@ -299,6 +393,11 @@ __declspec(naked) void __stdcall bridge_23(void) {
         call BridgeFlush
         mov eax, 23
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 23
         mov dx, 61712
         out dx, eax
         ret 16
@@ -320,6 +419,11 @@ __declspec(naked) void __stdcall bridge_25(void) {
         call BridgeFlush
         mov eax, 25
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 25
         mov dx, 61712
         out dx, eax
         ret 4
@@ -374,6 +478,11 @@ __declspec(naked) void __stdcall bridge_30(void) {
         call BridgeFlush
         mov eax, 30
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 30
         mov dx, 61712
         out dx, eax
         ret 0
@@ -392,11 +501,18 @@ __declspec(naked) void __stdcall bridge_31(void) {
 }
 __declspec(naked) void __stdcall bridge_32(void) {
     __asm {
-        call BridgeFlush
+        mov eax, 32
+        lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgeQueuePointers
+        test eax, eax
+        jnz queued_32
         mov eax, 32
         lea ecx, [esp+4]
         mov dx, 61712
         out dx, eax
+    queued_32:
         ret 8
     }
 }
@@ -405,6 +521,11 @@ __declspec(naked) void __stdcall bridge_33(void) {
         call BridgeFlush
         mov eax, 33
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 33
         mov dx, 61712
         out dx, eax
         ret 12
@@ -432,6 +553,11 @@ __declspec(naked) void __stdcall bridge_35(void) {
         call BridgeFlush
         mov eax, 35
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 35
         mov dx, 61712
         out dx, eax
         ret 4
@@ -442,6 +568,11 @@ __declspec(naked) void __stdcall bridge_36(void) {
         call BridgeFlush
         mov eax, 36
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 36
         mov dx, 61712
         out dx, eax
         ret 12
@@ -466,11 +597,18 @@ __declspec(naked) void __stdcall bridge_37(void) {
 }
 __declspec(naked) void __stdcall bridge_38(void) {
     __asm {
-        call BridgeFlush
+        mov eax, 38
+        lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgeQueuePointers
+        test eax, eax
+        jnz queued_38
         mov eax, 38
         lea ecx, [esp+4]
         mov dx, 61712
         out dx, eax
+    queued_38:
         ret 12
     }
 }
@@ -479,6 +617,11 @@ __declspec(naked) void __stdcall bridge_39(void) {
         call BridgeFlush
         mov eax, 39
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 39
         mov dx, 61712
         out dx, eax
         ret 4
@@ -511,6 +654,11 @@ __declspec(naked) void __stdcall bridge_42(void) {
         call BridgeFlush
         mov eax, 42
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 42
         mov dx, 61712
         out dx, eax
         ret 4
@@ -521,6 +669,11 @@ __declspec(naked) void __stdcall bridge_43(void) {
         call BridgeFlush
         mov eax, 43
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 43
         mov dx, 61712
         out dx, eax
         ret 4
@@ -531,6 +684,11 @@ __declspec(naked) void __stdcall bridge_44(void) {
         call BridgeFlush
         mov eax, 44
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 44
         mov dx, 61712
         out dx, eax
         ret 4
@@ -551,6 +709,11 @@ __declspec(naked) void __stdcall bridge_46(void) {
         call MiniGlideShowSplash
         mov eax, 46
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 46
         mov dx, 61712
         out dx, eax
         ret 0
@@ -561,6 +724,11 @@ __declspec(naked) void __stdcall bridge_47(void) {
         call BridgeFlush
         mov eax, 47
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 47
         mov dx, 61712
         out dx, eax
         ret 4
@@ -578,6 +746,11 @@ __declspec(naked) void __stdcall bridge_49(void) {
         call BridgeFlush
         mov eax, 49
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 49
         mov dx, 61712
         out dx, eax
         ret 0
@@ -599,6 +772,11 @@ __declspec(naked) void __stdcall bridge_51(void) {
         call BridgeFlush
         mov eax, 51
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 51
         mov dx, 61712
         out dx, eax
         ret 4
@@ -609,6 +787,11 @@ __declspec(naked) void __stdcall bridge_52(void) {
         call BridgeFlush
         mov eax, 52
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 52
         mov dx, 61712
         out dx, eax
         ret 4
@@ -621,6 +804,11 @@ __declspec(naked) void __stdcall bridge_53(void) {
         mov esi, offset GlideLfbBuffer
         mov eax, 53
         lea ecx, [esp+8]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 53
         mov dx, 61712
         out dx, eax
         pop esi
@@ -632,6 +820,11 @@ __declspec(naked) void __stdcall bridge_54(void) {
         call BridgeFlush
         mov eax, 54
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 54
         mov dx, 61712
         out dx, eax
         ret 28
@@ -642,6 +835,11 @@ __declspec(naked) void __stdcall bridge_55(void) {
         call BridgeFlush
         mov eax, 55
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 55
         mov dx, 61712
         out dx, eax
         ret 8
@@ -652,6 +850,11 @@ __declspec(naked) void __stdcall bridge_56(void) {
         call BridgeFlush
         mov eax, 56
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 56
         mov dx, 61712
         out dx, eax
         ret 4
@@ -662,6 +865,11 @@ __declspec(naked) void __stdcall bridge_57(void) {
         call BridgeFlush
         mov eax, 57
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 57
         mov dx, 61712
         out dx, eax
         ret 8
@@ -672,6 +880,11 @@ __declspec(naked) void __stdcall bridge_58(void) {
         call BridgeFlush
         mov eax, 58
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 58
         mov dx, 61712
         out dx, eax
         ret 32
@@ -682,6 +895,11 @@ __declspec(naked) void __stdcall bridge_59(void) {
         call BridgeFlush
         mov eax, 59
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 59
         mov dx, 61712
         out dx, eax
         ret 4
@@ -692,6 +910,11 @@ __declspec(naked) void __stdcall bridge_60(void) {
         call BridgeFlush
         mov eax, 60
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 60
         mov dx, 61712
         out dx, eax
         ret 0
@@ -710,6 +933,11 @@ __declspec(naked) void __stdcall bridge_62(void) {
         call BridgeFlush
         mov eax, 62
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 62
         mov dx, 61712
         out dx, eax
         ret 12
@@ -720,6 +948,11 @@ __declspec(naked) void __stdcall bridge_63(void) {
         call BridgeFlush
         mov eax, 63
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 63
         mov dx, 61712
         out dx, eax
         ret 4
@@ -730,6 +963,11 @@ __declspec(naked) void __stdcall bridge_64(void) {
         call BridgeFlush
         mov eax, 64
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 64
         mov dx, 61712
         out dx, eax
         ret 0
@@ -740,6 +978,11 @@ __declspec(naked) void __stdcall bridge_65(void) {
         call BridgeFlush
         mov eax, 65
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 65
         mov dx, 61712
         out dx, eax
         ret 0
@@ -750,6 +993,11 @@ __declspec(naked) void __stdcall bridge_66(void) {
         call BridgeFlush
         mov eax, 66
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 66
         mov dx, 61712
         out dx, eax
         ret 4
@@ -760,6 +1008,11 @@ __declspec(naked) void __stdcall bridge_67(void) {
         call BridgeFlush
         mov eax, 67
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 67
         mov dx, 61712
         out dx, eax
         ret 4
@@ -770,6 +1023,11 @@ __declspec(naked) void __stdcall bridge_68(void) {
         call BridgeFlush
         mov eax, 68
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 68
         mov dx, 61712
         out dx, eax
         ret 4
@@ -780,6 +1038,11 @@ __declspec(naked) void __stdcall bridge_69(void) {
         call BridgeFlush
         mov eax, 69
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 69
         mov dx, 61712
         out dx, eax
         ret 4
@@ -790,6 +1053,11 @@ __declspec(naked) void __stdcall bridge_70(void) {
         call BridgeFlush
         mov eax, 70
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 70
         mov dx, 61712
         out dx, eax
         ret 0
@@ -800,6 +1068,11 @@ __declspec(naked) void __stdcall bridge_71(void) {
         call BridgeFlush
         mov eax, 71
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 71
         mov dx, 61712
         out dx, eax
         ret 0
@@ -810,6 +1083,11 @@ __declspec(naked) void __stdcall bridge_72(void) {
         call BridgeFlush
         mov eax, 72
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 72
         mov dx, 61712
         out dx, eax
         ret 0
@@ -820,6 +1098,11 @@ __declspec(naked) void __stdcall bridge_73(void) {
         call BridgeFlush
         mov eax, 73
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 73
         mov dx, 61712
         out dx, eax
         ret 4
@@ -830,6 +1113,11 @@ __declspec(naked) void __stdcall bridge_74(void) {
         call BridgeFlush
         mov eax, 74
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 74
         mov dx, 61712
         out dx, eax
         ret 0
@@ -840,6 +1128,11 @@ __declspec(naked) void __stdcall bridge_75(void) {
         call BridgeFlush
         mov eax, 75
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 75
         mov dx, 61712
         out dx, eax
         ret 0
@@ -850,6 +1143,11 @@ __declspec(naked) void __stdcall bridge_76(void) {
         call BridgeFlush
         mov eax, 76
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 76
         mov dx, 61712
         out dx, eax
         ret 8
@@ -860,6 +1158,11 @@ __declspec(naked) void __stdcall bridge_77(void) {
         call BridgeFlush
         mov eax, 77
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 77
         mov dx, 61712
         out dx, eax
         ret 0
@@ -870,6 +1173,11 @@ __declspec(naked) void __stdcall bridge_78(void) {
         call BridgeFlush
         mov eax, 78
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 78
         mov dx, 61712
         out dx, eax
         ret 0
@@ -880,8 +1188,20 @@ __declspec(naked) void __stdcall bridge_79(void) {
         call BridgeFlush
         mov eax, 79
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 79
         mov dx, 61712
         out dx, eax
+        test eax, eax
+        jz opened_79
+        push eax
+        push dword ptr [esp+8]
+        call MiniGlideActivateWindow
+        pop eax
+    opened_79:
         ret 28
     }
 }
@@ -890,6 +1210,11 @@ __declspec(naked) void __stdcall bridge_80(void) {
         call BridgeFlush
         mov eax, 80
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 80
         mov dx, 61712
         out dx, eax
         ret 16
@@ -922,6 +1247,11 @@ __declspec(naked) void __stdcall bridge_83(void) {
         call BridgeFlush
         mov eax, 83
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 83
         mov dx, 61712
         out dx, eax
         ret 8
@@ -932,6 +1262,11 @@ __declspec(naked) void __stdcall bridge_84(void) {
         call BridgeFlush
         mov eax, 84
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 84
         mov dx, 61712
         out dx, eax
         ret 16
@@ -942,6 +1277,11 @@ __declspec(naked) void __stdcall bridge_85(void) {
         call BridgeFlush
         mov eax, 85
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 85
         mov dx, 61712
         out dx, eax
         ret 16
@@ -952,6 +1292,11 @@ __declspec(naked) void __stdcall bridge_86(void) {
         call BridgeFlush
         mov eax, 86
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 86
         mov dx, 61712
         out dx, eax
         ret 32
@@ -962,6 +1307,11 @@ __declspec(naked) void __stdcall bridge_87(void) {
         call BridgeFlush
         mov eax, 87
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 87
         mov dx, 61712
         out dx, eax
         ret 40
@@ -972,6 +1322,11 @@ __declspec(naked) void __stdcall bridge_88(void) {
         call BridgeFlush
         mov eax, 88
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 88
         mov dx, 61712
         out dx, eax
         ret 12
@@ -982,6 +1337,11 @@ __declspec(naked) void __stdcall bridge_89(void) {
         call BridgeFlush
         mov eax, 89
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 89
         mov dx, 61712
         out dx, eax
         ret 20
@@ -1003,6 +1363,11 @@ __declspec(naked) void __stdcall bridge_91(void) {
         call BridgeFlush
         mov eax, 91
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 91
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1013,6 +1378,11 @@ __declspec(naked) void __stdcall bridge_92(void) {
         call BridgeFlush
         mov eax, 92
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 92
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1023,6 +1393,11 @@ __declspec(naked) void __stdcall bridge_93(void) {
         call BridgeFlush
         mov eax, 93
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 93
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1044,6 +1419,11 @@ __declspec(naked) void __stdcall bridge_95(void) {
         call BridgeFlush
         mov eax, 95
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 95
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1054,6 +1434,11 @@ __declspec(naked) void __stdcall bridge_96(void) {
         call BridgeFlush
         mov eax, 96
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 96
         mov dx, 61712
         out dx, eax
         ret 20
@@ -1064,6 +1449,11 @@ __declspec(naked) void __stdcall bridge_97(void) {
         call BridgeFlush
         mov eax, 97
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 97
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1083,6 +1473,11 @@ __declspec(naked) void __stdcall bridge_99(void) {
         call BridgeFlush
         mov eax, 99
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 99
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1093,6 +1488,11 @@ __declspec(naked) void __stdcall bridge_100(void) {
         call BridgeFlush
         mov eax, 100
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 100
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1103,6 +1503,11 @@ __declspec(naked) void __stdcall bridge_101(void) {
         call BridgeFlush
         mov eax, 101
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 101
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1113,6 +1518,11 @@ __declspec(naked) void __stdcall bridge_102(void) {
         call BridgeFlush
         mov eax, 102
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 102
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1123,6 +1533,11 @@ __declspec(naked) void __stdcall bridge_103(void) {
         call BridgeFlush
         mov eax, 103
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 103
         mov dx, 61712
         out dx, eax
         ret 12
@@ -1155,6 +1570,11 @@ __declspec(naked) void __stdcall bridge_106(void) {
         call BridgeFlush
         mov eax, 106
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 106
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1162,11 +1582,18 @@ __declspec(naked) void __stdcall bridge_106(void) {
 }
 __declspec(naked) void __stdcall bridge_107(void) {
     __asm {
-        call BridgeFlush
+        mov eax, 107
+        lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgeQueuePointers
+        test eax, eax
+        jnz queued_107
         mov eax, 107
         lea ecx, [esp+4]
         mov dx, 61712
         out dx, eax
+    queued_107:
         ret 12
     }
 }
@@ -1175,6 +1602,11 @@ __declspec(naked) void __stdcall bridge_108(void) {
         call BridgeFlush
         mov eax, 108
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 108
         mov dx, 61712
         out dx, eax
         ret 16
@@ -1185,6 +1617,11 @@ __declspec(naked) void __stdcall bridge_109(void) {
         call BridgeFlush
         mov eax, 109
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 109
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1195,6 +1632,11 @@ __declspec(naked) void __stdcall bridge_110(void) {
         call BridgeFlush
         mov eax, 110
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 110
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1205,6 +1647,11 @@ __declspec(naked) void __stdcall bridge_111(void) {
         call BridgeFlush
         mov eax, 111
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 111
         mov dx, 61712
         out dx, eax
         ret 24
@@ -1215,6 +1662,11 @@ __declspec(naked) void __stdcall bridge_112(void) {
         call BridgeFlush
         mov eax, 112
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 112
         mov dx, 61712
         out dx, eax
         ret 24
@@ -1225,6 +1677,11 @@ __declspec(naked) void __stdcall bridge_113(void) {
         call BridgeFlush
         mov eax, 113
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 113
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1235,6 +1692,11 @@ __declspec(naked) void __stdcall bridge_114(void) {
         call BridgeFlush
         mov eax, 114
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 114
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1245,6 +1707,11 @@ __declspec(naked) void __stdcall bridge_115(void) {
         call BridgeFlush
         mov eax, 115
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 115
         mov dx, 61712
         out dx, eax
         ret 12
@@ -1255,6 +1722,11 @@ __declspec(naked) void __stdcall bridge_116(void) {
         call BridgeFlush
         mov eax, 116
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 116
         mov dx, 61712
         out dx, eax
         push eax
@@ -1268,6 +1740,11 @@ __declspec(naked) void __stdcall bridge_117(void) {
         call BridgeFlush
         mov eax, 117
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 117
         mov dx, 61712
         out dx, eax
         ret 12
@@ -1278,6 +1755,11 @@ __declspec(naked) void __stdcall bridge_118(void) {
         call BridgeFlush
         mov eax, 118
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 118
         mov dx, 61712
         out dx, eax
         ret 0
@@ -1288,6 +1770,11 @@ __declspec(naked) void __stdcall bridge_119(void) {
         call BridgeFlush
         mov eax, 119
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 119
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1298,6 +1785,11 @@ __declspec(naked) void __stdcall bridge_120(void) {
         call BridgeFlush
         mov eax, 120
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 120
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1308,6 +1800,11 @@ __declspec(naked) void __stdcall bridge_121(void) {
         call BridgeFlush
         mov eax, 121
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 121
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1318,6 +1815,11 @@ __declspec(naked) void __stdcall bridge_122(void) {
         call BridgeFlush
         mov eax, 122
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 122
         mov dx, 61712
         out dx, eax
         ret 0
@@ -1328,6 +1830,11 @@ __declspec(naked) void __stdcall bridge_123(void) {
         call BridgeFlush
         mov eax, 123
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 123
         mov dx, 61712
         out dx, eax
         ret 0
@@ -1338,6 +1845,11 @@ __declspec(naked) void __stdcall bridge_124(void) {
         call BridgeFlush
         mov eax, 124
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 124
         mov dx, 61712
         out dx, eax
         ret 60
@@ -1348,6 +1860,11 @@ __declspec(naked) void __stdcall bridge_125(void) {
         call BridgeFlush
         mov eax, 125
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 125
         mov dx, 61712
         out dx, eax
         ret 48
@@ -1369,6 +1886,11 @@ __declspec(naked) void __stdcall bridge_127(void) {
         call BridgeFlush
         mov eax, 127
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 127
         mov dx, 61712
         out dx, eax
         ret 0
@@ -1379,6 +1901,11 @@ __declspec(naked) void __stdcall bridge_128(void) {
         call BridgeFlush
         mov eax, 128
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 128
         mov dx, 61712
         out dx, eax
         ret 12
@@ -1389,6 +1916,11 @@ __declspec(naked) void __stdcall bridge_129(void) {
         call BridgeFlush
         mov eax, 129
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 129
         mov dx, 61712
         out dx, eax
         ret 12
@@ -1399,6 +1931,11 @@ __declspec(naked) void __stdcall bridge_130(void) {
         call BridgeFlush
         mov eax, 130
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 130
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1409,6 +1946,11 @@ __declspec(naked) void __stdcall bridge_131(void) {
         call BridgeFlush
         mov eax, 131
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 131
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1419,6 +1961,11 @@ __declspec(naked) void __stdcall bridge_132(void) {
         call BridgeFlush
         mov eax, 132
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 132
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1429,6 +1976,11 @@ __declspec(naked) void __stdcall bridge_133(void) {
         call BridgeFlush
         mov eax, 133
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 133
         mov dx, 61712
         out dx, eax
         ret 0
@@ -1439,6 +1991,11 @@ __declspec(naked) void __stdcall bridge_134(void) {
         call BridgeFlush
         mov eax, 134
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 134
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1449,6 +2006,11 @@ __declspec(naked) void __stdcall bridge_135(void) {
         call BridgeFlush
         mov eax, 135
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 135
         mov dx, 61712
         out dx, eax
         ret 0
@@ -1459,6 +2021,11 @@ __declspec(naked) void __stdcall bridge_136(void) {
         call BridgeFlush
         mov eax, 136
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 136
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1469,6 +2036,11 @@ __declspec(naked) void __stdcall bridge_137(void) {
         call BridgeFlush
         mov eax, 137
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 137
         mov dx, 61712
         out dx, eax
         ret 12
@@ -1479,6 +2051,11 @@ __declspec(naked) void __stdcall bridge_138(void) {
         call BridgeFlush
         mov eax, 138
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 138
         mov dx, 61712
         out dx, eax
         ret 16
@@ -1489,6 +2066,11 @@ __declspec(naked) void __stdcall bridge_139(void) {
         call BridgeFlush
         mov eax, 139
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 139
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1499,6 +2081,11 @@ __declspec(naked) void __stdcall bridge_140(void) {
         call BridgeFlush
         mov eax, 140
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 140
         mov dx, 61712
         out dx, eax
         ret 16
@@ -1509,6 +2096,11 @@ __declspec(naked) void __stdcall bridge_141(void) {
         call BridgeFlush
         mov eax, 141
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 141
         mov dx, 61712
         out dx, eax
         ret 20
@@ -1519,6 +2111,11 @@ __declspec(naked) void __stdcall bridge_142(void) {
         call BridgeFlush
         mov eax, 142
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 142
         mov dx, 61712
         out dx, eax
         ret 0
@@ -1529,6 +2126,11 @@ __declspec(naked) void __stdcall bridge_143(void) {
         call BridgeFlush
         mov eax, 143
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 143
         mov dx, 61712
         out dx, eax
         ret 0
@@ -1539,6 +2141,11 @@ __declspec(naked) void __stdcall bridge_144(void) {
         call BridgeFlush
         mov eax, 144
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 144
         mov dx, 61712
         out dx, eax
         ret 12
@@ -1549,6 +2156,11 @@ __declspec(naked) void __stdcall bridge_145(void) {
         call BridgeFlush
         mov eax, 145
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 145
         mov dx, 61712
         out dx, eax
         ret 20
@@ -1559,6 +2171,11 @@ __declspec(naked) void __stdcall bridge_146(void) {
         call BridgeFlush
         mov eax, 146
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 146
         mov dx, 61712
         out dx, eax
         ret 24
@@ -1569,6 +2186,11 @@ __declspec(naked) void __stdcall bridge_147(void) {
         call BridgeFlush
         mov eax, 147
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 147
         mov dx, 61712
         out dx, eax
         ret 16
@@ -1579,6 +2201,11 @@ __declspec(naked) void __stdcall bridge_148(void) {
         call BridgeFlush
         mov eax, 148
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 148
         mov dx, 61712
         out dx, eax
         ret 12
@@ -1589,6 +2216,11 @@ __declspec(naked) void __stdcall bridge_149(void) {
         call BridgeFlush
         mov eax, 149
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 149
         mov dx, 61712
         out dx, eax
         ret 0
@@ -1599,6 +2231,11 @@ __declspec(naked) void __stdcall bridge_150(void) {
         call BridgeFlush
         mov eax, 150
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 150
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1609,6 +2246,11 @@ __declspec(naked) void __stdcall bridge_151(void) {
         call BridgeFlush
         mov eax, 151
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 151
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1619,6 +2261,11 @@ __declspec(naked) void __stdcall bridge_152(void) {
         call BridgeFlush
         mov eax, 152
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 152
         mov dx, 61712
         out dx, eax
         ret 20
@@ -1629,6 +2276,11 @@ __declspec(naked) void __stdcall bridge_153(void) {
         call BridgeFlush
         mov eax, 153
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 153
         mov dx, 61712
         out dx, eax
         ret 16
@@ -1639,6 +2291,11 @@ __declspec(naked) void __stdcall bridge_154(void) {
         call BridgeFlush
         mov eax, 154
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 154
         mov dx, 61712
         out dx, eax
         ret 16
@@ -1649,6 +2306,11 @@ __declspec(naked) void __stdcall bridge_155(void) {
         call BridgeFlush
         mov eax, 155
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 155
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1659,6 +2321,11 @@ __declspec(naked) void __stdcall bridge_156(void) {
         call BridgeFlush
         mov eax, 156
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 156
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1669,6 +2336,11 @@ __declspec(naked) void __stdcall bridge_157(void) {
         call BridgeFlush
         mov eax, 157
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 157
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1679,6 +2351,11 @@ __declspec(naked) void __stdcall bridge_158(void) {
         call BridgeFlush
         mov eax, 158
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 158
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1689,6 +2366,11 @@ __declspec(naked) void __stdcall bridge_159(void) {
         call BridgeFlush
         mov eax, 159
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 159
         mov dx, 61712
         out dx, eax
         ret 4
@@ -1699,6 +2381,11 @@ __declspec(naked) void __stdcall bridge_160(void) {
         call BridgeFlush
         mov eax, 160
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 160
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1709,6 +2396,11 @@ __declspec(naked) void __stdcall bridge_161(void) {
         call BridgeFlush
         mov eax, 161
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 161
         mov dx, 61712
         out dx, eax
         ret 8
@@ -1719,6 +2411,11 @@ __declspec(naked) void __stdcall bridge_162(void) {
         call BridgeFlush
         mov eax, 162
         lea ecx, [esp+4]
+        push ecx
+        push eax
+        call BridgePrepare
+        mov ecx, eax
+        mov eax, 162
         mov dx, 61712
         out dx, eax
         ret 8

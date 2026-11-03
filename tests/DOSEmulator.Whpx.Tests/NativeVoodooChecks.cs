@@ -96,7 +96,10 @@ internal static class NativeVoodooChecks
         var profile=Profile().WithMmxCpu(true,mhz) with {FloppyDriveA="1440k",BootDevice="floppy-a"};
         using var pc=new PcMachine(profile,null,new MemoryDisk(output.ToArray(),"Own MMX/SST-1 demo floppy"));using var native=WhpxPcSession.Start(pc);
         Check(native.GetRegister(2)==0x543,"Native MMX reset signature differs");
-        native.RunUntilVirtualTime(5_500_000_000,TimeSpan.FromSeconds(9),100000);native.Pause();Proof(pc);
+        // Fast host execution can consume 100k BIOS/MMIO polling exits before
+        // the unchanged 5.5-second device deadline. Use the GUI owner's exit
+        // allowance; retain the real timeout and every POST/pixel assertion.
+        native.RunUntilVirtualTime(5_500_000_000,TimeSpan.FromSeconds(9),2_000_000);native.Pause();Proof(pc);
         Check(pc.Board.Post10Count==1 && pc.Voodoo is {Busy:false,OutputEnabled:true},"Actual BIOS/floppy boot did not finish the scene");
         var frame=pc.CaptureFrame();
         for(int y=0;y<480;y++)for(int x=0;x<640;x++)Check(frame.ArgbPixels[y*640+x]==ExpectedPixel(x,y),$"Booted MMX/Voodoo scene differs at {x},{y}");

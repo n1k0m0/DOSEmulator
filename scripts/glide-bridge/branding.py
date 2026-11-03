@@ -34,6 +34,11 @@ def configure_host(host: Path) -> Path | None:
         text = text.rstrip() + "\n\n[General]\n" + general_body.lstrip()
     section = re.search(r"(?ims)^\[Glide\][ \t]*\r?\n(.*?)(?=^\[|\Z)", text)
     settings = {"3DfxWatermark": "false", "3DfxSplashScreen": "false"}
+    # Host-present waits block the vCPU rather than the guest's graphics hardware.
+    # Respect a configured choice; the bridge default must not force host vSync
+    # over the game's own swap interval. The DOSE viewport keeps its own vSync.
+    if not re.search(r"(?im)^ForceVerticalSync[ \t]*=", section[1] if section else ""):
+        settings["ForceVerticalSync"] = "false"
     body = section[1] if section else ""
     for key, value in settings.items():
         line = re.compile(r"(?im)^" + re.escape(key) + r"[ \t]*=[^\r\n]*")

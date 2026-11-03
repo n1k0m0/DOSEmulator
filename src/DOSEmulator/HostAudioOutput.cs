@@ -42,8 +42,10 @@ internal sealed class HostAudioOutput : IWaveProvider, IDisposable
     /// <summary>Initializes HostAudioOutput and connects the supplied dependencies before the component is used.</summary>
     public HostAudioOutput(string? recordingPath = null, string backend = "wasapi")
     {
-        if (backend is not ("wasapi" or "waveout")) throw new ArgumentException("Audio backend must be wasapi or waveout.");
-        _backend = backend == "wasapi" ? "NAudio WASAPI shared" : "NAudio WaveOutEvent";
+        if (backend is not ("wasapi" or "waveout" or "none")) throw new ArgumentException("Audio backend must be wasapi, waveout or none.");
+        if (backend == "none" && recordingPath is not null) throw new ArgumentException("Disabled host audio cannot record output.");
+        _backend = backend == "none" ? "Disabled" : backend == "wasapi" ? "NAudio WASAPI shared" : "NAudio WaveOutEvent";
+        if (backend == "none") return; // Guest synthesis remains active; no host device, worker or recorder is created.
         _recording = recordingPath is null ? null : new(recordingPath);
         IWavePlayer? candidate = null;
         MMDevice? endpoint = null;
