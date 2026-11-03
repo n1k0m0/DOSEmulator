@@ -48,6 +48,24 @@ Die folgenden Aufnahmen und Hashes dokumentieren den früheren Branding-Build mi
 
 Die [Windows-95-Aufnahme](../artifacts/glide-bridge/branding-test/win95-ia32/miniglide-direct-start.png) und die [Windows-98-Aufnahme](../artifacts/glide-bridge/branding-test/MiniGlide-Windows98.png) zeigen das Logo beim direkten Unreal-Start über die installierte DLL. Auch die separate Vorschau bestand in beiden Gästen. Danach zählte der Host 767 beziehungsweise 837 Bildwechsel ohne Gastfehler; das sind Starttests und keine neuen vergleichbaren FPS-Messungen. [Win95-Prüfbericht](../artifacts/glide-bridge/branding-test/win95-ia32/result.json), [Win98-Prüfbericht](../artifacts/glide-bridge/branding-test/win98-final/result.json). Das [damalige Host-Spielbild](../artifacts/glide-bridge/branding-test/win98-final/game-host.png) zeigt noch das separate Fenster. Nach dem erneuten Kaltstart blieb die Windows-98-DLL bytegleich bei 15.872 Byte und vier FAT32-Clustern; beide FAT-Kopien stimmten überein und eine erneute Installation veränderte das Overlay nicht ([Dateiprüfung](../artifacts/glide-bridge/branding-test/win98-final/post-boot-file-proof.json)). Die PE32-Datei besitzt weiterhin alle 162 unveränderten ABI-Exportnamen und Ordnungszahlen sowie die Mindestversion 4.0. Ihr SHA-256 lautet `1C2972835A82B55487F5B1C77B9A74A5D386459334CFEDAE48959E280ECD997F`.
 
+## Kooperativer Bildwechsel und Windows-Zeit
+
+Der [lokale Zeitgeber-Fix](WINDOWS-TIMER-PROGRESS.md) ergänzt für die geprüfte
+Hostbibliothek genau einen kopierten nativen Swapauftrag. Die eigene Gast-DLL
+wartet mit tatsächlichem Windows-`Sleep(1)` und geprüftem Token, bis der
+ursprüngliche Aufruf zurückgekehrt ist. Dadurch können IRQ0 und weitere
+Gastthreads während der Präsentation laufen. Alle anderen Rendereraufrufe
+bleiben dahinter geordnet; der Worker berührt keine Gastadressen oder Gerätezeit.
+Reset/Dispose beenden angenommene Arbeit vor Kontext-/Bibliotheksfreigabe.
+
+Das sichere bisherige Versionskommando verhandelt die private Erweiterung,
+während seine 80 öffentlichen Versionsbytes gleich bleiben. Eine neue DLL
+verwendet am alten Host weiterhin den synchronen Pfad; die alte DLL bleibt am
+neuen Host ebenfalls synchron nutzbar. Die neuen Windows-Nachweise benötigen
+den passenden Host und die Gast-DLL4. Sie ersetzen keine allgemeine
+Threadverträglichkeitszusage für andere Renderer. Die bisherigen Installer und
+Benutzerinstallationen werden hier nicht automatisch überschrieben.
+
 ## Technik
 
 Die 32-Bit-Gast-DLL stellt alle 162 Namen und Ordnungszahlen der verwendeten Glide-2-ABI bereit. Aufrufe gehen über I/O-Port `F110h` an den WHPX-Host. Dieser übersetzt Gastadressen, prüft Zeiger und Transferlängen und ruft die 64-Bit-Glide-Bibliothek auf. Häufige Zustandswechsel, `grTexSource` und begrenzte Polygon-Vertexlisten werden in Gast-Reihenfolge gebündelt; Transfer-, Abfrage- und Bildwechselaufrufe leeren die Warteschlange. Die neue Zeichenlisten-Bündelung senkt die Zahl einzelner Portübergänge. Unreals eigene `GLIDEDRV.DLL` und das Spielprogramm wurden für diese Brücke nicht angepasst. Die Host-Bibliothek rendert über Direct3D.

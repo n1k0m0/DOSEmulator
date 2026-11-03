@@ -15,8 +15,8 @@ internal static class NativeGlideGuestChecks
     /// <summary>Rejects an actual compiled ABI or copied-byte discrepancy.</summary>
     private static void Check(bool value, string message) { if (!value) throw new Exception(message); }
 
-    /// <summary>Maps and relocates only the supplied own PE32 image into ordinary probe RAM, leaving imported Windows APIs uncalled.</summary>
-    private static uint[] LoadImage(byte[] file, byte[] ram)
+    /// <summary>Maps the supplied own PE32 image; cooperative controls bind Sleep to an explicit own guest stub, never a host Windows API.</summary>
+    private static uint[] LoadImage(byte[] file, byte[] ram, bool cooperative)
     {
         int pe = BitConverter.ToInt32(file, 60), optional = pe + 24;
         Check(BitConverter.ToUInt16(file, optional) == 0x10b, "Expected own PE32 Glide guest DLL");
@@ -44,6 +44,28 @@ internal static class NativeGlideGuestChecks
             }
             at += block;
         }
+        if (cooperative)
+        {
+            bool foundSleep = false;
+            uint imports = ImageBase + BitConverter.ToUInt32(file, optional + 104);
+            for (uint descriptor = imports; BitConverter.ToUInt32(ram, (int)descriptor + 12) != 0; descriptor += 20)
+            {
+                uint names = ImageBase + BitConverter.ToUInt32(ram, (int)descriptor);
+                uint addresses = ImageBase + BitConverter.ToUInt32(ram, (int)descriptor + 16);
+                for (uint i = 0; ; i++)
+                {
+                    uint entry = BitConverter.ToUInt32(ram, (int)(names + i * 4)); if (entry == 0) break;
+                    if ((entry & 0x80000000) != 0) continue;
+                    int start = checked((int)(ImageBase + entry + 2)), end = Array.IndexOf(ram, (byte)0, start);
+                    if (System.Text.Encoding.ASCII.GetString(ram, start, end - start) != "Sleep") continue;
+                    BinaryPrimitives.WriteUInt32LittleEndian(ram.AsSpan((int)(addresses + i * 4), 4), 0x76000); foundSleep = true;
+                }
+            }
+            Check(foundSleep, "Cooperative own guest has no Sleep import");
+            // Own stdcall Sleep stub: actual OUT E9 releases the finite provider; count this executed guest path and return with ret 4.
+            byte[] sleep = [0x9c, 0x50, 0xb0, 0x53, 0xe6, 0xe9, 0x58, 0xff, 5, 0, 0x70, 7, 0, 0x9d, 0xc2, 4, 0];
+            sleep.CopyTo(ram, 0x76000);
+        }
         uint export = ImageBase + BitConverter.ToUInt32(file, optional + 96);
         uint first = BitConverter.ToUInt32(ram, (int)export + 16), count = BitConverter.ToUInt32(ram, (int)export + 20);
         uint functions = ImageBase + BitConverter.ToUInt32(ram, (int)export + 28);
@@ -56,12 +78,14 @@ internal static class NativeGlideGuestChecks
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate ulong Swap(ulong interval);
 
     /// <summary>Executes actual stdcall exports, mutating all caller vertices before each later queue flush.</summary>
-    public static void Run(string path, bool scalar)
+    public static void Run(string path, bool scalar, bool cooperative = false, bool legacyHost = false)
     {
         int cases = 0;
         foreach (int count in new[] { 1, 87, 88, 170 })
         {
-            var memory = new MemoryBus(8 << 20); uint[] exports = LoadImage(File.ReadAllBytes(path), memory.Ram);
+            var memory = new MemoryBus(8 << 20); uint[] exports = LoadImage(File.ReadAllBytes(path), memory.Ram, cooperative);
+            var ports = new IoPortBus(); using var swapRelease = new ManualResetEventSlim();
+            ports.Accessed += (port, value, _, write) => { if (write && port == 0xe9 && value == 0x53) swapRelease.Set(); };
             var code = new List<byte>(); var expected = new List<byte[]>();
             // Appends exactly the declared own native instruction bytes.
             void Add(params byte[] bytes) => code.AddRange(bytes);
@@ -92,7 +116,7 @@ internal static class NativeGlideGuestChecks
             try
             {
                 Environment.SetEnvironmentVariable("DOSE_GLIDE_HOST_DLL", Path.Combine(Environment.SystemDirectory, "kernel32.dll"));
-                engine = new WhpxMappedMachine(memory, new(), new(), new(), WhpxCpuContract.IntelP54cB5Subset, 100_000_000);
+                engine = new WhpxMappedMachine(memory, ports, new(), new(), WhpxCpuContract.IntelP54cB5Subset, 100_000_000);
             }
             finally { Environment.SetEnvironmentVariable("DOSE_GLIDE_HOST_DLL", original); }
             using var native = engine;
@@ -105,7 +129,8 @@ internal static class NativeGlideGuestChecks
                 Marshal.Copy((nint)a, vertices, 0, 60); Marshal.Copy((nint)b, vertices, 60, 60); Marshal.Copy((nint)c, vertices, 120, 60);
                 observed.Add(vertices); return 0;
             };
-            Swap swap = _ => { swaps++; return 0; };
+            bool swapTimedOut = false;
+            Swap swap = _ => { swaps++; if (cooperative && !legacyHost) swapTimedOut = !swapRelease.Wait(TimeSpan.FromSeconds(3)); return 0; };
             functions[107] = Marshal.GetFunctionPointerForDelegate(triangle); functions[16] = Marshal.GetFunctionPointerForDelegate(swap);
             native.SetEntry(0, 0x1000); var initial = native.CaptureCpuState();
             native.RestoreCpuState(initial with { Registers = initial.Registers.Select(r => r.Name switch
@@ -114,10 +139,20 @@ internal static class NativeGlideGuestChecks
                 18 or 20 or 21 or 22 or 23 => r with { Low = 0, High = 0x40930010ffffffff }, _ => r
             }).ToArray() });
             native.RunUntilHalt(TimeSpan.FromSeconds(10), 10000);
-            Check(observed.Count == count && swaps == 1 && native.GetRegister(4) == 0xe0000, "Compiled Glide stdcall or call count differs");
+            Check(observed.Count == count && swaps == 1 && native.GetRegister(4) == 0xe0000 && !swapTimedOut, "Compiled Glide stdcall or call count differs");
             for (int i = 0; i < count; i++) Check(observed[i].AsSpan().SequenceEqual(expected[i]), "Compiled guest lost caller-time vertex bytes or order");
-            Check((long)bridge.GetType().GetField("_transportExits", Hidden)!.GetValue(bridge)! == (scalar ? count + 1 : (count + 86) / 87 + 1), "Compiled guest did not use the declared scalar/batch control"); GC.KeepAlive(triangle); GC.KeepAlive(swap); cases++;
+            long exits = (long)bridge.GetType().GetField("_transportExits", Hidden)!.GetValue(bridge)!;
+            int draws = scalar ? count : (count + 86) / 87;
+            Check(cooperative && !legacyHost ? exits >= draws + 3 : exits == draws + (cooperative ? 2 : 1), "Compiled guest did not use the declared scalar/batch control");
+            if (cooperative)
+            {
+                var counts = (long[])bridge.GetType().GetField("_counts", Hidden)!.GetValue(bridge)!;
+                Check(counts[45] == 1 && counts[16] == 1, "Compiled guest did not negotiate once or submitted a swap twice");
+                Check(legacyHost ? !swapRelease.IsSet : swapRelease.IsSet && BitConverter.ToUInt32(memory.Ram, 0x77000) > 0,
+                    "Compiled cooperative wait or legacy-host fallback did not execute");
+            }
+            GC.KeepAlive(triangle); GC.KeepAlive(swap); cases++;
         }
-        Console.WriteLine($"PASS: own compiled Glide guest {cases} native stdcall/OUT controls, scalar={scalar}; 346 exact triangle records, caller reuse, queue capacity and swap flush; no host renderer/window/API imports executed.");
+        Console.WriteLine($"PASS: own compiled Glide guest {cases} native stdcall/OUT controls, scalar={scalar}, cooperative={cooperative}, legacyHost={legacyHost}; 346 exact triangle records, caller reuse, queue capacity and swap flush; cooperative controls use an explicit own guest Sleep stub, no host renderer/window/Windows API execution.");
     }
 }

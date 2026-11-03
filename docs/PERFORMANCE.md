@@ -1,5 +1,29 @@
 # Performance: gemessene Interpreter- und Geräteoptimierungen
 
+## Windows timer progress during native MiniGlide output, 3 November 2026
+
+The [timer follow-up](WINDOWS-TIMER-PROGRESS.md) distinguishes actual Windows
+elapsed-time progress from the scheduler/host SPEED ratio. A copied, joined
+native present allows real guest Sleep/IRQ service; measured VP runtime
+separates executed guest code from delayed host return. Genuine masked native
+execution still coalesces PIC edges, and stalled MMIO/held RESET keep their
+original device deadlines. No CPU frequency, timer frequency or guest API is
+replaced to obtain the result.
+
+Three turning windows on fresh own Win95/Unreal205/P54C100 and
+Win98/Unreal226/P55C233 copies reach 100.000/99.970/100.000% and approximately
+100.000/100.000/100.000% Windows-QPC/host time, respectively. Their actual
+native present-return rates are 51.42–51.94 and 57.37–57.47/s. The Win95
+residual is about 6 ms in 20.25 seconds, with seven coalesced edges. Both
+games close naturally and both guests shut down normally. All read brackets,
+earlier weak results and different presets/versions are retained; these are
+not an isolated FPS speedup factor or a universal game-time guarantee.
+
+The separate 512-upload gate reduces allocated bytes from 23,309,464 to
+approximately 187,000 by reusing a bounded owner-only scratch buffer. Most
+actual game allocation remains; this micro-gate did not explain the original
+large timer deficit. Normal starters, prior builds and user PCs are unchanged.
+
 ## C58: original Motorhead bottlenecks, 2 November 2026
 
 The [qualified separate development candidate](hardware/VOODOO-PERFORMANCE.md)

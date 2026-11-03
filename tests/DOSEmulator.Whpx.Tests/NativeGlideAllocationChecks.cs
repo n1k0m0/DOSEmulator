@@ -14,6 +14,7 @@ internal static class NativeGlideAllocationChecks
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate ulong Pair(ulong a, ulong b);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate ulong Triple(ulong a, ulong b, ulong c);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate ulong Six(ulong a, ulong b, ulong c, ulong d, ulong e, ulong f);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate ulong Ten(ulong a, ulong b, ulong c, ulong d, ulong e, ulong f, ulong g, ulong h, ulong i, ulong j);
     /// <summary>Rejects a copied-byte, ABI or bounded-allocation discrepancy.</summary>
     private static void Check(bool condition, string message) { if (!condition) throw new Exception(message); }
 
@@ -108,11 +109,43 @@ internal static class NativeGlideAllocationChecks
         Console.WriteLine($"PASS: Glide 1000 maximum-size repeated batches, 87087 native callback draws; {allocated} hot-path allocated bytes, no renderer.");
     }
 
-    /// <summary>Runs both independent allocation oracles, or one named control for the frozen old-module negative comparison.</summary>
+    /// <summary>Checks exact large/small partial level bytes and original row metadata without per-upload pixel-array allocation.</summary>
+    private static void Texture()
+    {
+        using var h = new Harness(); const int maximum = 256 * 256 * 2, source = 0x100000;
+        byte[] expected = new byte[maximum], observed = new byte[maximum];
+        int length = maximum, first = 0, last = 255, calls = 0; bool bad = false;
+        h.Install(87, new Ten((tmu, address, lod, large, aspect, format, mask, pixels, row0, row1) =>
+        {
+            calls++; Marshal.Copy((nint)pixels, observed, 0, length);
+            bad |= tmu != 1 || address != 0x12340 || lod != 0 || large != 0 || aspect != 3 || format != 15 || mask != 3 ||
+                row0 != (uint)first || row1 != (uint)last || !observed.AsSpan(0, length).SequenceEqual(expected.AsSpan(0, length));
+            return 1;
+        }));
+        h.Memory.Ram.AsSpan(source, maximum).CopyTo(expected);
+        h.Call(87, 1, 0x12340, 0, 0, 3, 15, 3, source, 0, 255);
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 512; i++)
+        {
+            int rows = i % 3 == 0 ? 256 : i % 3 == 1 ? 1 : 7; first = rows == 256 ? 0 : 3; last = first + rows - 1; length = rows * 512;
+            expected.AsSpan(0, length).Fill((byte)(i * 13 + 1)); expected.AsSpan(0, length).CopyTo(h.Memory.Ram.AsSpan(source, length));
+            h.Memory.Ram.AsSpan(source - 16, 16).Fill(0xcd); h.Memory.Ram.AsSpan(source + length, 16).Fill(0xce);
+            Check(h.Call(87, 1, 0x12340, 0, 0, 3, 15, 3, source, (uint)first, (uint)last) == 1 && !bad,
+                "Glide reused texture staging changed complete bytes, partial rows or native return");
+            Check(h.Memory.Ram.AsSpan(source - 16, 16).ToArray().All(x => x == 0xcd) &&
+                h.Memory.Ram.AsSpan(source + length, 16).ToArray().All(x => x == 0xce), "Glide texture input staging changed guest guards");
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Check(calls == 513 && allocated < 512 * 1024, $"Glide texture level hot path allocated {allocated} bytes or lost actual uploads");
+        Console.WriteLine($"PASS: Glide texture 512 complete large/small partial level uploads, exact bytes/metadata/returns and guest guards; {allocated} hot-path allocated bytes, no renderer.");
+    }
+
+    /// <summary>Runs the independent allocation oracles, or one named control for a frozen old-module negative comparison.</summary>
     public static void Run(string focus = "all")
     {
-        if (focus is not ("all" or "lfb" or "batch")) throw new ArgumentException("Unknown Glide allocation control");
+        if (focus is not ("all" or "lfb" or "batch" or "texture")) throw new ArgumentException("Unknown Glide allocation control");
         if (focus is "all" or "lfb") Lfb();
         if (focus is "all" or "batch") Batch();
+        if (focus is "all" or "texture") Texture();
     }
 }

@@ -55,6 +55,7 @@ def generate(exports: list[tuple[int, str, int]], destination: Path) -> None:
         "   read locks and consumes it on write unlocks. */",
         "unsigned char GlideLfbBuffer[4 * 1024 * 1024];",
         '#include "miniglide_memory.h"',
+        '#include "miniglide_swap.h"',
         "void __stdcall MiniGlideVersion(char *destination) {",
         '    const char version[] = "2.43 MiniGlide 1.0";',
         "    DWORD i;",
@@ -135,6 +136,12 @@ def generate(exports: list[tuple[int, str, int]], destination: Path) -> None:
     d = ["LIBRARY GLIDE2X", "EXPORTS"]
     for ordinal, export, stack_bytes in exports:
         symbol = f"bridge_{ordinal}"
+        if ordinal == 16:
+            c.extend([f"__declspec(naked) void __stdcall {symbol}(void) {{", "    __asm {",
+                      "        call BridgeFlush", "        push dword ptr [esp+4]", "        call BridgeSwap",
+                      f"        ret {stack_bytes}", "    }", "}"])
+            d.append(f"    {export} = _{symbol}@0 @{ordinal}")
+            continue
         # Branding is local to our DLL, including direct application launches.
         # Keep the original export names and stdcall stack cleanup for ABI compatibility.
         if ordinal in (45, 48, 61):

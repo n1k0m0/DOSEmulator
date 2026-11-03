@@ -20,6 +20,13 @@ internal static unsafe class WhpxNative
         public ulong High = high;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct RuntimeCounters
+    {
+        public ulong TotalRuntime100ns;
+        public ulong HypervisorRuntime100ns;
+    }
+
     /// <summary>Queries the installed hypervisor API capability without changing a guest or a host endpoint.</summary>
     [DllImport(Library, ExactSpelling = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
@@ -80,6 +87,11 @@ internal static unsafe class WhpxNative
     [DllImport(Library, ExactSpelling = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     internal static extern int WHvRunVirtualProcessor(nint partition, uint index, [Out] byte[] exit, uint size);
+    /// <summary>Reads actual scheduled VP runtime separately from elapsed host waits, using the SDK's 16-byte runtime counter set.</summary>
+    [DllImport(Library, ExactSpelling = true)]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    internal static extern int WHvGetVirtualProcessorCounters(nint partition, uint index, uint counterSet,
+        out RuntimeCounters counters, uint size, out uint written);
     /// <summary>Requests return from the sole native CPU without changing guest architectural state.</summary>
     [DllImport(Library, ExactSpelling = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

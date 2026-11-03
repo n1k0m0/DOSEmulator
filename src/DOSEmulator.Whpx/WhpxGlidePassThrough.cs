@@ -17,6 +17,9 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
 {
     internal const ushort Port = 0xF110;
     private const uint BatchOperation = 0xFFFE;
+    private const uint BeginSwapOperation = 0xFFFD, PollSwapOperation = 0xFFFC;
+    private const uint CooperativeSwapV1 = 0x4D475331;
+    private readonly WhpxGlideSwapWorker _swapWorker = new();
     private const int MaxTransfer = 4 * 1024 * 1024;
     private readonly nint _partition;
     private readonly MemoryBus _bus;
@@ -26,6 +29,7 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
     private long _transportExits, _batchExits;
     private readonly byte[] _batchBytes = new byte[4096 * 4];
     private byte[] _lfbPixels = [];
+    private byte[] _texturePixels = [];
     private readonly string? _tracePath;
     private readonly ManualResetEventSlim _windowReady = new(false);
     private Thread? _windowThread;
@@ -53,7 +57,18 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
     /// <summary>Translates one guest ABI call or ordered batch into bounded native renderer operations.</summary>
     internal uint Invoke(uint operation, uint guestArguments, uint guestLfbBuffer)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         _transportExits++;
+        if (operation == PollSwapOperation) return _swapWorker.Poll(guestArguments);
+        if (operation == BeginSwapOperation)
+        {
+            Span<byte> interval = stackalloc byte[4];
+            ReadGuest(guestArguments, interval);
+            uint token = _swapWorker.Begin(Function(16), BinaryPrimitives.ReadUInt32LittleEndian(interval));
+            _counts[16]++;
+            return token;
+        }
+        if (_swapWorker.HasPending) _swapWorker.Drain();
         if (operation == BatchOperation) { _batchExits++; return InvokeBatch(guestArguments, guestLfbBuffer); }
         if (operation == 0 || operation >= Glide2Exports.Names.Length)
             throw new NotSupportedException($"Unknown Glide 2 operation {operation}.");
@@ -212,13 +227,13 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
         }
     }
 
-    /// <summary>Copies the MiniGlide version into the guest ABI buffer without provider branding.</summary>
+    /// <summary>Copies the unchanged version buffer and reports the own transport extension through this void API's private return word.</summary>
     private uint Version(ReadOnlySpan<ulong> args)
     {
         byte[] version = new byte[80];
         "2.43 MiniGlide 1.0"u8.CopyTo(version);
         WriteGuest((uint)args[0], version);
-        return 0;
+        return CooperativeSwapV1;
     }
 
     /// <summary>Returns the supported hardware-query record in the guest layout.</summary>
@@ -313,8 +328,8 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
         }
         int bytes = checked(width * rows * (format >= 8 ? 2 : 1));
         const int pointerIndex = 7;
-        byte[] pixels;
-        try { pixels = ReadGuest((uint)args[pointerIndex], bytes); }
+        if (_texturePixels.Length < bytes) _texturePixels = new byte[bytes];
+        try { ReadGuest((uint)args[pointerIndex], _texturePixels.AsSpan(0, bytes)); }
         catch (InvalidDataException error)
         {
             throw new InvalidDataException(
@@ -322,7 +337,7 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
                 $"operands=[{string.Join(",", args.ToArray().Select(value => value.ToString("X")))}]",
                 error);
         }
-        return CallWithBuffer(function, args, pointerIndex, pixels);
+        return CallWithBuffer(function, args, pointerIndex, _texturePixels);
     }
 
     /// <summary>Copies the selected palette or conversion table into native-accessible storage.</summary>
@@ -573,11 +588,22 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
         _previousWindowProcedure = 0;
     }
 
-    /// <summary>Closes presentation, writes optional call counts and releases the host library once.</summary>
+    /// <summary>Invalidates old completion tokens only after their native work has finished at a CPU reset boundary.</summary>
+    internal void ResetGeneration() => _swapWorker.Reset();
+
+    /// <summary>Rejects an active external renderer or outstanding swap rather than saving an incomplete machine.</summary>
+    internal void RequireSnapshotSupport()
+    {
+        if (_window != 0 || _swapWorker.HasPending)
+            throw new InvalidOperationException("Close the active MiniGlide program before saving a full snapshot; host renderer state cannot be restored.");
+    }
+
+    /// <summary>Joins native presents, closes presentation, writes optional call counts and releases the host library once.</summary>
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        _swapWorker.Dispose();
         CloseWindow();
         if (_tracePath is { Length: > 0 })
         {

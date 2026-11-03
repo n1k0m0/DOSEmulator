@@ -1,5 +1,11 @@
 # Unreal mit MiniGlide: Messung vom 3. November 2026
 
+Der darauf aufbauende [Windows-Zeitgeber-Folgeschritt](WINDOWS-TIMER-PROGRESS.md)
+bindet den großen Rückstand inzwischen an blockierende native Bildwechsel
+und ergänzt eine kooperative Ausgabe samt eigener Folgeprüfung. Die folgenden
+ursprünglichen C9-Messungen und deren damalige offene Ursache bleiben
+unverändert ihrem eingefrorenen Build zugeordnet.
+
 Der unveränderte, eingefrorene MiniGlide-Kandidat 9 mit Gast-DLL und Launcher 3
 wurde unter Windows 95 und Windows 98 auf neuen eigenen Sicherheitskopien
 gemessen. Der gemeinsame Starterstand und alle bisherigen Installationen

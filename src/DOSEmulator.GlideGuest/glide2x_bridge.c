@@ -10,6 +10,7 @@ int __stdcall DllMain(void *module, DWORD reason, void *reserved) {
    read locks and consumes it on write unlocks. */
 unsigned char GlideLfbBuffer[4 * 1024 * 1024];
 #include "miniglide_memory.h"
+#include "miniglide_swap.h"
 void __stdcall MiniGlideVersion(char *destination) {
     const char version[] = "2.43 MiniGlide 1.0";
     DWORD i;
@@ -302,15 +303,8 @@ __declspec(naked) void __stdcall bridge_15(void) {
 __declspec(naked) void __stdcall bridge_16(void) {
     __asm {
         call BridgeFlush
-        mov eax, 16
-        lea ecx, [esp+4]
-        push ecx
-        push eax
-        call BridgePrepare
-        mov ecx, eax
-        mov eax, 16
-        mov dx, 61712
-        out dx, eax
+        push dword ptr [esp+4]
+        call BridgeSwap
         ret 4
     }
 }

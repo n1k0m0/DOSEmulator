@@ -29,6 +29,7 @@ public sealed class WhpxMappedMachine : IDisposable
     ];
     private static readonly uint[] GlideInputRegisters = [WhpxNative.Rax, WhpxNative.Rcx, 6];
     private static readonly uint[] GlideOutputRegisters = [WhpxNative.Rax, WhpxNative.Rip];
+    private static readonly uint[] CatchupRegisters = [WhpxNative.Rflags, WhpxNative.InterruptState, WhpxNative.PendingInterruption, WhpxNative.PendingEvent];
     /// <summary>Services the owning board reset edges before another native opcode; true inhibits fetch while RESET is held.</summary>
     internal Func<bool>? ServiceHardwareBoundary { get; set; }
     private readonly IoPortBus _ports;
@@ -40,6 +41,7 @@ public sealed class WhpxMappedMachine : IDisposable
     private readonly byte[] _exit = new byte[4096];
     private readonly WhpxNative.RegisterValue[] _glideInputValues = new WhpxNative.RegisterValue[3];
     private readonly WhpxNative.RegisterValue[] _glideOutputValues = new WhpxNative.RegisterValue[2];
+    private readonly WhpxNative.RegisterValue[] _catchupValues = new WhpxNative.RegisterValue[4];
     private readonly WhpxPhysicalMemory _memory;
     private readonly WhpxInstructionEmulator _emulator;
     private readonly WhpxVideoBatch _videoBatch;
@@ -54,6 +56,8 @@ public sealed class WhpxMappedMachine : IDisposable
     private ulong _tscEpochTicks;
     private long _processorGeneration;
     private bool _vp, _running, _disposed, _halted, _interruptWindowArmed, _realtimeWindow, _busWritesOnly;
+    private bool _runtimeCountersAvailable = true;
+    private ulong? _nativeRuntimeSample;
 
     /// <summary>Builds one native CPU with explicit instruction exits and the owning DOSE physical device graph.</summary>
     public WhpxMappedMachine(MemoryBus memory, IoPortBus ports, Pic8259 pic, DeviceScheduler scheduler,
@@ -139,6 +143,7 @@ public sealed class WhpxMappedMachine : IDisposable
         if (_cpuContract == WhpxCpuContract.IntelP55cMmxSubset && cs == 0xf000 && ip == 0xfff0)
             SetRegister(WhpxNative.Rdx, new(0x543));
         _halted = false;
+        _nativeRuntimeSample = null;
         if (_nominalCpuHz != 0) _tscEpochTicks = _scheduler.ClockTicks(_nominalCpuHz);
     }
 
@@ -171,6 +176,7 @@ public sealed class WhpxMappedMachine : IDisposable
         WhpxNative.Check(WhpxNative.WHvSetVirtualProcessorRegisters(_partition, 0, SavedRegisters,
             (uint)SavedRegisters.Length, values), "restore mapped CPU registers");
         _halted = state.Halted;
+        _nativeRuntimeSample = null;
         _tscEpochTicks = state.TscEpochTicks;
         _interruptWindowArmed = (state.Registers.Single(item => item.Name == WhpxNative.DeliverabilityNotifications).Low & 2) != 0;
         _processorGeneration++;
@@ -222,6 +228,8 @@ public sealed class WhpxMappedMachine : IDisposable
     /// <summary>Resets the native CPU at a completed exit while preserving mapped RAM and powered devices.</summary>
     internal void ResetProcessor(bool init = false)
     {
+        _glidePassThrough?.ResetGeneration();
+        _nativeRuntimeSample = null;
         _processorGeneration++;
         uint[] retainedNames = init ? SavedRegisters.Where(n => n >= 0x1000 && n <= 0x1019).ToArray() : [];
         var retained = new WhpxNative.RegisterValue[retainedNames.Length];
@@ -237,13 +245,63 @@ public sealed class WhpxMappedMachine : IDisposable
         if (!init && _nominalCpuHz != 0) _tscEpochTicks = _scheduler.ClockTicks(_nominalCpuHz);
     }
 
-    /// <summary>Advances every due event using whole active wall time, including expensive exits and memory reconciliation.</summary>
-    private void SynchronizeClock(ulong? deadline)
+    /// <summary>Replays host waiting chronologically, charging actual native execution and indivisible instruction assistance before offering overdue IRQs.</summary>
+    private void SynchronizeClock(ulong? deadline, ulong executedNanoseconds = 0, bool instructionBlocked = false)
     {
         ulong observed = _clock.Observe();
         if (deadline is { } end) observed = Math.Min(observed, end);
-        if (observed > _scheduler.Now) _scheduler.AdvanceTo(observed);
+        if (observed <= _scheduler.Now) return;
+        // A real stalled bus instruction or held RESET cannot service an IRQ.
+        // Devices must still complete at their original active host deadlines.
+        if (instructionBlocked) { _scheduler.AdvanceTo(observed); return; }
+        // Actual guest execution and instruction assistance consume time even
+        // with IF masked. Descheduling the host does not execute guest code.
+        if (executedNanoseconds != 0)
+            _scheduler.AdvanceTo(_scheduler.Now + Math.Min(executedNanoseconds, observed - _scheduler.Now));
+        if (_scheduler.Now >= observed) return;
+        if (!_pic.HasPending && (_scheduler.NextEventTime is not { } due || due > observed))
+        { _scheduler.AdvanceTo(observed); return; }
+        WhpxNative.Check(WhpxNative.WHvGetVirtualProcessorRegisters(_partition, 0, CatchupRegisters, 4, _catchupValues), "read host catch-up interruptibility");
+        bool enabled = (_catchupValues[0].Low & 0x200) != 0;
+        if (_halted && !enabled) { _scheduler.AdvanceTo(observed); return; }
+        if (!enabled || (_catchupValues[1].Low & 1) != 0 || (_catchupValues[2].Low & 1) != 0 ||
+            (_catchupValues[3].Low & 1) != 0 || _pic.HasPending) return;
+        while (_scheduler.NextEventTime is { } next && next <= observed)
+        {
+            _scheduler.AdvanceTo(next);
+            if (_pic.HasPending) return;
+        }
+        _scheduler.AdvanceTo(observed);
     }
+
+    /// <summary>Reads optional actual VP runtime; an older host retains conservative wall-time accounting instead of inventing guest progress.</summary>
+    private ulong? ReadNativeRuntime()
+    {
+        if (!_runtimeCountersAvailable) return null;
+        try
+        {
+            int result = WhpxNative.WHvGetVirtualProcessorCounters(_partition, 0, 0, out var counters, 16, out uint written);
+            if (result >= 0 && written == 16) return counters.TotalRuntime100ns;
+        }
+        catch (EntryPointNotFoundException) { }
+        _runtimeCountersAvailable = false;
+        return null;
+    }
+
+    /// <summary>Charges only the measured scheduled VP interval, bounded by its host call; unavailable or reset counters keep the conservative elapsed interval.</summary>
+    private ulong NativeExecutionNanoseconds(ulong? before, long timestamp)
+    {
+        ulong elapsed = HostNanosecondsSince(timestamp);
+        ulong? after = before.HasValue ? ReadNativeRuntime() : null;
+        _nativeRuntimeSample = after;
+        if (before is { } a && after is { } b && b >= a)
+            return (ulong)UInt128.Min((UInt128)(b - a) * 100, elapsed);
+        return elapsed;
+    }
+
+    /// <summary>Accounts for one indivisible emulated instruction without skipping its actual owner work.</summary>
+    private static ulong HostNanosecondsSince(long timestamp) =>
+        (ulong)((UInt128)(ulong)(Stopwatch.GetTimestamp() - timestamp) * 1_000_000_000 / (ulong)Stopwatch.Frequency);
 
     /// <summary>Waits for an actual device/owner deadline during HLT, without fast-forwarding idle time.</summary>
     private void WaitForHaltedEvent(ulong target)
@@ -285,6 +343,7 @@ public sealed class WhpxMappedMachine : IDisposable
                 SynchronizeClock(virtualDeadline);
                 _memory.Refresh();
                 bool resetHeld = ServiceHardwareBoundary?.Invoke() == true;
+                if (resetHeld) SynchronizeClock(virtualDeadline, instructionBlocked: true);
                 if (virtualDeadline is { } reached && _scheduler.Now >= reached)
                     return new(io, mmio, interrupts, exits, ReadRegister(WhpxNative.Rip).Low, _scheduler.Now);
                 if (resetHeld) { _deadlineTimer.WaitHalted(100_000); continue; }
@@ -304,9 +363,13 @@ public sealed class WhpxMappedMachine : IDisposable
                     budget = Math.Min(budget, nextEvent > _scheduler.Now ? nextEvent - _scheduler.Now : 10_000);
                 if (virtualDeadline is { } untilRun) budget = Math.Min(budget, _clock.Remaining(untilRun));
                 _deadlineTimer.Arm(budget);
+                ulong? runtimeBefore = _nativeRuntimeSample ?? ReadNativeRuntime();
+                long cpuStarted = Stopwatch.GetTimestamp();
                 WhpxNative.Check(WhpxNative.WHvRunVirtualProcessor(_partition, 0, _exit, (uint)_exit.Length), "run mapped VP");
+                ulong executed = NativeExecutionNanoseconds(runtimeBefore, cpuStarted);
                 _deadlineTimer.CheckFailure();
-                SynchronizeClock(virtualDeadline);
+                SynchronizeClock(virtualDeadline, executed);
+                long assistStarted = Stopwatch.GetTimestamp();
                 uint reason = BinaryPrimitives.ReadUInt32LittleEndian(_exit);
                 switch (reason)
                 {
@@ -381,7 +444,7 @@ public sealed class WhpxMappedMachine : IDisposable
                     default:
                         throw new NotSupportedException($"WHP mapped exit 0x{reason:X} at RIP={ReadRegister(WhpxNative.Rip).Low:X}.");
                 }
-                SynchronizeClock(virtualDeadline);
+                SynchronizeClock(virtualDeadline, HostNanosecondsSince(assistStarted));
                 _memory.Refresh();
                 if (reason != 8 && TryInjectPic()) interrupts++;
                 if (virtualDeadline is { } until && _scheduler.Now >= until)
@@ -396,7 +459,7 @@ public sealed class WhpxMappedMachine : IDisposable
                 _deadlineTimer.Disarm();
                 if (ownsClock || !_busWritesOnly) _memory.DeactivateSharedRam();
             }
-            finally { _running = false; if (ownsClock) _clock.End(); }
+            finally { _running = false; if (ownsClock) { _clock.End(); } }
         }
     }
 
@@ -413,7 +476,7 @@ public sealed class WhpxMappedMachine : IDisposable
         while(_bus.TransactionReadyAt((uint)address,access==1) is { } ready)
         {
             cancellation.ThrowIfCancellationRequested();
-            _deadlineTimer.Disarm();SynchronizeClock(virtualDeadline);_memory.Refresh();
+            _deadlineTimer.Disarm();SynchronizeClock(virtualDeadline, instructionBlocked: true);_memory.Refresh();
             if(ServiceHardwareBoundary?.Invoke()==true)return true;
             var currentCs=ReadRegister(WhpxNative.Cs);
             if(currentCs.Low!=initialCs.Low||currentCs.High!=initialCs.High||ReadRegister(WhpxNative.Rip).Low!=initialRip)return true;
@@ -452,6 +515,7 @@ public sealed class WhpxMappedMachine : IDisposable
         // A queued accepted interrupt wakes the cached HLT state even when the
         // injection occurs at the beginning of a new owner slice.
         _halted = false;
+        _nativeRuntimeSample = null;
         return true;
     }
 
@@ -717,6 +781,13 @@ public sealed class WhpxMappedMachine : IDisposable
     {
         EnsureStopped();
         if (_realtimeWindow || _bus.HasExternalRam) throw new InvalidOperationException("WHP checkpoints require the end of the complete real-time window.");
+    }
+
+    /// <summary>Checks external-renderer support before a full capture can publish any CPU, RAM or media files.</summary>
+    internal void RequireSnapshotSupport()
+    {
+        EnsureStopped();
+        _glidePassThrough?.RequireSnapshotSupport();
     }
 
     /// <summary>Joins the deadline helper and releases native CPU, shared RAM and partition resources at a complete stopped window.</summary>

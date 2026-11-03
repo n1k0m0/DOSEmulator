@@ -1,5 +1,25 @@
 # DOSE – Implementierungsstand
 
+**Windows-Zeitfortschreibung unter MiniGlide-Last, 3. November 2026 – lokaler Fix:**
+Der [Zeitgeber-Folgeschritt](WINDOWS-TIMER-PROGRESS.md) bindet den großen
+Rückstand an blockierende native Bildwechsel und verspätete Hostfortsetzung.
+Eine kooperativ wartende eigene Gast-DLL und tatsächliche VP-Laufzeitmessung
+lassen originale Timerinterrupts chronologisch zu; echte gesperrte Ausführung,
+blockierte MMIO-Zugriffe und gehaltenes RESET behalten ihren Vertrag.
+Zwei neue Windows-Kaltstarts erreichen unter drei Kameradrehungen Win95
+100,000 / 99,970 / 100,000 Prozent, Win98 jeweils ungefähr 100,000 Prozent
+Windows-QPC-/Hostzeit, bei 51,42–51,94 beziehungsweise 57,37–57,47 wirklichen
+Pufferwechseln/s. Ganze API-Leseklammern und alle schwächeren Zwischenstände
+bleiben erhalten. Beide Spiele und Windows-Gäste schließen regulär; sieben
+zusammengefallene Flanken in einem Win95-Fenster bleiben als Grenze erhalten.
+Keine allgemeine 100-Prozent-, Spieletempo-, physische Ausgabe- oder M4–M8-Zusage.
+Nur neue eigene Testkopien erhalten die lokale Fassung; gemeinsame C54-Starter,
+C58, frühere Installationen und Originale bleiben erhalten. Automation pausiert.
+18.243/18.243 gemeinsame Fälle, 79 native Gruppen, 24 kompilierte Gastkontrollen,
+drei Snapshot-Audits und der zusätzliche originale DOS-/HIMEM-/Doom-Kontrollstart
+bestehen. Build ohne Warnungen/Fehler, Quellprüfung 1026 Dateien, Zustand 49/992/44.
+Privater Nachweis: `artifacts/tests/windows-timer-progress-release-path.txt`.
+
 **Unreal unter Win95/Win98, 3. November 2026 – Messung des unveränderten MiniGlide-Kandidaten:**
 Die [neue Lastmessung](UNREAL-MINIGLIDE-MEASUREMENTS.md) umfasst 18 Abschnitte
 auf zwei frischen eigenen Kaltstarts: Kameraflug, feste Vortex2-Ansicht und

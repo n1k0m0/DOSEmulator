@@ -23,7 +23,16 @@ if (args.Length == 1 && args[0] == "--glide-batch-checks") { NativeGlideBatchChe
 if (args.Length == 1 && args[0] == "--fst-mmio-checks") { NativeFpuConversionChecks.Run(); NativeFpuContinuationChecks.Run(); NativeFpuMmioChecks.Run(); NativeFpuPageChecks.Run(); return; }
 if (args.Length == 1 && args[0] == "--voodoo-bus-checks") { NativeVoodooBusChecks.Run(); return; }
 if (args.Length == 1 && args[0] == "--glide-transport-checks") { NativeGlideTransportChecks.Run(); return; }
+if (args.Length == 1 && args[0] == "--glide-swap-checks") { NativeGlideSwapChecks.Run(); return; }
+if (args.Length == 1 && args[0] == "--halt-catchup-checks")
+{
+    try { NativeHaltCatchupChecks.Run(); }
+    catch (Exception error) { Console.Error.WriteLine("FAIL: " + error.Message); Environment.ExitCode = 1; }
+    return;
+}
 if (args.Length == 3 && args[0] == "--glide-guest-checks") { NativeGlideGuestChecks.Run(args[1], args[2] == "scalar"); return; }
+if (args.Length is 3 or 4 && args[0] == "--glide-cooperative-guest-checks")
+{ NativeGlideGuestChecks.Run(args[1], args[2] == "scalar", cooperative: true, legacyHost: args.Length == 4 && args[3] == "legacy-host"); return; }
 if (args.Length is 1 or 2 && args[0] == "--glide-allocation-checks")
 {
     try { NativeGlideAllocationChecks.Run(args.Length == 2 ? args[1] : "all"); }
@@ -41,6 +50,8 @@ NativeFpuPageChecks.Run();
 NativeVoodooChecks.Run();
 NativeVoodooBusChecks.Run();
 NativeGlideTransportChecks.Run();
+NativeGlideSwapChecks.Run();
+NativeHaltCatchupChecks.Run();
 NativeGlideAllocationChecks.Run();
 
 var ports = new IoPortBus();

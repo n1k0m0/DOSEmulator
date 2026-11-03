@@ -115,6 +115,7 @@ public sealed class WhpxPcSession : IDisposable
         lock (_gate)
         {
             ThrowIfDisposed();
+            _whpx.RequireSnapshotSupport();
             _whpx.PauseRealtime(); _whpx.RequireCheckpointBoundary();
             var cpu = _whpx.CaptureCpuState();
             var hardware = SnapshotStore.CaptureExternalCpu(_pc, hardwarePath);
@@ -203,6 +204,7 @@ public sealed class WhpxPcSession : IDisposable
         lock (_gate)
         {
             ThrowIfDisposed();
+            _whpx.RequireSnapshotSupport();
             _whpx.PauseRealtime(); _whpx.RequireCheckpointBoundary();
             var cpu = _whpx.CaptureCpuState();
             var hardware = _pc.CaptureHardwareState();

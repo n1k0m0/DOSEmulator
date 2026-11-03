@@ -1,5 +1,22 @@
 # Vollständige lokale DOSE-Snapshots
 
+## Native MiniGlide present lifetime, 3 November 2026
+
+The [timer correction](WINDOWS-TIMER-PROGRESS.md) runs at most one copied native
+present on a joined worker. Its completion token, native function pointer,
+optional VP runtime sample and host catch-up bookkeeping are not guest device
+state. Reset drains accepted work and invalidates the token before CPU
+replacement; disposal joins it before unloading the renderer.
+
+An active external renderer window or pending completion explicitly rejects
+both in-memory and SnapshotStore capture before pausing the clock or creating
+a destination. This is verified in real Win95 and Win98 guests; neither
+rejection ends the active clock. Active host-renderer snapshots remain
+unsupported. The software state graph stays 49 types / 992 members / 44
+operations; native checkpoints remain bound to their actual executed modules.
+There is no old-product migration. Chronological time service also preserves
+the complete original SST-1 blocked-MMIO import/future controls.
+
 ## C58: read-only native boundary translation reuse
 
 The [Motorhead candidate](hardware/VOODOO-PERFORMANCE.md) retains translations
