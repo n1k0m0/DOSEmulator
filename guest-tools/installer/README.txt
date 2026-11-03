@@ -15,12 +15,25 @@ Select "Start clock synchronization with Windows" for automatic startup.
 This package currently provides time synchronization, not host file transfer,
 shared host folders or clipboard sharing. Existing C:\Share files are retained.
 
-MiniGlide: installs GLIDE2X.DLL in the actual Windows System directory and
-C:\DOSETOOLS\MGLIDE.EXE. Start > Programs > DOSE Tools contains a logo preview
-and, if C:\UNREAL\SYSTEM\UNREAL.EXE is installed, a game shortcut.
-Other Glide 2 games can load the system DLL directly. The DOSE host must have
-the Glide bridge enabled and its host rendering library configured. The guest
-installer does not install or configure software on the host.
+MiniGlide DLL: installs GLIDE2X.DLL in the actual Windows System directory.
+This component needs the DOSE host bridge and its host rendering library.
+Other Glide 2 games can load the system DLL directly. The guest installer
+does not install or configure software on the host.
+
+MiniGlide logo and launcher: installs C:\DOSETOOLS\MGLIDE.EXE separately.
+Keep only this MiniGlide option selected to retain original graphics drivers
+for the emulated hardware path. Start > Programs > DOSE Tools offers a logo
+preview and "Launch Glide Program", which lets you select any game or demo.
+Shortcuts for Unreal and Motorhead are added if their known paths exist.
+The launcher shows our logo before starting the selected program and disables
+the original renderer's optional splash only in that program's environment.
+The MiniGlide DLL recognizes this launch and does not show the logo twice.
+
+Command line: MGLIDE.EXE "C:\GAMES\GAME.EXE" [game arguments]
+The selected EXE's directory becomes its working directory. Without arguments,
+the launcher starts C:\UNREAL\SYSTEM\UNREAL.EXE. /choose opens the file picker;
+/preview shows only the logo. Silent setup: /S /launcher-only installs only
+the launcher and shortcuts without replacing the system graphics DLL.
 
 APM installation files: optional INF and instructions in C:\DOSETOOLS\APM.
 This component prepares a manual Add New Hardware installation; it does not

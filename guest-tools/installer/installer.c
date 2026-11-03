@@ -18,7 +18,7 @@ static HWND Dialog;
 static char System[MAX_PATH], Menu[MAX_PATH], Self[MAX_PATH];
 static char ErrorText[512], Text[1024], Hex[2049];
 static BYTE Bytes[1024];
-static int Quiet, TimeSelected=1, StartupSelected=1, GlideSelected=1, ApmSelected;
+static int Quiet, TimeSelected=1, StartupSelected=1, GlideSelected=1, LauncherSelected=1, ApmSelected;
 
 #pragma function(memset)
 void *__cdecl memset(void *p, int value, size_t count)
@@ -190,7 +190,7 @@ static void Status(const char *text)
 static int Install(void)
 {
     char file[MAX_PATH]; HKEY key;
-    if(!TimeSelected && !GlideSelected && !ApmSelected) return Fail("Select at least one component.",0);
+    if(!TimeSelected && !GlideSelected && !LauncherSelected && !ApmSelected) return Fail("Select at least one component.",0);
     Status("Preparing installation and backups...");
     if(!Prepare()) return 0;
     if(TimeSelected) {
@@ -208,9 +208,15 @@ static int Install(void)
     }
     if(GlideSelected) {
         Status("Installing MiniGlide..."); Path(file,System,"\\GLIDE2X.DLL");
-        if(!Extract(11,file,"GLIDE") || !Extract(12,HOME "\\MGLIDE.EXE","LAUNCH") ||
-           !Put("Installed","Glide","1") || !Shortcut("MiniGlide Preview",HOME "\\MGLIDE.EXE","/preview","SHPREVIEW")) return 0;
+        if(!Extract(11,file,"GLIDE") || !Put("Installed","Glide","1")) return 0;
+    }
+    if(LauncherSelected) {
+        if(!Extract(12,HOME "\\MGLIDE.EXE","LAUNCH") || !Put("Installed","Launcher","1") ||
+           !Shortcut("MiniGlide Preview",HOME "\\MGLIDE.EXE","/preview","SHPREVIEW") ||
+           !Shortcut("Launch Glide Program",HOME "\\MGLIDE.EXE","/choose","SHCHOOSE")) return 0;
         if(Exists("C:\\UNREAL\\SYSTEM\\UNREAL.EXE") && !Shortcut("Unreal with MiniGlide",HOME "\\MGLIDE.EXE",0,"SHUNREAL")) return 0;
+        if(Exists("C:\\PROGRA~1\\DIGITA~1\\MOTORH~1\\MOTOR.EXE") &&
+           !Shortcut("Motorhead with MiniGlide",HOME "\\MGLIDE.EXE","\"C:\\PROGRA~1\\DIGITA~1\\MOTORH~1\\MOTOR.EXE\"","SHMOTOR")) return 0;
     }
     if(ApmSelected) {
         Status("Preparing the manual APM installation files..."); CreateDirectoryA(HOME "\\APM",0);
@@ -259,7 +265,8 @@ static int Remove(void)
     if(!RestoreShortcut("Read Me","SHHELP") || !RestoreShortcut("Uninstall","SHREMOVE") ||
        !RestoreShortcut("Start Clock Synchronization","SHCLOCK") || !RestoreShortcut("Share Folder","SHSHARE") ||
        !RestoreShortcut("MiniGlide Preview","SHPREVIEW") || !RestoreShortcut("Unreal with MiniGlide","SHUNREAL") ||
-       !RestoreShortcut("APM Installation Guide","SHAPM")) return 0;
+       !RestoreShortcut("APM Installation Guide","SHAPM") || !RestoreShortcut("Launch Glide Program","SHCHOOSE") ||
+       !RestoreShortcut("Motorhead with MiniGlide","SHMOTOR")) return 0;
     Get("Startup","Saved",Text,sizeof(Text));
     if(Same(Text,"1")) {
         result=RegCreateKeyExA(HKEY_LOCAL_MACHINE,RUNKEY,0,0,0,KEY_SET_VALUE,0,&key,0);
@@ -300,6 +307,7 @@ static INT_PTR CALLBACK SetupDialog(HWND window,UINT message,WPARAM wparam,LPARA
     if(message==WM_INITDIALOG) {
         Dialog=window; SetWindowTextA(window,"DOSE Tools and MiniGlide Setup - Windows " TARGET_TEXT);
         CheckDlgButton(window,101,BST_CHECKED); CheckDlgButton(window,102,BST_CHECKED); CheckDlgButton(window,103,BST_CHECKED);
+        CheckDlgButton(window,107,BST_CHECKED);
         Get("Package","Product",Text,sizeof(Text));
         EnableWindow(GetDlgItem(window,106),Same(Text,PRODUCT) && !GetPrivateProfileIntA("Package","Removed",0,STATE));
         if(HasSwitch("/uninstall")) PostMessageA(window,WM_COMMAND,106,0);
@@ -318,6 +326,7 @@ static INT_PTR CALLBACK SetupDialog(HWND window,UINT message,WPARAM wparam,LPARA
     TimeSelected=IsDlgButtonChecked(window,101)==BST_CHECKED;
     StartupSelected=IsDlgButtonChecked(window,102)==BST_CHECKED;
     GlideSelected=IsDlgButtonChecked(window,103)==BST_CHECKED;
+    LauncherSelected=IsDlgButtonChecked(window,107)==BST_CHECKED;
     ApmSelected=IsDlgButtonChecked(window,104)==BST_CHECKED;
     okay=LOWORD(wparam)==106?Remove():Install();
     SetCursor(LoadCursorA(0,IDC_ARROW));
@@ -339,7 +348,8 @@ void __stdcall SetupEntry(void)
     CoInitialize(0);
     if(Quiet) {
         ApmSelected=HasSwitch("/apm");
-        if(HasSwitch("/tools-only")) GlideSelected=0;
+        if(HasSwitch("/tools-only")) { GlideSelected=0; LauncherSelected=0; }
+        if(HasSwitch("/launcher-only")) { TimeSelected=0; StartupSelected=0; GlideSelected=0; ApmSelected=0; }
         if(HasSwitch("/no-startup")) StartupSelected=0;
         result=HasSwitch("/uninstall")?Remove():Install();
     } else result=DialogBoxParamA(Instance,MAKEINTRESOURCEA(100),0,SetupDialog,0)!=-1;

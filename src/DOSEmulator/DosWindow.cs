@@ -255,22 +255,27 @@ public sealed partial class DosWindow : SharpPixelsWindow
         if (_smokeDirectory is not null) AdvanceSmokeTest();
         var frame = Volatile.Read(ref _frame);
         var status = Volatile.Read(ref _status);
-        if (frame is not null)
+        bool hasGlide = TryCaptureGlideFrame();
+        if (frame is not null || hasGlide)
         {
-            double aspect = _settings.CorrectAspect ? 4.0 / 3 : (double)frame.Width / frame.Height;
+            int sourceWidth = hasGlide ? _glideWidth : frame!.Width;
+            int sourceHeight = hasGlide ? _glideHeight : frame!.Height;
+            double aspect = _settings.CorrectAspect ? 4.0 / 3 : (double)sourceWidth / sourceHeight;
             int width = Math.Min(PixelsWidth, (int)(GuestAreaHeight * aspect));
             int height = (int)(width / aspect);
             _ = Enum.TryParse(_settings.Filter, out SharpPixelsGpuFilterMode filter);
             _ = Enum.TryParse(_settings.Upscale, out SharpPixelsGpuUpscaleMode upscale);
             int factor = upscale switch { SharpPixelsGpuUpscaleMode.Scale2x => 2, SharpPixelsGpuUpscaleMode.Scale3x => 3, _ => 1 };
-            DrawArgbPixelsGpuPresented(frame.ArgbPixels, frame.Width, frame.Height, 0, 0, frame.Width, frame.Height,
-                (PixelsWidth - width) / 2, (GuestAreaHeight - height) / 2, width, height, filter, upscale, factor, 8, 10, 21, _displayPixelRevision);
+            uint[] pixels = hasGlide ? _glidePixels : frame!.ArgbPixels;
+            DrawArgbPixelsGpuPresented(pixels, sourceWidth, sourceHeight, 0, 0, sourceWidth, sourceHeight,
+                (PixelsWidth - width) / 2, (GuestAreaHeight - height) / 2, width, height, filter, upscale, factor, 8, 10, 21,
+                hasGlide ? _glideRevision : _displayPixelRevision);
         }
         else ClearScreen();
         if (_showDebugOverlay)
         {
             DrawFilledRectangle(0, PixelsHeight - 38, PixelsWidth, 38, 12, 15, 29);
-            Text(15, PixelsHeight - 31, $"{PlatformLabel(status?.Configuration).ToUpperInvariant()} | {status?.CpuEngine.ToUpperInvariant()} | {status?.State.ToString().ToUpperInvariant() ?? "STARTING"} | VGA {frame?.Width}X{frame?.Height} | {status?.Position ?? "RESET"} | {FPS} FPS", 1, Color.LightSteelBlue);
+            Text(15, PixelsHeight - 31, $"{PlatformLabel(status?.Configuration).ToUpperInvariant()} | {status?.CpuEngine.ToUpperInvariant()} | {status?.State.ToString().ToUpperInvariant() ?? "STARTING"} | {(hasGlide ? "MINIGLIDE" : "VGA")} {(hasGlide ? _glideWidth : frame?.Width)}X{(hasGlide ? _glideHeight : frame?.Height)} | {status?.Position ?? "RESET"} | {FPS} FPS", 1, Color.LightSteelBlue);
             Text(15, PixelsHeight - 16, _mouseInput.Captured ? "MOUSE CAPTURED / CTRL+ALT RELEASE   CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN" :
                 status?.Configuration?.Mouse == "ps2-two-button" ? "CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN   CLICK GUEST FOR PS/2 MOUSE" :
                 _session.UsesExternalCpu ? "CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN   WHPX / 1:1 CLOCK" : "CTRL+ALT+F10 MENU   CTRL+ALT+F11 FULLSCREEN   EXPERIMENTAL REAL-MODE DOS", 1, Color.Gray);

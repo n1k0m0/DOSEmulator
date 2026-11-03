@@ -116,6 +116,9 @@ def main():
                 elif version=='95' and char=='/':keys([42,8]);run(70);keys([136,170]);run(70)
                 elif version=='95' and char=='y':key(44)
                 elif version=='95' and char=='-':key(53)
+                elif char=='"':
+                    code=3 if version=='95' else 40
+                    keys([42,code]);run(70);keys([code|128,170]);run(70)
                 elif char==':':keys([42,39]);run(70);keys([167,170]);run(70)
                 else:key(mapping[char])
             key(28);run(delay)
@@ -134,6 +137,9 @@ def main():
                 start('d:\\check.exe /close-ui')
                 start('d:\\check.exe /installed')
                 start('c:\\dosetools\\mglide.exe /preview',250);picture('miniglide-preview');run(2500)
+                start('c:\\dosetools\\mglide.exe "d:\\check.exe" /launcher-child /host "argument with spaces"',300)
+                picture('miniglide-launcher');run(4500)
+                start('c:\\dosetools\\mglide.exe /choose');picture('program-chooser');key(1)
             if phase in ('reboot-remove','upgrade'):
                 if phase=='reboot-remove':start('d:\\check.exe /reboot-check')
                 start('c:\\dosetools\\dsetup.exe /uninstall');picture('remove-confirmation')
@@ -150,11 +156,11 @@ def main():
         if data is None:raise RuntimeError('The guest did not write its test report')
         (work/('guest-'+phase+'.ini')).write_bytes(data)
         report=configparser.ConfigParser();report.read_string(data.decode('cp1252'))
-        sections={'install':['WrongVersion','Installed'],'reboot-remove':['Reboot','Removed'],
-                  'upgrade':['WrongVersion','ToolsOnly','Installed','Removed']}[phase]
+        sections={'install':['WrongVersion','Installed','Launcher'],'reboot-remove':['Reboot','Removed'],
+                  'upgrade':['WrongVersion','ToolsOnly','Installed','Launcher','Removed']}[phase]
         for section in sections:
             assert section in report,(section,data)
-            assert all(value=='1' for key,value in report[section].items() if key not in ('failures','exitcode')),(section,dict(report[section]))
+            assert all(value=='1' for key,value in report[section].items() if key not in ('failures','exitcode','commandline')),(section,dict(report[section]))
             assert report[section].get('failures','0')=='0',(section,dict(report[section]))
         print(version+' '+phase+' PASSED '+str({s:dict(report[s]) for s in sections}),flush=True)
     (work/'result.json').write_text(json.dumps(dict(passed=True,windows=version,work=str(work),

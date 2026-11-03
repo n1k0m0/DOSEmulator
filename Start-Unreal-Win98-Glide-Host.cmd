@@ -7,5 +7,5 @@ if not exist "%LAUNCHER%" (
   echo Die Windows-98-Glide-Maschine fehlt. Zuerst Setup-Glide-Bridge.cmd 98 ausfuehren.
   exit /b 1
 )
-call "%LAUNCHER%"
+call "%LAUNCHER%" %*
 exit /b %errorlevel%

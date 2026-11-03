@@ -11,7 +11,7 @@ from install_guest import read_guest_file, replace_file
 
 
 def configure_host(host: Path) -> Path | None:
-    """Disable the configured provider's optional overlays using its public config."""
+    """Use windowed output, guest-owned mouse input, and our own branding."""
     if host.name.lower() != "glide2x-dgvoodoo-x64.dll":
         return None
     config = host.with_name("dgVoodoo.conf")
@@ -20,6 +20,18 @@ def configure_host(host: Path) -> Path | None:
     if content is not None and (b"\0" in content or not content.startswith((b";", b"Version", b"["))):
         raise ValueError(f"Expected a text provider configuration: {config}")
     text = before.decode("utf-8-sig") if before is not None else "Version = 0x287\n"
+    general = re.search(r"(?ims)^\[General\][ \t]*\r?\n(.*?)(?=^\[|\Z)", text)
+    general_body = general[1] if general else ""
+    for key, value in {"FullScreenMode": "false", "CaptureMouse": "false"}.items():
+        line = re.compile(r"(?im)^" + re.escape(key) + r"[ \t]*=[^\r\n]*")
+        if line.search(general_body):
+            general_body = line.sub(f"{key} = {value}", general_body)
+        else:
+            general_body = general_body.rstrip() + f"\n{key} = {value}\n"
+    if general:
+        text = text[:general.start(1)] + general_body + text[general.end(1):]
+    else:
+        text = text.rstrip() + "\n\n[General]\n" + general_body.lstrip()
     section = re.search(r"(?ims)^\[Glide\][ \t]*\r?\n(.*?)(?=^\[|\Z)", text)
     settings = {"3DfxWatermark": "false", "3DfxSplashScreen": "false"}
     body = section[1] if section else ""

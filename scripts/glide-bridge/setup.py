@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import uuid
 from pathlib import Path
@@ -25,17 +26,51 @@ def bound_path(directory: Path, value: str) -> Path:
     return (directory / value).resolve()
 
 
+def portable_machine_paths(definition: dict, directory: Path) -> dict:
+    """Express same-volume media references relative to their machine without reading any media."""
+    result = json.loads(json.dumps(definition))
+    for collection in ('hardDisks', 'opticalDiscs', 'floppies'):
+        for medium in result.get(collection, []):
+            for key in ('imagePath', 'overlayPath'):
+                if not medium.get(key):
+                    continue
+                target = bound_path(directory, medium[key])
+                try:
+                    medium[key] = os.path.relpath(target, directory)
+                except ValueError:
+                    medium[key] = str(target)
+    return result
+
+
 def launcher_text(frontend: Path, machine: Path, host: Path, data: Path) -> str:
-    """Build the host launcher with explicit machine, renderer and data paths."""
+    """Keep same-volume paths relative to the launcher, with a window-free inspection mode."""
     paths = (frontend, machine, host, data)
-    if any('"' in str(path) or "\n" in str(path) or "\r" in str(path) for path in paths):
+    if any(any(char in str(path) for char in '"\n\r%!') for path in paths):
         raise ValueError("A launcher path contains an unsupported character")
-    return ("@echo off\nsetlocal\n"
-            f'set "DOSE_GLIDE_HOST_DLL={host}"\n'
-            f'if not exist "{frontend}" exit /b 1\n'
-            f'if not exist "{machine}" exit /b 1\n'
+
+    def relative(path: Path) -> str:
+        """Resolve same-volume resources from this CMD's own directory, regardless of caller CWD."""
+        try:
+            return "%~dp0" + os.path.relpath(path, machine.parent).replace("/", "\\")
+        except ValueError:
+            return str(path)  # An explicitly selected external drive cannot move with this branch.
+
+    return ("@echo off\nsetlocal DisableDelayedExpansion\n"
+            f'set "DOSE_GLIDE_HOST_DLL={relative(host)}"\n'
+            f'set "DOSE_GLIDE_FRONTEND={relative(frontend)}"\n'
+            f'set "DOSE_GLIDE_MACHINE={relative(machine)}"\n'
+            f'set "DOSE_GLIDE_DATA={relative(data)}"\n'
+            'if not exist "%DOSE_GLIDE_FRONTEND%" exit /b 1\n'
+            'if not exist "%DOSE_GLIDE_MACHINE%" exit /b 1\n'
             f'if not exist "%DOSE_GLIDE_HOST_DLL%" exit /b 1\n'
-            f'start "" "{frontend}" --engine whpx --machine "{machine}" --data-dir "{data}"\n')
+            'if /i "%~1"=="--inspect" (\n'
+            '  echo Frontend: "%DOSE_GLIDE_FRONTEND%"\n'
+            '  echo Machine: "%DOSE_GLIDE_MACHINE%"\n'
+            '  echo Host: "%DOSE_GLIDE_HOST_DLL%"\n'
+            '  echo Data: "%DOSE_GLIDE_DATA%"\n'
+            '  exit /b 0\n)\n'
+            'start "" "%DOSE_GLIDE_FRONTEND%" --engine whpx --machine "%DOSE_GLIDE_MACHINE%" --data-dir "%DOSE_GLIDE_DATA%"\n'
+            'exit /b %errorlevel%\n')
 
 
 def main() -> None:
@@ -139,6 +174,7 @@ def main() -> None:
         after = journal.stat()
         if (source_stat.st_size, source_stat.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
             raise RuntimeError("Source overlay changed during copy; discard the incomplete output")
+        definition = portable_machine_paths(definition, target)
         destination_file.write_text(json.dumps(definition, indent=2) + "\n", encoding="utf-8")
 
     result = replace_file(target, "WINDOWS/SYSTEM/GLIDE2X.DLL", replacement)

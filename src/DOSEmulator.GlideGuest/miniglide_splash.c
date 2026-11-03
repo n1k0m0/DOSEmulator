@@ -19,6 +19,15 @@ void *__cdecl memset(void *destination, int value, size_t count)
     return destination;
 }
 
+#pragma function(memcpy)
+void *__cdecl memcpy(void *destination, const void *source, size_t count)
+{
+    volatile BYTE *out = (volatile BYTE *)destination;
+    const volatile BYTE *in = (const volatile BYTE *)source;
+    while (count--) *out++ = *in++;
+    return destination;
+}
+
 static void Fill(HDC dc, int left, int top, int right, int bottom, COLORREF color)
 {
     RECT bounds;
@@ -93,10 +102,16 @@ void __stdcall MiniGlideShowSplash(void)
     HWND window;
     DWORD began;
     MSG message;
+    char inherited[2];
     int i;
 
     if (SplashShown) return;
     SplashShown = 1;
+    /* The launcher already drew the same artwork before starting this process. */
+    if (GetEnvironmentVariableA("MINIGLIDE_SPLASH_DONE", inherited, sizeof(inherited)) == 1 && inherited[0] == '1') {
+        SetEnvironmentVariableA("MINIGLIDE_SPLASH_DONE", 0);
+        return;
+    }
 
     for (i = 0; i < sizeof(klass); ++i) ((BYTE *)&klass)[i] = 0;
     klass.lpfnWndProc = SplashWindow;

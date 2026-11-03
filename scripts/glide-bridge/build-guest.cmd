@@ -27,7 +27,7 @@ python "%~dp0patch_pe_version.py" "%OUT%\GLIDE2X.DLL"
 if errorlevel 1 exit /b 1
 cl /nologo /c /O2 /arch:IA32 /GS- /Zl /Fo"%OUT%\miniglide_launcher.obj" "%SRC%\miniglide_launcher.c"
 if errorlevel 1 exit /b 1
-link /nologo /Brepro /NODEFAULTLIB /ENTRY:MiniGlideEntry /MACHINE:X86 /DYNAMICBASE:NO /NXCOMPAT:NO /SUBSYSTEM:WINDOWS /OUT:"%OUT%\MGLIDE.EXE" "%OUT%\miniglide_launcher.obj" "%OUT%\miniglide_splash.obj" kernel32.lib user32.lib gdi32.lib
+link /nologo /Brepro /NODEFAULTLIB /ENTRY:MiniGlideEntry /MACHINE:X86 /DYNAMICBASE:NO /NXCOMPAT:NO /SUBSYSTEM:WINDOWS /OUT:"%OUT%\MGLIDE.EXE" "%OUT%\miniglide_launcher.obj" "%OUT%\miniglide_splash.obj" kernel32.lib user32.lib gdi32.lib comdlg32.lib
 if errorlevel 1 exit /b 1
 python "%~dp0patch_pe_version.py" "%OUT%\MGLIDE.EXE"
 exit /b %errorlevel%

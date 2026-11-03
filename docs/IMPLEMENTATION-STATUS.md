@@ -1,5 +1,25 @@
 # DOSE – Implementierungsstand
 
+**Projektumzug und gemeinsame Quellen, 3. November 2026:**
+Das Projekt liegt jetzt auf `K:`. [Relative MiniGlide-Starter und ein geprüfter
+Kompatibilitätslink](WORKSPACE-RELOCATION.md) erhalten ältere absolute Pfade,
+ohne archivierte Snapshots oder Benutzerinstallationen umzuschreiben. Die
+beiden eigenen Unreal-Brücken und die Hardware-Demo behalten ihre Hardware und
+Medien; lediglich ihre Pfadmetadaten wurden portabel gemacht. Die gemeinsame
+Starterauswahl bleibt C54, C58 und MiniGlide bleiben getrennte Entwicklungswege.
+Der neue MiniGlide-Bildpfad im Emulatorfenster und die freien Gaststarthelfer
+werden zusammen mit diesen Reparaturen versioniert. Ihre vorhandenen
+Win95-/Win98-Installer- und Win98-Spielnachweise behalten ihren jeweiligen
+Buildbezug; ein neuer interaktiver Win95-Spieltest ist weiterhin offen.
+Der frische Release-Build besteht mit 0 Warnungen/Fehlern, 18242/18242
+Regressionen, 73 nativen Gruppen und drei Snapshot-Audits. 1020 Code-/
+Projektdateien (534 C#) bestehen die Quellprüfung. Beide neu gebauten
+Gastinstaller sind bytegleich mit den bereits im Gast abgenommenen Paketen;
+ihre CD-Inhalte sind erneut vollständig zurückgelesen. Echte CMD-Prüfungen
+vor/nach einem eigenen Testumzug und die fünf lokalen Starterinspektionen
+benötigen weder Hostfenster noch Gastmedienzugriff. Privater Nachweis:
+`artifacts/tests/workspace-relocation-release-path.txt`.
+
 **Ergänzter Quellstand: MiniGlide und Gastinstaller, 2. November 2026:**
 Die [generische Glide-2-Brücke](GLIDE-HOST-BRIDGE.md) bündelt Gastaufrufe und
 verwendet die Host-GPU. Windows 95 und 98 erhalten eigene

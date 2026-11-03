@@ -106,16 +106,16 @@ static void WrongVersion(void)
     }
     Check("WrongVersion","Refused",result==2);Put("WrongVersion","ExitCode",result);
 }
-static void ToolsOnly(void)
+static void RunSetup(const char *arguments,const char *section)
 {
     STARTUPINFOA startup;PROCESS_INFORMATION process;DWORD result=0;
     memset(&startup,0,sizeof(startup));memset(&process,0,sizeof(process));startup.cb=sizeof(startup);
-    lstrcpyA(Buffer,"D:\\SETUP.EXE /S /tools-only /no-startup");
+    lstrcpyA(Buffer,"D:\\SETUP.EXE ");lstrcatA(Buffer,arguments);
     if(CreateProcessA(0,Buffer,0,0,FALSE,0,0,0,&startup,&process)) {
         WaitForSingleObject(process.hProcess,30000);GetExitCodeProcess(process.hProcess,&result);
         CloseHandle(process.hThread);CloseHandle(process.hProcess);
     }
-    Check("ToolsOnly","Installed",result==0);
+    Check(section,"Installed",result==0);
 }
 static void CheckToolsOnly(void)
 {
@@ -130,12 +130,53 @@ static void CheckToolsOnly(void)
     Check("ToolsOnly","MaintenanceWritable",(GetFileAttributesA(HOME "\\DSETUP.EXE")&FILE_ATTRIBUTE_READONLY)==0);
     Put("ToolsOnly","Failures",Bad);
 }
+static void LauncherChild(void)
+{
+    char inherited[8];
+    HMODULE glide; FARPROC initialize,shutdown; DWORD began;
+    DWORD count=GetEnvironmentVariableA("FX_GLIDE_NO_SPLASH",inherited,sizeof(inherited));
+    Check("Launcher","LegacySplashDisabled",count==1&&inherited[0]=='1');
+    count=GetEnvironmentVariableA("MINIGLIDE_SPLASH_DONE",inherited,sizeof(inherited));
+    Check("Launcher","OwnSplashAlreadyShown",count==1&&inherited[0]=='1');
+    GetCurrentDirectoryA(sizeof(PathName),PathName);
+    Check("Launcher","WorkingDirectory",lstrcmpiA(PathName,"D:\\")==0);
+    Check("Launcher","QuotedArguments",Has("\"argument with spaces\""));
+    WritePrivateProfileStringA("Launcher","CommandLine",GetCommandLineA(),REPORT);
+    if(Has("/host")) {
+        GetSystemDirectoryA(PathName,sizeof(PathName));lstrcatA(PathName,"\\GLIDE2X.DLL");
+        glide=LoadLibraryA(PathName);initialize=glide?GetProcAddress(glide,"_grGlideInit@0"):0;
+        shutdown=glide?GetProcAddress(glide,"_grGlideShutdown@0"):0;
+        began=GetTickCount();if(initialize)((void (__stdcall *)(void))initialize)();
+        Check("Launcher","NoSecondSplash",initialize&&GetTickCount()-began<1000);
+        Check("Launcher","SplashFlagConsumed",GetEnvironmentVariableA("MINIGLIDE_SPLASH_DONE",inherited,sizeof(inherited))==0);
+        if(shutdown)((void (__stdcall *)(void))shutdown)();
+        if(glide)FreeLibrary(glide);
+    }
+    Put("Launcher","Failures",Bad);
+}
+static void LauncherOnly(void)
+{
+    DWORD hash,length,type,size;
+    GetSystemDirectoryA(PathName,sizeof(PathName));lstrcatA(PathName,"\\GLIDE2X.DLL");
+    hash=HashFile(PathName,&length);
+    Check("LauncherOnly","OriginalDriverUntouched",hash==Number("Before","GlideHash")&&length==Number("Before","GlideBytes"));
+    hash=HashFile(HOME "\\MGLIDE.EXE",&length);
+    Check("LauncherOnly","LauncherExact",hash==EXPECT_LAUNCH_HASH&&length==EXPECT_LAUNCH_BYTES);
+    hash=HashFile(HOME "\\DOSETIME.EXE",&length);
+    Check("LauncherOnly","ClockUntouched",hash==Number("Before","TimeHash")&&length==Number("Before","TimeBytes"));
+    hash=HashStartup(&type,&size);
+    Check("LauncherOnly","StartupUntouched",hash==Number("Before","StartupHash")&&type==Number("Before","StartupType")&&size==Number("Before","StartupSize"));
+    Put("LauncherOnly","Failures",Bad);
+}
 void __stdcall CheckEntry(void)
 {
     HWND window;
     if(Has("/seed"))Seed();
     else if(Has("/readonly-maintenance"))SetFileAttributesA(HOME "\\DSETUP.EXE",FILE_ATTRIBUTE_READONLY|FILE_ATTRIBUTE_ARCHIVE);
-    else if(Has("/tools-only-install"))ToolsOnly();
+    else if(Has("/launcher-child"))LauncherChild();
+    else if(Has("/launcher-only-check"))LauncherOnly();
+    else if(Has("/tools-only-install"))RunSetup("/S /tools-only /no-startup","ToolsOnly");
+    else if(Has("/launcher-only-install"))RunSetup("/S /launcher-only","LauncherOnly");
     else if(Has("/tools-only-check"))CheckToolsOnly();
     else if(Has("/install-ui")) {
         window=FindWindowA("#32770","DOSE Tools and MiniGlide Setup - Windows " TARGET_TEXT);
