@@ -1,6 +1,21 @@
 # DOSE – Implementierungsstand
 
-**Windows-Zeitfortschreibung unter MiniGlide-Last, 3. November 2026 – lokaler Fix:**
+**MiniGlide-Starter und Windows-98-Desktop, 3. November 2026 – lokaler GUI-Fix:**
+Die [Fenstersuche blockierte Titelabfragen unpassender eigener Hilfsfenster](GLIDE-DESKTOP-PERFORMANCE.md).
+Die GUI prüft jetzt zuerst deren Klasse. Der tatsächliche alte Starterpfad
+reproduziert auf eigener Referenz 9,81 FPS; der Fix erreicht 60,18 FPS bei
+bytegleichen sechs alten VM-Modulen. Sieben echte unsichtbare Fensterkontrollen
+bestehen; derselbe Prüfer scheitert an der alten GUI. Dialogeingabe und
+regulärer Win98-Shutdown bestehen. Mit den unveränderten aktuellen
+Zeitfix-Modulen bleibt auch Unreal bei 57,55–57,92 Pufferwechseln/s und
+99,985–100 Prozent Windows-Zeitfortschritt geprüft; der Desktop bleibt vor
+und nach dem Spiel bei ungefähr 59–60 FPS. Nur der private Frontendpfad des
+genannten Win98-Glide-Starters wird umgestellt, seine Installation bleibt erhalten.
+Keine neue allgemeine 1:1-, native Maus-/Ausgabe- oder M4–M8-Gesamtabnahme.
+Der vorherige Stand ist als `82d7d00` gepusht; dieser Fix bleibt lokal.
+Privater Nachweis: `artifacts/tests/desktop-fps-release-path.txt`. Automation pausiert.
+
+**Windows-Zeitfortschreibung unter MiniGlide-Last, 3. November 2026 – Zeitfix als `82d7d00` gepusht:**
 Der [Zeitgeber-Folgeschritt](WINDOWS-TIMER-PROGRESS.md) bindet den großen
 Rückstand an blockierende native Bildwechsel und verspätete Hostfortsetzung.
 Eine kooperativ wartende eigene Gast-DLL und tatsächliche VP-Laufzeitmessung

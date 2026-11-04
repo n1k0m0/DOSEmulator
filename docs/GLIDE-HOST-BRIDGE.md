@@ -1,5 +1,11 @@
 # MiniGlide unter Windows 95 und Windows 98 mit der Host-GPU
 
+Der anschließende [Desktop-Fix](GLIDE-DESKTOP-PERFORMANCE.md) beseitigt die
+blockierenden Titelabfragen während der erfolglosen Rendererfenstersuche.
+Der benannte Win98-Glide-Starter verwendet dafür eine getrennte GUI mit seinen
+bisherigen sechs VM-Modulen; Windows-Platte, UI-Einstellungen und alte Laufzeit
+bleiben erhalten. Die Änderung gilt nach regulärem Beenden und erneutem Start.
+
 Der lokale [Folgestand vom 3. November](MINIGLIDE-PERFORMANCE.md) prüft die
 integrierte Anzeige jetzt auch mit laufendem Unreal unter Windows 95 und
 ergänzt Motorheads tatsächlich benötigte Transfers und Dreiecksbündelung.

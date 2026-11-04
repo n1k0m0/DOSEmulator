@@ -72,12 +72,13 @@ public sealed partial class DosWindow
         EnumWindows((window, _) =>
         {
             if (GetWindowThreadProcessId(window, out uint processId) == 0 || processId != Environment.ProcessId) return true;
-            var title = new StringBuilder(32);
             var klass = new StringBuilder(32);
-            if (GetWindowTextW(window, title, title.Capacity) > 0 &&
-                GetClassNameW(window, klass, klass.Capacity) > 0 &&
-                title.ToString() == "MiniGlide" &&
-                string.Equals(klass.ToString(), "Static", StringComparison.OrdinalIgnoreCase))
+            // Same-process title reads send WM_GETTEXT to the owning thread.
+            // Reject unrelated helper classes before that synchronous call.
+            if (GetClassNameW(window, klass, klass.Capacity) <= 0 ||
+                !string.Equals(klass.ToString(), "Static", StringComparison.OrdinalIgnoreCase)) return true;
+            var title = new StringBuilder(32);
+            if (GetWindowTextW(window, title, title.Capacity) > 0 && title.ToString() == "MiniGlide")
             { found = window; return false; }
             return true;
         }, 0);
