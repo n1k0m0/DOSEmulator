@@ -32,7 +32,7 @@ In der ersten spielbaren Innenraumszene bei 512 × 384 und 233 MHz Gasttakt wurd
 
 Die frühere Serie `gpu-move-segment1.json` bis `gpu-move-segment4.json` erreichte 54,14 FPS, war aber kein gesicherter Bewegungstest: `W` ist in der ausgelieferten `User.ini` unbelegt. Sie bleibt als ältere Bildratenmessung erhalten. Die [aktuelle Brückendokumentation](GLIDE-HOST-BRIDGE.md) enthält auch die Windows-95-Tests und ihre Grenzen.
 
-[`Start-Unreal-Win98-Glide-Host.cmd`](../Start-Unreal-Win98-Glide-Host.cmd) startet die isolierte beschleunigte Maschine. Die ursprüngliche Maschine bleibt über [`Start-Unreal-Win98.cmd`](../Start-Unreal-Win98.cmd) verfügbar.
+`local/launchers/Start-Unreal-Win98-Glide-Host.cmd` startet die isolierte beschleunigte Maschine. Die ursprüngliche Maschine bleibt über `local/launchers/Start-Unreal-Win98.cmd` verfügbar.
 
 ## Ergebnis und Grenze
 

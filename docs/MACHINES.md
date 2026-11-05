@@ -68,7 +68,7 @@ Eine eigene Installation mit einer zusÃ¤tzlichen Platte verbinden und als PC s
 dotnet $runner --disk 'D:\DOS-PCs\Spiele\system.img' --overlay 'D:\DOS-PCs\Spiele\system.cow' `
   --disk1 'D:\DOS-PCs\Spiele\daten.img' --overlay1 'D:\DOS-PCs\Spiele\daten.cow' `
   --save-machine 'D:\DOS-PCs\Spiele\Spiele-PC.dospc.json' --machine-name 'Mein Spiele-PC'
-.\run.cmd -NoBuild -Machine 'D:\DOS-PCs\Spiele\Spiele-PC.dospc.json'
+.\scripts\run.ps1 -NoBuild -Machine 'D:\DOS-PCs\Spiele\Spiele-PC.dospc.json'
 ```
 
 `--disk2/--overlay2` und `--disk3/--overlay3` belegen die Ã¼brigen PlÃ¤tze; `--profile` Ã¼bernimmt das Hardwareprofil. `--save-machine` speichert und beendet den Headless-Aufruf. Ohne `--overlayN` ist das betreffende Basisimage nur lesbar. `--machine` kann nicht gleichzeitig mit abweichenden Hardware-/Medienoptionen verwendet werden. Die GUI und Headless verwenden dieselbe Ladeimplementierung.

@@ -2,7 +2,7 @@
 
 Der aktuelle lokale Projektordner ist
 `K:\KI-Projekte\Anwendungsentwicklung mit KI\DOSEmulator`.
-Die normalen Starter bestimmen ihren Projektpfad aus ihrem eigenen Ort und
+Die lokalen Starter unter `local/launchers/` bestimmen den Projektpfad relativ zu ihrem neuen Ort und
 behalten die bisher ausgewählte unveränderliche Laufzeit. Ein Umzug schaltet
 keinen neuen Emulatorbuild frei und migriert keine alten Snapshots.
 
@@ -17,9 +17,9 @@ erhalten. Die vorherigen Definitionen und Starter sind privat gesichert.
 Ohne Emulatorfenster und ohne Medienzugriff prüfen:
 
 ```text
-Start-Unreal-Win95-Glide-Host.cmd --inspect
-Start-Unreal-Win98-Glide-Host.cmd --inspect
-Start-Hardware-Demo-MiniGlide.cmd --inspect
+local\launchers\Start-Unreal-Win95-Glide-Host.cmd --inspect
+local\launchers\Start-Unreal-Win98-Glide-Host.cmd --inspect
+local\launchers\Start-Hardware-Demo-MiniGlide.cmd --inspect
 pwsh -NoProfile -File scripts/start-variant.ps1 -Variant win95 -Inspect
 pwsh -NoProfile -File scripts/start-variant.ps1 -Variant win98 -Inspect
 ```

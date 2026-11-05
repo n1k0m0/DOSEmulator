@@ -1,5 +1,116 @@
 # DOSE – Implementierungsstand
 
+**Quellcheckpoint und lokale Starter, 5. November 2026:**
+Alle 24 rechnerbezogenen CMD-Start-/Komfortskripte liegen jetzt in
+`local/launchers/` außerhalb der Versionskontrolle. Die relativen Pfade
+sind angepasst; 22 VM-Einstiege bestehen `-Inspect` beziehungsweise
+`--inspect` aus einem fremden Arbeitsordner ohne Gaststart oder Öffnen der Benutzerplatten.
+Die [lokale Ablage](LOCAL-LAUNCHERS.md) und `local/VM-LOCATIONS.md` erklären
+Maschinendefinitionen, Basisimages, COW-Dateien und die ausgewählten PCs.
+Die vorhandenen Medienordner, Laufzeiten und Benutzer-VMs werden nicht
+verschoben oder auf diesen Quellbuild umgestellt. Die allgemeinen
+PowerShell-/Python-Einstiege bleiben versioniert; die Skriptprüfung erzeugt
+ihre CMD-Fixtures selbst und verwendet wieder durchgehend den gemeinsamen
+SHA-256-Helfer.
+
+Der vollständige private Quellbuild besteht ohne Warnungen/Fehler,
+18.243/18.243 allgemeine Regressionen, 475 tatsächliche WHPX-/Glide-ABI-Kontrollen,
+18 Präsentationskontrollen und 349 Skriptprüfungen ohne nativen GUI-Smoke.
+1.008 Code-/Projektdateien einschließlich 542 C# sind qualitätsgeprüft;
+die geringere Dateizahl entsteht durch die 24 ausgegliederten CMD-Dateien.
+Der eigene Win95-PE-Probegast ist mit dem gemeinsamen Hashhelfer neu
+assembliert und geprüft. Vorhandene Gastabnahmen bleiben in ihrem jeweiligen
+eingefrorenen Laufzeitbezug. Privater Nachweis:
+`artifacts/tests/repo-cleanup-release-path.txt`. Automation bleibt pausiert.
+
+Bei der gewünschten Spieleaufnahme zeigte eine frische Motorhead-Win98-Kopie
+mit dem GLQuake-Laufzeitstand einen wirklichen WHPX-I/O-Startfehler
+(REP OUTSW, Port E2E8). Die Aufnahme verwendet deshalb den im Video benannten
+geprüften Motorhead-Referenzstand. Diese Kompatibilitätsdiagnose bleibt
+gesondert offen; der Quellcheckpoint behauptet dafür keine Reparatur oder
+allgemeine Spiele-/1:1-Abnahme. Nachweis:
+`artifacts/gameplay-video-20261105-077bbc6d/release-validation.json`.
+
+**GLQuake: bestätigter schwarzer Direktstart behoben, 5. November 2026:**
+Die vom Benutzer offen gelassene Win98-Instanz ist tatsächlich untersucht
+und repariert. Das aktivierende eigene MiniGlide-Logo minimierte das originale
+Gastfenster während MiniGL seine Größe ermittelte; der Zeichenbereich blieb
+leer. Das Logo erhält jetzt keinen Fokus, und ein minimiertes eigenes
+Spielfenster wird ausdrücklich wiederhergestellt. Die
+[neue Gast-DLL und direkte Originalstarts](GLQUAKE-WINDOWS.md#bestätigte-behebung-im-laufenden-win98-5-november-2026)
+bestehen auf eigenen Win95-/Win98-Kopien; die alte DLL reproduziert den
+Direktstartfehler. Die korrigierte DLL ist durch echte Windows-Dateifunktionen
+mit vollständigem Bytevergleich in der gemeldeten Win98-VM installiert;
+`D:\QUAKE\MGOLD00.DLL` sichert die alte Version. Ein erneuter direkter
+GLQuake-Start liefert dort bewegte 640×480-Bilder ohne weitere Reparatur.
+Das Benutzerfenster bleibt geöffnet; Windows wurde nicht neu gestartet.
+Alle 62 bekannten Hostproduktdateien bleiben bytegleich. Gast-DLL-Build und
+1.032 qualitätsgeprüfte Dateien einschließlich 542 C# bestehen; keine neue
+CPU-Vollsuite oder allgemeine Performanceabnahme. Beide Testspiele enden
+normal, beide eigenen Windows-Kopien erreichen ihre bekannten Abschaltbilder
+(Win95 über den tatsächlichen Gast-Taskdialog); Test-Owner beendet.
+Die Captureabsicherung vom Vortag löste diesen bestätigten Fehler allein
+nicht. Privater Nachweis: `artifacts/tests/quake-black-live-release-path.txt`.
+Kein Commit/Push; Automation weiterhin pausiert.
+
+**Win98-GLQuake: schwarzes Bild, 4. November 2026 – lokaler Anzeigekandidat:**
+Die [damalige Anzeigeprüfung](GLQUAKE-WINDOWS.md#historische-anzeigeabsicherung-vom-4-november-2026)
+prüft zusätzlich GUI-Einstiegspunkt und eine eigene Sicherung der ausdrücklich
+gemeldeten neuen GLQuake-Win98-Maschine. Das konkrete schwarze Bild ist verdeckt
+weiterhin nicht reproduziert. Die GUI fordert nun vollständige GPU-/Compositor-
+Inhalte beim Fenster-Capture an und erhält den alten Aufruf als Fehlerfallback.
+Ein optionales begrenztes lokales Metadatenprotokoll unterstützt den erneuten
+Benutzertest. Nur der neue GLQuake-Win98-Starter erhält diese GUI-Laufzeit;
+Maschine, Spieljournale, übrige Starter und eingefrorene Nachweise bleiben
+erhalten. Fünf gemeinsame VM-Module und WHPX bleiben bytegleich; kein neuer
+CPU-/Geräte-/Timing- oder allgemeiner Performancegewinn wird daraus abgeleitet.
+Endgültiger GUI-Build ohne Warnungen/Fehler; neue Win98- und Win95-Kaltstarts
+mit bewegten Bildern, gemeinsamem Overlay, normalem Spielende und regulärem
+Shutdown sowie je acht private Protokollkontrollen bestehen. 49/992/44 und
+1.032 qualitätsgeprüfte Dateien einschließlich 542 C# bleiben bestätigt.
+Privater Nachweis: `artifacts/tests/quake-display-release-path.txt`.
+Kein Commit/Push; Automation weiter pausiert.
+
+**GLQuake unter Win95/Win98, 4. November 2026 – lokaler Stand:**
+Die [bereitgestellten Quake-Dateien und getrennten PCs](GLQUAKE-WINDOWS.md)
+verwenden Original-GLQuake 0.97 mit MiniGL 1.1.14, WHPX und MiniGlide über die
+Host-GPU. Der gewünschte Archive-Download ist eine ZIP-Sammlung, kein CD-ISO.
+Begrenzte fehlende ABI-Pfade und eine separate SST-1-Rendererkonfiguration
+mit 2 MiB FBI lösen den tatsächlichen Start-/Bildausgabefehler des alten
+MiniGL-Clients. Zwölf gemessene 969-Frame-Timedemos nach vier Aufwärmstarts:
+Win98 59,4–59,8 FPS; Win95 bei 640×480 59,3–59,7 FPS, bei 512×384 deutlich
+streuende 42,6–59,2 FPS. Beide normalen 640×480-Wiedergabeproben mit Gast-Sound
+erreichen etwa 60 native Bildwechsel/s und praktisch 100 Prozent QPC-/Hostzeit.
+Alle Start-/Aufholklammern und schwächeren Werte bleiben erhalten. Reguläres
+Spielende, tatsächlicher Win95-Gast-Taskdialog-Shutdown und Win98-Shutdown
+sowie beide gejointen GUI-Owner mit Exit 0 sind geprüft; Harnessdiagnosen
+werden getrennt aufbewahrt. 475 Transportkontrollen einschließlich 37 neuer
+Fälle, vollständige native Suite, 49/992/44 und 1032 qualitätsgeprüfte Dateien
+bestehen. Fünf gemeinsame VM-Module und GUI sind zum lokalen Anzeigestand
+bytegleich; nur WHPX-DLL/PDB ändern sich. Getrennte
+`Start-GLQuake-Win95.cmd` / `Start-GLQuake-Win98.cmd`, im Gast `D:\QPLAY.EXE`.
+Vorhandene Installationen, Starter und Renderer bleiben erhalten.
+Kein neuer Commit/Push; Automation weiterhin pausiert. Privater Nachweis:
+`artifacts/tests/quake-release-path.txt`.
+
+**Gemeinsame Glide-Anzeige und VM-Menüentwurf, 4. November 2026 – lokaler Teststand:**
+Der [neue Anzeigeschritt und der konkrete VM-Entwurf](OVERLAY-AND-VM-LIBRARY.md)
+ersetzen die Rendererfenstersuche durch eine veröffentlichte aktive Bildfläche
+mit eigener Open-/Close-Generation. Die technische Fläche bleibt von Beginn an
+außerhalb des Desktops und ohne Taskleisteneintrag; nachträgliche Provider-Moves
+werden ebenfalls begrenzt. Das gemeinsame Overlay benutzt im pausierten
+Glide-Gast ein stabiles letztes Spielbild. Zwei eigene Win95-/Win98-Kaltstarts
+bestehen Desktop → Unreal → Desktop, drei Overlayzustände mit echter logischer
+Navigation, 50.220 unabhängige Titelrasterpixel und reguläre Shutdowns.
+80 native Gruppen einschließlich 18 neuer Fenster-/Lebensdauerkontrollen,
+GUI-Owner-/Snapshotcheck, 49/992/44 und 1030 Quell-/Projektdateien bestehen.
+Getrennte `Start-Unreal-Win95/Win98-Unified-Overlay-Test.cmd` stellen die neuen
+privaten Kopien bereit; bestehende Starter und Benutzerplatten bleiben erhalten.
+VM-Bibliothek, neuer Hardwareaufbau und New-VM-Assistent sind ein dokumentierter
+Entwurf, noch keine implementierten Funktionen. Der vorherige Desktopfix ist
+als `07a6d1c` gepusht; neue Arbeit bleibt lokal. Automation bleibt pausiert.
+Privater Nachweis: `artifacts/tests/unified-overlay-release-path.txt`.
+
 **MiniGlide-Starter und Windows-98-Desktop, 3. November 2026 – lokaler GUI-Fix:**
 Die [Fenstersuche blockierte Titelabfragen unpassender eigener Hilfsfenster](GLIDE-DESKTOP-PERFORMANCE.md).
 Die GUI prüft jetzt zuerst deren Klasse. Der tatsächliche alte Starterpfad
@@ -723,7 +834,7 @@ Auf exakt V12 bestehen zusätzlich **vier originale DOS-/FreeDOS-/EMM386-Kaltsta
 
 Der Zustandsgenerator prüft **46 Typen/894 Mitglieder/40 unveränderte Ereigniskörper**. Format 1 bleibt strikt an die tatsächlichen fünf VM-Module gebunden. Der wirkliche alte V11-CLI-Import wird vor Zweiganlage mit bestehendem nichtnulligem CLR-Ausnahmeabbruch abgewiesen; kein kontrollierter Exit 1 und keine Migration werden behauptet. Der tatsächliche gemeinsame CLI-Import eines installierten Windows-Schnitts besteht zusätzlich: 10001 direkte Schritte und 10000 Schritte plus Speichern/Laden plus ein Schritt ergeben bytegleichen vollständigen serialisierten Zustand, gesamten 32-MiB-RAM, PPM, CPU/Status und versiegelte Medien; nur vier einzeln geprüfte Capture-UUIDs unterscheiden sich. POST bleibt 1; kein neuer Kaltstart. 832 Code-/Projektdateien sind lizenz-/kommentargeprüft, darin 404 C#, 163 Python und 102 PowerShell; 0 Probleme. Die frühere 941er-Quellmetadatenbasis wird mit ausdrücklich benannten Deltas fortgeschrieben, nicht durch eine breite Schutz-/Medienhashrunde ersetzt.
 
-Die privaten fertigen Arbeits-PCs stehen unter `artifacts/Windows95`; [run-win95.cmd](../run-win95.cmd) startet die eigene 100-MHz-Kopie ohne Neubau. Dort liegt auch ein getrennter 133-MHz-Starter. Beide Plattenkopien stammen aus je einem regulären Windows-Shutdown und besitzen eigene beschreibbare COWs. Ihre Definitionen wurden mit dem Produkt-Factorypfad und genau einer Resetinstruktion geprüft; das zählt nicht als weiterer Windows-Start. Die Starter verwenden den eingefrorenen V12 und eigene UI-Einstellungen. Für die Bereitstellung wurde kein natives Fenster geöffnet. Der private Gesamtnachweis ist `artifacts/tests/m4-win95-release-path.txt`.
+Die privaten fertigen Arbeits-PCs stehen unter `artifacts/Windows95`; `local/launchers/run-win95.cmd` startet die eigene 100-MHz-Kopie ohne Neubau. Dort liegt auch ein getrennter 133-MHz-Starter. Beide Plattenkopien stammen aus je einem regulären Windows-Shutdown und besitzen eigene beschreibbare COWs. Ihre Definitionen wurden mit dem Produkt-Factorypfad und genau einer Resetinstruktion geprüft; das zählt nicht als weiterer Windows-Start. Die Starter verwenden den eingefrorenen V12 und eigene UI-Einstellungen. Für die Bereitstellung wurde kein natives Fenster geöffnet. Der private Gesamtnachweis ist `artifacts/tests/m4-win95-release-path.txt`.
 
 Der zusätzlich angefragte [Dateitransfer mit DOSE Tools](WINDOWS95-GUEST-TOOLS-DESIGN.md) ist mit „Dateitransfer im laufenden DOS-Emu“ abgeglichen: Ein echter Win32-Gasthelfer soll über ein gemeinsames Protokoll und einen optionalen eigenen VxD-Datenkanal Dateien in einen gewählten Gastordner übertragen. Windows verwaltet dabei selbst VFAT, offene Dateien und seine Caches. Ordnerabgleich, Zwischenablage und Drag-and-drop sind geplante Oberflächen desselben Transfers; noch kein Transfergerät oder Hostzugang ist aktiviert.
 

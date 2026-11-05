@@ -37,7 +37,7 @@ C:\DOSETOOLS\MGLIDE.EXE "C:\GAMES\GAME.EXE" [Spielparameter]
 
 Ohne Parameter startet er `C:\UNREAL\SYSTEM\UNREAL.EXE`; `/preview` zeigt nur das Logo, `/choose` öffnet die Dateiauswahl. Der Starthelfer unterdrückt den optionalen Splash des ursprünglichen Renderers über `FX_GLIDE_NO_SPLASH=1` ausschließlich in der Umgebung des gestarteten Programms. Die MiniGlide-DLL erkennt den vorherigen Logo-Start und zeigt dasselbe Logo nicht ein zweites Mal. Beim direkten Spielstart über die MiniGlide-DLL bleibt deren eigenes Startlogo aktiv.
 
-Die lokale, getrennte Hardware-Demo-Kopie startet über [`Start-Hardware-Demo-MiniGlide.cmd`](../Start-Hardware-Demo-MiniGlide.cmd). Im Gast **Start → Programs → DOSE Tools → Motorhead with MiniGlide** verwenden. Der Starter verwendet die emulierte Hardware. Die bisherigen Referenzmaschinen und deren Originaltreiber bleiben erhalten. Für eine unbeaufsichtigte Installation nur des Starthelfers: `SETUP.EXE /S /launcher-only`.
+Die lokale, getrennte Hardware-Demo-Kopie startet über `local/launchers/Start-Hardware-Demo-MiniGlide.cmd`. Im Gast **Start → Programs → DOSE Tools → Motorhead with MiniGlide** verwenden. Der Starter verwendet die emulierte Hardware. Die bisherigen Referenzmaschinen und deren Originaltreiber bleiben erhalten. Für eine unbeaufsichtigte Installation nur des Starthelfers: `SETUP.EXE /S /launcher-only`.
 
 Falls das Titelbild der alten Demo nicht auf Eingaben reagiert, das Spiel über seine Gast-Taskleistenschaltfläche aktivieren; alternativ **Windows+Tab**, dann **Enter**. Das Spiel startet seine automatische 3D-Demo nach dem Titelbild.
 
@@ -51,7 +51,7 @@ Die jeweils erste vorherige Datei liegt unter `C:\DOSETOOLS\BACKUP`. Erneute Ins
 
 ## Neubau
 
-[`Build-Guest-Installers.cmd`](../Build-Guest-Installers.cmd) baut beide EXEs und beide ISOs nach `artifacts/guest-installers/`. Voraussetzungen auf dem Host: Python 3 mit `pycdlib`, MSVC mit x86-Compiler und Windows SDK sowie der vorhandene NASM unter `artifacts/tools/nasm-3.02/nasm-3.02/nasm.exe`. Die Gastprogramme verwenden IA32 ohne SSE und die PE-Mindestversion 4.0. Es gibt keine zusätzliche Installer-Engine oder Gast-CRT-Abhängigkeit.
+`python scripts/build-guest-installers.py` baut beide EXEs und beide ISOs nach `artifacts/guest-installers/`; der lokale Komfortstarter ist `local/launchers/Build-Guest-Installers.cmd`. Voraussetzungen auf dem Host: Python 3 mit `pycdlib`, MSVC mit x86-Compiler und Windows SDK sowie der vorhandene NASM unter `artifacts/tools/nasm-3.02/nasm-3.02/nasm.exe`. Die Gastprogramme verwenden IA32 ohne SSE und die PE-Mindestversion 4.0. Es gibt keine zusätzliche Installer-Engine oder Gast-CRT-Abhängigkeit.
 
 Quellen: [Installer](../guest-tools/installer/installer.c), [Oberfläche](../guest-tools/installer/installer.rc), [Paketbau](../scripts/build-guest-installers.py), [gemeinsamer Zeithelfer mit Versionsauswahl](../guest-tools/windows95/dose-time.asm). Der standardmäßige Zeithelferbau bleibt Windows 95; `--windows-version 98` erzeugt die passende Windows-98-Variante.
 

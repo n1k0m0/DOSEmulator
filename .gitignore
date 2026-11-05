@@ -4,6 +4,10 @@
 /roms/
 /private/
 /artifacts/
+# Machine-specific shortcuts and their local path catalog stay on this computer.
+/local/
+/*.cmd
+/*.bat
 **/bin/
 **/obj/
 .vs/

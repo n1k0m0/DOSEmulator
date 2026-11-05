@@ -33,11 +33,23 @@ function Child([string]$File, [string[]]$Arguments, [string]$Name, [hashtable]$E
         return [pscustomobject]@{ exitCode=$process.ExitCode; stdout=$out; stderr=$err }
     } finally { $process.Dispose() }
 }
-# Runs a CMD launcher with controlled arguments/environment to exercise the public entry point.
+# Runs a temporary CMD launcher to exercise the versioned PowerShell host bridge.
 function Batch([string]$Path, [string]$Arguments, [string]$Name, [hashtable]$Environment = @{}) {
     # cmd /s /c requires a separate pair of outer quotes. These paths are our
     # own filesystem test fixtures, not assembled commands from guest content.
     return Child -File $env:ComSpec -Name $Name -Environment $Environment -RawArguments ('/d /s /c ""'+$Path+'" '+$Arguments+'"')
+}
+
+# Private convenience launchers are not repository inputs. Generate equivalent
+# finite fixtures with relative script paths so clean clones retain this coverage.
+$launcherRoot = Join-Path $testRoot 'launchers'
+New-Item -ItemType Directory -Path $launcherRoot | Out-Null
+$relativeScripts = [IO.Path]::GetRelativePath($launcherRoot, $PSScriptRoot)
+foreach ($launcher in @('run.cmd','run-freedos.cmd','run-freedos-floppy.cmd')) {
+    $entry = [IO.Path]::ChangeExtension($launcher, '.ps1')
+    $prefix = '%~dp0' + $relativeScripts + '\'
+    $body = "@echo off`r`ncall `"$($prefix)invoke-powershell.cmd`" `"$prefix$entry`" %*`r`nexit /b %errorlevel%`r`n"
+    [IO.File]::WriteAllText((Join-Path $launcherRoot $launcher), $body, [Text.Encoding]::ASCII)
 }
 
 $files = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.ps1' -File)
@@ -91,12 +103,12 @@ Check ($built.exitCode -eq 0) 'firmware builds without Get-FileHash from foreign
 Check ((Get-DosFileHash -LiteralPath (Join-Path $workspaceRoot 'src\DOSEmulator.Runtime\DOSEBios.Image.g.cs')).Hash -eq $firmwareHash) 'firmware bytes/source manifest remain unchanged'
 
 foreach ($launcher in @('run.cmd','run-freedos.cmd','run-freedos-floppy.cmd')) {
-    $help=Batch -Path (Join-Path $workspaceRoot $launcher) -Arguments '-?' -Name ($launcher+'-help')
+    $help=Batch -Path (Join-Path $launcherRoot $launcher) -Arguments '-?' -Name ($launcher+'-help')
     Check ($help.exitCode -eq 0 -and $help.stdout.Contains('NoBuild') -and -not $help.stderr.Contains('Requires')) ($launcher+' selects a supported host and forwards arguments')
 }
-$badArgs=Batch -Path (Join-Path $workspaceRoot 'run.cmd') -Arguments '-DefinitelyInvalidSwitch' -Name 'bad-launcher-argument'
+$badArgs=Batch -Path (Join-Path $launcherRoot 'run.cmd') -Arguments '-DefinitelyInvalidSwitch' -Name 'bad-launcher-argument'
 Check ($badArgs.exitCode -ne 0) 'CMD propagates PowerShell parameter errors'
-$badProfile=Batch -Path (Join-Path $workspaceRoot 'run.cmd') -Arguments '-NoBuild -Profile "missing profile [ä].json"' -Name 'bad-launcher-profile'
+$badProfile=Batch -Path (Join-Path $launcherRoot 'run.cmd') -Arguments '-NoBuild -Profile "missing profile [ä].json"' -Name 'bad-launcher-profile'
 Check ($badProfile.exitCode -ne 0) 'CMD propagates script errors rather than reporting success'
 
 $legacy=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -107,7 +119,7 @@ $noHost=Batch -Path (Join-Path $PSScriptRoot 'invoke-powershell.cmd') -Arguments
 Check ($noHost.exitCode -ne 0 -and $noHost.stderr.Contains('PowerShell 7.4')) 'missing PowerShell has actionable error and no legacy fallback'
 $storeHost=Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\pwsh.exe'
 if (Test-Path -LiteralPath $storeHost) {
-    $store=Batch -Path (Join-Path $workspaceRoot 'run.cmd') -Arguments '-?' -Name 'store-host-fallback' -Environment @{
+    $store=Batch -Path (Join-Path $launcherRoot 'run.cmd') -Arguments '-?' -Name 'store-host-fallback' -Environment @{
         PATH=(Join-Path $env:SystemRoot 'System32'); ProgramFiles=$foreignDirectory; ProgramW6432=$foreignDirectory }
     Check ($store.exitCode -eq 0 -and $store.stdout.Contains('SmokeTestDirectory')) 'Microsoft Store PowerShell fallback works without pwsh on PATH'
 }
@@ -142,7 +154,7 @@ if(Test-Path -LiteralPath $headless){
 }
 if ($Gui) {
     $smoke=Join-Path $testRoot 'real CMD GUI [ä]'
-    $started=Batch -Path (Join-Path $workspaceRoot 'run.cmd') -Arguments ('-NoBuild -SmokeTestDirectory "'+$smoke+'"') -Name 'real-launcher-gui'
+    $started=Batch -Path (Join-Path $launcherRoot 'run.cmd') -Arguments ('-NoBuild -SmokeTestDirectory "'+$smoke+'"') -Name 'real-launcher-gui'
     Check ($started.exitCode -eq 0) 'real run.cmd starts and finishes its private native GUI test'
     $result=Get-Content -LiteralPath (Join-Path $smoke 'smoke-result.json') -Raw | ConvertFrom-Json
     Check (-not $result.status.fault -and $result.captures.Count -eq 6) 'real CMD launch has six complete GUI captures and no guest fault'

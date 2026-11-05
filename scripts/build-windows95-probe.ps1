@@ -7,6 +7,7 @@ param(
     [string]$Nasm = ''
 )
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'common.ps1')
 $ErrorActionPreference = 'Stop'
 $probeRepo = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $probeSource = Join-Path $probeRepo 'tests/guest/windows95-probe.asm'
@@ -177,12 +178,12 @@ $null = Get-ProbeRaw $probeSymbols.readData 1027
 $probeManifest = [ordered]@{
     kind = 'own-Windows95-PE32-guest-probe'
     source = $probeSource
-    sourceSha256 = (Get-FileHash -LiteralPath $probeSource -Algorithm SHA256).Hash
+    sourceSha256 = (Get-DosFileHash -LiteralPath $probeSource -Algorithm SHA256).Hash
     output = $probeOutput
-    outputSha256 = (Get-FileHash -LiteralPath $probeOutput -Algorithm SHA256).Hash
+    outputSha256 = (Get-DosFileHash -LiteralPath $probeOutput -Algorithm SHA256).Hash
     bytes = $script:probeBytes.Length
     listing = $probeListing
-    listingSha256 = (Get-FileHash -LiteralPath $probeListing -Algorithm SHA256).Hash
+    listingSha256 = (Get-DosFileHash -LiteralPath $probeListing -Algorithm SHA256).Hash
     machine = 'i386'
     peFormat = 'PE32'
     imageBase = 4194304

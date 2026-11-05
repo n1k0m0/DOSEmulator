@@ -6,13 +6,13 @@ ein Quellbuild ersetzt die ausgewählte Laufzeit nicht automatisch.
 Nach einem [Projektumzug](docs/WORKSPACE-RELOCATION.md) bleiben relative Starter
 und die dokumentierte Kompatibilität für alte Maschinen-/Snapshotpfade erhalten.
 
-**DOSE Tools und MiniGlide direkt im Windows-Gast installieren:** [`Build-Guest-Installers.cmd`](Build-Guest-Installers.cmd) erzeugt die Installer und CD-ISOs für Windows 95 und 98. Die passende CD einlegen und im Gast `SETUP.EXE` starten. Der Installer bietet Komponentenauswahl, Autostart und Wiederherstellung beim Entfernen. [Anleitung und lokale Paketdateien](docs/GUEST-INSTALLERS.md).
+**DOSE Tools und MiniGlide direkt im Windows-Gast installieren:** `local/launchers/Build-Guest-Installers.cmd` erzeugt die Installer und CD-ISOs für Windows 95 und 98. Die passende CD einlegen und im Gast `SETUP.EXE` starten. Der Installer bietet Komponentenauswahl, Autostart und Wiederherstellung beim Entfernen. [Anleitung und lokale Paketdateien](docs/GUEST-INSTALLERS.md).
 
-Der MiniGlide-Starthelfer ist separat auswählbar und zeigt das eigene Logo auch mit dem ursprünglichen Grafiktreiber. **Launch Glide Program** im Gast öffnet die freie Programmauswahl. Die getrennte lokale Hardware-Demo-Kopie startet über [`Start-Hardware-Demo-MiniGlide.cmd`](Start-Hardware-Demo-MiniGlide.cmd); im Gast **Motorhead with MiniGlide** wählen. [Beide Startpfade](docs/GUEST-INSTALLERS.md#beide-startpfade-mit-miniglide-logo).
+Der MiniGlide-Starthelfer ist separat auswählbar und zeigt das eigene Logo auch mit dem ursprünglichen Grafiktreiber. **Launch Glide Program** im Gast öffnet die freie Programmauswahl. Die getrennte lokale Hardware-Demo-Kopie startet über `local/launchers/Start-Hardware-Demo-MiniGlide.cmd`; im Gast **Motorhead with MiniGlide** wählen. [Beide Startpfade](docs/GUEST-INSTALLERS.md#beide-startpfade-mit-miniglide-logo).
 
-**Unreal mit MiniGlide unter Windows 95 und 98:** [`Setup-Glide-Bridge.cmd`](Setup-Glide-Bridge.cmd) richtet eine eigene Gastkopie ein; danach mit [`Start-Unreal-Win95-Glide-Host.cmd`](Start-Unreal-Win95-Glide-Host.cmd) oder [`Start-Unreal-Win98-Glide-Host.cmd`](Start-Unreal-Win98-Glide-Host.cmd) starten. Im Gast öffnet `C:\MGLIDE.EXE` das Spiel. [Einrichtung, Messungen und Grenzen](docs/GLIDE-HOST-BRIDGE.md).
+**Unreal mit MiniGlide unter Windows 95 und 98:** `local/launchers/Setup-Glide-Bridge.cmd` richtet eine eigene Gastkopie ein; danach mit `local/launchers/Start-Unreal-Win95-Glide-Host.cmd` oder `local/launchers/Start-Unreal-Win98-Glide-Host.cmd` starten. Im Gast öffnet `C:\MGLIDE.EXE` das Spiel. [Einrichtung, Messungen und Grenzen](docs/GLIDE-HOST-BRIDGE.md).
 
-**Historischer Echtzeit-Teststand C44b:** Originale Windows-95/98-Energietreiber nutzen den neuen [APM-CPU-Leerlaufpfad](docs/hardware/APM-BIOS.md). Leerlauf und die geöffneten Testanwendungen erreichen in den benannten Messungen ungefähr 100%; Boot und kalter Programmstart bleiben langsamer. [Messungen und Grenzen](docs/PERFORMANCE.md). Die getrennten privaten Testkopien starten über [run-win95-apm.cmd](run-win95-apm.cmd) beziehungsweise [run-win98-apm.cmd](run-win98-apm.cmd), ohne Neubau. Die bisherigen Arbeits-PCs und Standardstarter bleiben erhalten. C44:14912/14912 Regressionen; C44b:317/317 gezielte Hostfälle bei bytegleichen fünf VM-Modulen. Die Automation bleibt pausiert; allgemeine1:1- und M4–M8-Abnahmen sind offen.
+**Historischer Echtzeit-Teststand C44b:** Originale Windows-95/98-Energietreiber nutzen den neuen [APM-CPU-Leerlaufpfad](docs/hardware/APM-BIOS.md). Leerlauf und die geöffneten Testanwendungen erreichen in den benannten Messungen ungefähr 100%; Boot und kalter Programmstart bleiben langsamer. [Messungen und Grenzen](docs/PERFORMANCE.md). Die getrennten privaten Testkopien starten über `local/launchers/run-win95-apm.cmd` beziehungsweise `local/launchers/run-win98-apm.cmd`, ohne Neubau. Die bisherigen Arbeits-PCs und Standardstarter bleiben erhalten. C44:14912/14912 Regressionen; C44b:317/317 gezielte Hostfälle bei bytegleichen fünf VM-Modulen. Die Automation bleibt pausiert; allgemeine1:1- und M4–M8-Abnahmen sind offen.
 
 **Historischer Win95-Starter C19: [NE2000 ISA und RTL8029 PCI mit NAT, Host-only und Bridged](docs/NETWORKING.md)** — 14775/14775 Regressionen,0 Warnungen/Fehler. Zwei optionale Kartenplätze im englischen NETWORK-Menü, echte DOS-Pakettreiber- und Windows95A-TCP-/UDP-Nachweise, vollständige lokale Fortsetzung. Host-only verbindet auch getrennte DOSE-Prozesse; Bridged benötigt separat installiertes Npcap und ist auf dem aktuellen Host noch nicht physisch geprüft. [Windows95 starten, RAM, Uhr, Grafik und Treiber](docs/WINDOWS95-USER-GUIDE.md); damals verwendete der Win95-Starter C19 und der Win98-Starter C23. Die heutigen Standardstarter wählen C54. [Vollständiger aktueller Stand](docs/IMPLEMENTATION-STATUS.md).
 
@@ -76,12 +76,18 @@ Der PC Speaker erzeugt Ton über PIT-Kanal 2/Port 61h bis zur Windows-Audioausga
 
 ## Starten
 
+Die privaten CMD-Starter liegen in **`local/launchers/`** und werden nicht
+versioniert. [Lokale Starter und VM-Dateien](docs/LOCAL-LAUNCHERS.md) erklärt
+die Ablage; die tatsächlichen Maschinenpfade stehen lokal in
+`local/VM-LOCATIONS.md`. Ein neuer Git-Checkout verwendet die folgenden
+PowerShell-Einstiegspunkte direkt.
+
 Voraussetzungen: Windows x64, **PowerShell 7.4 oder neuer** (`pwsh.exe`) und .NET SDK 10.0.401 oder kompatibler 10.0-Patchstand. Der Quellbuild über `scripts/build.ps1` benötigt zusätzlich Python 3 und NASM 3.02 am konfigurierten Pfad `artifacts/tools/nasm-3.02/nasm-3.02/nasm.exe`, um den eigenen DOS-CD-ROM-Treiber zu erzeugen. Bereits gebaute Programme benötigen diese beiden Buildwerkzeuge nicht. Die CMD-Starter finden PowerShell über PATH, die normale Installation oder den Microsoft-Store-Alias. Ein direkter PS1-Aufruf benötigt ebenfalls PowerShell 7; bei einem älteren Host erscheint vor der Ausführung die erforderliche Mindestversion.
 
-- `run.cmd` startet nach dem Build den Emulator mit dem eigenen Testmedium.
-- **`run-doom2.cmd` öffnet den experimentellen manuellen Doom-II-Test** mit einer eigenen persistenten Kopie der bereits vorhandenen privaten DOS-/Doom-Abnahmemedien. Danach im DOS `doom2 -config doomtest.cfg -nosound` eingeben. [Anleitung und Grenzen](docs/DOOM2-TESTEN.md).
-- **`run-freedos.cmd` startet FreeDOS über IDE.** `run-freedos.cmd -Writable` verwendet ein persistentes privates Overlay.
-- **`run-freedos-floppy.cmd` startet FreeDOS über den FDC.** `run-freedos-floppy.cmd -Writable -TwoDrives` öffnet zwei Diskettenlaufwerke mit getrennten persistenten Overlays.
+- `scripts/run.ps1` startet nach dem Build den Emulator mit dem eigenen Testmedium.
+- **`scripts/run-doom2.ps1` öffnet den experimentellen manuellen Doom-II-Test** mit einer eigenen persistenten Kopie der bereits vorhandenen privaten DOS-/Doom-Abnahmemedien. Danach im DOS `doom2 -config doomtest.cfg -nosound` eingeben. [Anleitung und Grenzen](docs/DOOM2-TESTEN.md).
+- **`scripts/run-freedos.ps1` startet FreeDOS über IDE.** `scripts/run-freedos.ps1 -Writable` verwendet ein persistentes privates Overlay.
+- **`scripts/run-freedos-floppy.ps1` startet FreeDOS über den FDC.** `scripts/run-freedos-floppy.ps1 -Writable -TwoDrives` öffnet zwei Diskettenlaufwerke mit getrennten persistenten Overlays.
 - Beim ersten Start wird das jeweilige offizielle FreeDOS-Paket geladen und anhand seiner veröffentlichten SHA-256-Prüfsumme geprüft. Basisimages bleiben immer schreibgeschützt.
 - Menü: **Strg+Alt+F10**, Vollbild: **Strg+Alt+F11**.
 - Im Menü mit Pfeiltasten, Enter und Esc navigieren. PS/2-Maus im Hardwaremenü einschalten; Gasttreiber muss im DOS geladen werden.
@@ -145,7 +151,7 @@ VGA-Abnahmen vergleichen jeden Pixel beider Grafikmodi; Audioabnahmen prüfen PC
 
 Alle Start-/Testskripte verwenden standardmäßig den gemeinsamen Build unter `artifacts/m1-build`. `-OutputRoot` akzeptiert bei den entsprechenden Build-/Testskripten sowohl zum Repository relative als auch absolute Verzeichnisse; Benutzerdateipfade beziehen sich auf das aufrufende PowerShell-Verzeichnis. Hashprüfungen verwenden eine gemeinsame SHA-256-Funktion ohne Abhängigkeit von `Get-FileHash`. Fehlgeschlagene native Werkzeuge beenden das jeweilige Skript; die CMD-Starter geben Fehlercodes zurück. Damit bleibt ein bereits geöffnetes älteres Fenster aus `src/DOSEmulator/bin` unberührt. Der Name des Ausgabeverzeichnisses stammt aus der ersten M1-Abnahme.
 
-`scripts/test-scripts.ps1 -Gui` prüft alle PowerShell-Dateien, Hash-/Pfadbehandlung, Hostauswahl einschließlich Store-Fallback, Fehlerweitergabe und einen echten selbstständig endenden `run.cmd`-Start mit privaten Einstellungen. Für denselben Starttest direkt: `run.cmd -NoBuild -SmokeTestDirectory "artifacts\mein-starttest"`; ein neues Verzeichnis verwenden. Der normale Aufruf `run.cmd` lässt das Emulatorfenster geöffnet.
+`scripts/test-scripts.ps1 -Gui` prüft PowerShell-Dateien, Hash-/Pfadbehandlung, Hostauswahl einschließlich Store-Fallback und Fehlerweitergabe mit selbst erzeugten temporären CMD-Startern. Der optionale native Starttest verwendet private Einstellungen. Direkt: `scripts/run.ps1 -NoBuild -SmokeTestDirectory "artifacts\mein-starttest"`; ein neues Verzeichnis verwenden. Ohne Smoke-Option bleibt das Emulatorfenster geöffnet.
 
 Headless-Boot ohne OpenGL:
 

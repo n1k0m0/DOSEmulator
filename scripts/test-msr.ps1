@@ -15,7 +15,7 @@ if($LASTEXITCODE -ne 0){throw 'Own MSR guest assembly failed.'}
 $assemblies=@{}
 foreach($name in @('Contracts','Core','Cpu.X86','Hardware','Headless','Runtime','Tests')){
     $path=Join-Path $buildRoot "Release\net10.0\DOSEmulator.$name.dll"
-    $assemblies[$path]=(Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    $assemblies[$path]=(Get-DosFileHash -LiteralPath $path -Algorithm SHA256).Hash
 }
 $results=@()
 foreach($frequency in @(33000000,90000000)){
@@ -34,6 +34,6 @@ foreach($frequency in @(33000000,90000000)){
         $previous=$result;$results+=@{evidence=$evidence;result=$result;oracle=$oracle}
     }
 }
-foreach($path in $assemblies.Keys){if((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $assemblies[$path]){throw 'A tested assembly changed.'}}
+foreach($path in $assemblies.Keys){if((Get-DosFileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $assemblies[$path]){throw 'A tested assembly changed.'}}
 @{passed=$true;resetStarts=4;selectedGraphContinuations=4;fullPcSnapshot=$false;assemblies=$assemblies;runs=$results} | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $work 'acceptance.json') -Encoding utf8
 Write-Output $work

@@ -97,5 +97,7 @@ und 79 nativen Gruppen; diese Suiten werden hier nicht als erneut ausgeführt
 ausgegeben. Die alte Starterlaufzeit behält ihren eigenen Buildbezug.
 
 Der vorherige Zeitgeberstand ist als `82d7d00` committed und auf `origin/main`
-geprüft. Dieser anschließende GUI-Fix bleibt lokal. Automation bleibt pausiert.
+geprüft. Dieser anschließende GUI-Fix wurde am 4. November als `07a6d1c`
+committed und gepusht. Die spätere [gemeinsame Anzeige](OVERLAY-AND-VM-LIBRARY.md)
+bleibt ein getrennter lokaler Folgeschritt. Automation bleibt pausiert.
 Privater Gesamtnachweis: `artifacts/tests/desktop-fps-release-path.txt`.

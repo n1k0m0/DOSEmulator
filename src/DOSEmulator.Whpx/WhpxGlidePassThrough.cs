@@ -36,6 +36,9 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
     private uint _windowThreadId;
     private Exception? _windowError;
     private nint _window;
+    private MiniGlideSurface? _presentation;
+    private WindowProcedure? _baseWindowProcedure;
+    private nint _defaultWindowProcedure;
     private WindowProcedure? _windowProcedure;
     private nint _previousWindowProcedure;
     private long _windowCloseMessages;
@@ -87,17 +90,22 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
         }
         if (id == 45) return Version(args);
         nint function = Function(id);
+        if (id is 49 or 78) MiniGlidePresentation.Close(_presentation);
         ulong result = id switch
         {
             32 or 38 or 107 => DrawPointers(function, args),
             34 or 37 => DrawVertexList(function, args),
+            35 => CallWithBuffer(function, args, 0, ReadGuest((uint)args[0], 60)),
             39 => CallScalar(function, [0]), // A guest function pointer cannot be called by the host.
             42 => CallWithBuffer(function, args, 0, ReadGuest((uint)args[0], 64)),
             43 => Gamma(function, args),
+            44 => OutputBuffer(function, args, 312),
+            47 => CallWithBuffer(function, args, 0, ReadGuest((uint)args[0], 312)),
             53 => LfbLock(function, args, guestLfbBuffer),
             54 => LfbReadRegion(function, args),
             55 => LfbUnlock(function, args),
             68 or 69 => QueryHardware(function, args),
+            67 => OutputBuffer(function, args, 20),
             79 => OpenWindow(function, args),
             85 => DownloadMipMap(function, args),
             86 or 87 => DownloadLevel(function, args),
@@ -106,8 +114,9 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
             98 => TextureSource(function, args),
             99 => TextureMemoryRequired(function, args),
             116 => FogTableIndexToW(function, args),
-            9 or 10 or 12 or 13 or 14 or 15 or 16 or 18 or 19 or 21 or 22 or 24 or 26 or 27 or 28 or 29
-                or 31 or 40 or 41 or 46 or 49 or 50 or 63 or 64 or 71 or 72 or 73 or 78 or 80 or 81 or 82
+            113 or 114 or 115 => OutputBuffer(function, args, 64, fog: true),
+            9 or 10 or 12 or 13 or 14 or 15 or 16 or 18 or 19 or 20 or 21 or 22 or 24 or 25 or 26 or 27 or 28 or 29
+                or 31 or 40 or 41 or 46 or 49 or 50 or 59 or 63 or 64 or 66 or 70 or 71 or 72 or 73 or 78 or 80 or 81 or 82
                 or 90 or 92 or 93 or 94 or 104 or 105 or 126 => CallScalar(function, args),
             _ => throw new NotSupportedException($"Glide 2 {Glide2Exports.Names[id]} requires a bridge implementation.")
         };
@@ -225,6 +234,34 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
             args[index] = (ulong)pointer;
             return CallScalar(function, args);
         }
+    }
+
+    /// <summary>Preflights the complete guest destination before a provider writes an opaque state/statistics block or byte fog table.</summary>
+    private ulong OutputBuffer(nint function, ReadOnlySpan<ulong> args, int length, bool fog = false)
+    {
+        uint address = (uint)args[0];
+        int checkedBytes = 0;
+        while (checkedBytes < length)
+        {
+            uint current = checked(address + (uint)checkedBytes);
+            int amount = Math.Min(length - checkedBytes, 4096 - (int)(current & 4095));
+            uint physical = Translate(current, true);
+            if (!_bus.TryGetPhysicalRamSpan(physical, amount, null, out _))
+                throw new InvalidDataException("Glide output does not refer to writable guest RAM.");
+            checkedBytes += amount;
+        }
+        byte[] buffer = new byte[length];
+        fixed (byte* pointer = buffer)
+        {
+            if (!fog) ((delegate* unmanaged<byte*, void>)function)(pointer);
+            else if (args.Length == 2)
+                ((delegate* unmanaged<byte*, float, void>)function)(pointer, BitConverter.Int32BitsToSingle((int)args[1]));
+            else
+                ((delegate* unmanaged<byte*, float, float, void>)function)(pointer,
+                    BitConverter.Int32BitsToSingle((int)args[1]), BitConverter.Int32BitsToSingle((int)args[2]));
+        }
+        WriteGuest(address, buffer);
+        return 0;
     }
 
     /// <summary>Copies the unchanged version buffer and reports the own transport extension through this void API's private return word.</summary>
@@ -454,6 +491,12 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
             if (_previousWindowProcedure == 0)
                 throw new InvalidOperationException($"Could not protect Glide host window: {Marshal.GetLastPInvokeError()}.");
         }
+        if (opened != 0)
+        {
+            SetWindowPos(_window, 0, -32000, -32000, 0, 0, 0x415);
+            _presentation = MiniGlidePresentation.Open(_window);
+        }
+        else CloseWindow();
         return opened;
     }
 
@@ -463,21 +506,23 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
         try
         {
             _windowThreadId = GetCurrentThreadId();
-            _window = CreateWindowExW(0, "STATIC", "MiniGlide", 0x10CF0000,
-                90, 90, 700, 550, 0, 0, 0, 0);
+            // This surface is a renderer backing store, never a second user-facing window.
+            _window = CreateWindowExW(0x08000080, "STATIC", "MiniGlide", 0x00CF0000,
+                -32000, -32000, 700, 550, 0, 0, 0, 0);
             if (_window == 0) throw new InvalidOperationException($"CreateWindowExW failed: {Marshal.GetLastPInvokeError()}.");
-            ShowWindow(_window, 4); // SW_SHOWNOACTIVATE
+            // Install before WinOpen: provider initialization can itself move/show the HWND.
+            _baseWindowProcedure = BaseWindowCallback;
+            _defaultWindowProcedure = SetWindowLongPtrW(_window, -4,
+                Marshal.GetFunctionPointerForDelegate(_baseWindowProcedure));
+            if (_defaultWindowProcedure == 0)
+                throw new InvalidOperationException($"Could not protect Glide backing surface: {Marshal.GetLastPInvokeError()}.");
+            // The provider needs a renderable HWND; show only after offscreen guards are installed.
+            ShowWindow(_window, 4); // SW_SHOWNOACTIVATE; never a user-facing/taskbar surface.
             _windowReady.Set();
             while (GetMessageW(out NativeMessage message, 0, 0, 0) > 0)
             {
                 TranslateMessage(ref message);
                 DispatchMessageW(ref message);
-            }
-            if (IsWindow(_window))
-            {
-                if (_previousWindowProcedure != 0)
-                    SetWindowLongPtrW(_window, -4, _previousWindowProcedure);
-                DestroyWindow(_window);
             }
         }
         catch (Exception error)
@@ -485,7 +530,17 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
             _windowError = error;
             _windowReady.Set();
         }
-        finally { _window = 0; _windowProcedure = null; _previousWindowProcedure = 0; }
+        finally
+        {
+            MiniGlidePresentation.Close(_presentation);
+            if (IsWindow(_window))
+            {
+                if (_previousWindowProcedure != 0) SetWindowLongPtrW(_window, -4, _previousWindowProcedure);
+                DestroyWindow(_window);
+            }
+            _window = 0; _windowProcedure = null; _previousWindowProcedure = 0;
+            _baseWindowProcedure = null; _defaultWindowProcedure = 0;
+        }
     }
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -494,12 +549,55 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
     /// <summary>Keeps renderer close requests from destroying a still-open guest presentation target.</summary>
     private nint WindowCallback(nint window, uint message, nint wParam, nint lParam)
     {
+        if (message == 0x21) return 3;
         if (message == 0x10) // WM_CLOSE; only grSstWinClose owns this window's lifetime.
         {
             Interlocked.Increment(ref _windowCloseMessages);
             return 0;
         }
-        return CallWindowProcW(_previousWindowProcedure, window, message, wParam, lParam);
+        nint result = CallWindowProcW(_previousWindowProcedure, window, message, wParam, lParam);
+        ConstrainPresentation(window, message, wParam, lParam);
+        return result;
+    }
+
+    /// <summary>Retains offscreen, nonactivating behavior even during the provider's first WinOpen.</summary>
+    private nint BaseWindowCallback(nint window, uint message, nint wParam, nint lParam)
+    {
+        if (message == 0x21) return 3;
+        if (message == 0x10) { Interlocked.Increment(ref _windowCloseMessages); return 0; }
+        nint result = CallWindowProcW(_defaultWindowProcedure, window, message, wParam, lParam);
+        ConstrainPresentation(window, message, wParam, lParam);
+        return result;
+    }
+
+    /// <summary>Constrains only presentation position/extended styles; renderer dimensions and guest input remain untouched.</summary>
+    private static void ConstrainPresentation(nint window, uint message, nint wParam, nint lParam)
+    {
+        if (message == 0x46 && lParam != 0) // WM_WINDOWPOSCHANGING.
+        {
+            var position = (NativeWindowPosition*)lParam;
+            position->X = -32000; position->Y = -32000; position->Flags &= ~2u; // Keep provider size, reject onscreen moves.
+        }
+        else if (message == 0x47 && lParam != 0) // WM_WINDOWPOSCHANGED, including SWP_NOSENDCHANGING.
+        {
+            var position = (NativeWindowPosition*)lParam;
+            if ((position->Flags & 2) == 0 && (position->X > -1000 || position->Y > -1000))
+                // Suppress another CHANGING callback so a provider that rewrites it cannot recurse.
+                SetWindowPos(window, 0, -32000, -32000, 0, 0, 0x415);
+        }
+        else if (message == 0x7C && unchecked((int)wParam) == -20 && lParam != 0) // WM_STYLECHANGING / GWL_EXSTYLE.
+        {
+            var styles = (uint*)lParam;
+            styles[1] = (styles[1] | 0x08000080u) & ~0x00040000u; // NOACTIVATE + TOOLWINDOW, never APPWINDOW.
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeWindowPosition
+    {
+        public nint Window, InsertAfter;
+        public int X, Y, Width, Height;
+        public uint Flags;
     }
 
     /// <summary>Reinterprets the ABI float bits for the native gamma call.</summary>
@@ -577,6 +675,7 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
     /// <summary>Stops and joins the dedicated presentation thread at an explicit guest close.</summary>
     private void CloseWindow()
     {
+        MiniGlidePresentation.Close(_presentation); _presentation = null;
         if (_windowThread is null) return;
         if (_windowThreadId != 0) PostThreadMessageW(_windowThreadId, 0x12, 0, 0); // WM_QUIT
         if (!_windowThread.Join(TimeSpan.FromSeconds(5)))
@@ -621,6 +720,9 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
     /// <summary>Shows the presentation window without taking guest input focus.</summary>
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(nint window, int command);
+    /// <summary>Restores backing-only placement without resending a provider's changing-position callback.</summary>
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(nint window, nint after, int x, int y, int width, int height, uint flags);
     /// <summary>Destroys the native presentation window on its owner thread.</summary>
     [DllImport("user32.dll")]
     private static extern bool DestroyWindow(nint window);

@@ -80,6 +80,8 @@ static void DrawWords(HDC dc)
 
 static LRESULT CALLBACK SplashWindow(HWND window, UINT message, WPARAM wparam, LPARAM lparam)
 {
+    /* A fullscreen client can minimize itself on WM_KILLFOCUS during GL setup. */
+    if (message == WM_MOUSEACTIVATE) return MA_NOACTIVATE;
     if (message == WM_PAINT) {
         PAINTSTRUCT paint;
         HDC dc = BeginPaint(window, &paint);
@@ -100,7 +102,6 @@ void __stdcall MiniGlideShowSplash(void)
     HINSTANCE instance = GetModuleHandleA(0);
     WNDCLASSA klass;
     HWND window;
-    HWND previous = GetForegroundWindow();
     DWORD began;
     MSG message;
     char inherited[2];
@@ -120,13 +121,15 @@ void __stdcall MiniGlideShowSplash(void)
     klass.hCursor = LoadCursorA(0, IDC_ARROW);
     klass.lpszClassName = "MiniGlideSplash";
     if (!RegisterClassA(&klass)) return;
-    window = CreateWindowExA(WS_EX_TOPMOST, klass.lpszClassName, "MiniGlide",
+    window = CreateWindowExA(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, klass.lpszClassName, "MiniGlide",
         WS_POPUP | WS_BORDER,
         (GetSystemMetrics(SM_CXSCREEN) - SPLASH_WIDTH) / 2,
         (GetSystemMetrics(SM_CYSCREEN) - SPLASH_HEIGHT) / 2,
         SPLASH_WIDTH, SPLASH_HEIGHT, 0, 0, instance, 0);
     if (!window) { UnregisterClassA(klass.lpszClassName, instance); return; }
-    ShowWindow(window, SW_SHOWNORMAL);
+    /* Keep the real guest game active while the logo is drawn. Its initial
+       drawable/clip size must never be sampled from a minimized window. */
+    ShowWindow(window, SW_SHOWNOACTIVATE);
     UpdateWindow(window);
     began = GetTickCount();
     while ((DWORD)(GetTickCount() - began) < 1400) {
@@ -137,7 +140,6 @@ void __stdcall MiniGlideShowSplash(void)
         Sleep(10);
     }
     DestroyWindow(window);
-    if (previous && IsWindow(previous)) SetForegroundWindow(previous);
 
     UnregisterClassA(klass.lpszClassName, instance);
 }
@@ -165,7 +167,8 @@ void __stdcall MiniGlideActivateWindow(unsigned long value)
         EnumWindows(OwnGameWindow, (LPARAM)&window);
     }
     if (!window) return;
-    ShowWindow(window, SW_SHOW);
+    /* SW_SHOW preserves minimization; restore a previously minimized client. */
+    ShowWindow(window, IsIconic(window) ? SW_RESTORE : SW_SHOW);
     SetForegroundWindow(window);
     SetActiveWindow(window);
     SetFocus(window);

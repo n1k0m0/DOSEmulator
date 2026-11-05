@@ -3,7 +3,8 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
-using System.Text;
+using System.Text.Json;
+using DOSEmulator.Whpx;
 
 namespace DOSEmulator;
 
@@ -13,37 +14,63 @@ public sealed partial class DosWindow
     private uint[] _glidePixels = [];
     private int _glideWidth, _glideHeight;
     private long _glideRevision;
+    private long _glideGeneration;
+    private string? _glideDisplayLogDirectory = Environment.GetEnvironmentVariable("DOSE_GLIDE_DISPLAY_LOG");
+    private string? _glideDisplayLogPath;
+    private string _glideDisplayLogStage = "";
+    private long _glideDisplayLogNext;
+    private int _glideDisplayLogRecords;
 
     /// <summary>Copies the host renderer's client image into the regular guest viewport so the overlay and input stay in one window.</summary>
     private bool TryCaptureGlideFrame()
     {
-        if (!_session.UsesExternalCpu || string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("DOSE_GLIDE_HOST_DLL"))) return false;
-        if (_glideWindow == 0 || !IsWindow(_glideWindow))
+        var surface = MiniGlidePresentation.Current;
+        if (!_session.UsesExternalCpu || surface is null)
         {
-            _glideWindow = FindOwnGlideWindow();
-            if (_glideWindow == 0)
-            { _glideWindow = 0; return false; }
+            _glideWindow = 0; _glideWidth = _glideHeight = 0;
+            TraceGlideDisplay("desktop", false, false);
+            return false;
         }
-        if (!GetWindowRect(_glideWindow, out RectangleNative outer) || !GetClientRect(_glideWindow, out RectangleNative client)) return false;
+        if (_glideWindow != surface.Window || _glideGeneration != surface.Generation)
+        {
+            _glideWindow = surface.Window; _glideGeneration = surface.Generation;
+            _glideWidth = _glideHeight = 0;
+        }
+        if (!IsWindow(_glideWindow)) { TraceGlideDisplay("window-closed", false, false); return false; }
+        // The common overlay uses a stable last frame while the guest owner is paused.
+        if (_page.Length != 0 && _glideWidth > 0 && _glideHeight > 0)
+        { TraceGlideDisplay("overlay", false, false); return true; }
+        if (!GetWindowRect(_glideWindow, out RectangleNative outer) || !GetClientRect(_glideWindow, out RectangleNative client))
+        { TraceGlideDisplay("geometry-unavailable", false, false); return false; }
         // Some providers reposition the swap-chain window after mode changes. Keep it off the desktop each frame.
         if (outer.Left > -1000 || outer.Top > -1000)
         {
             if (!SetWindowPos(_glideWindow, 0, -32000, -32000, 0, 0, 0x0001 | 0x0004 | 0x0010) ||
-                !GetWindowRect(_glideWindow, out outer)) return false;
+                !GetWindowRect(_glideWindow, out outer))
+            { TraceGlideDisplay("offscreen-move-failed", false, false); return false; }
         }
         PointNative origin = default;
-        if (!ClientToScreen(_glideWindow, ref origin)) return false;
+        if (!ClientToScreen(_glideWindow, ref origin)) { TraceGlideDisplay("origin-unavailable", false, false); return false; }
         int width = client.Right - client.Left, height = client.Bottom - client.Top;
         int outerWidth = outer.Right - outer.Left, outerHeight = outer.Bottom - outer.Top;
         int left = origin.X - outer.Left, top = origin.Y - outer.Top;
         if (width is < 1 or > 4096 || height is < 1 or > 4096 || outerWidth is < 1 or > 4096 ||
             outerHeight is < 1 or > 4096 || left < 0 || top < 0 ||
-            left + width > outerWidth || top + height > outerHeight) return false;
+            left + width > outerWidth || top + height > outerHeight)
+        { TraceGlideDisplay("geometry-out-of-range", false, false); return false; }
         using var bitmap = new Bitmap(outerWidth, outerHeight, PixelFormat.Format32bppArgb);
+        bool fullContent, legacyFallback = false;
         using (Graphics graphics = Graphics.FromImage(bitmap))
         {
             nint dc = graphics.GetHdc();
-            try { if (!PrintWindow(_glideWindow, dc, 0)) return false; }
+            try
+            {
+                // Include GPU/composited content even though the backing HWND is offscreen.
+                // The legacy print path can succeed while returning a black DirectX image.
+                fullContent = PrintWindow(_glideWindow, dc, 2); // PW_RENDERFULLCONTENT (Windows 8.1+).
+                if (!fullContent && !(legacyFallback = PrintWindow(_glideWindow, dc, 0)))
+                { TraceGlideDisplay("capture-failed", false, false); return false; }
+            }
             finally { graphics.ReleaseHdc(dc); }
         }
         var bounds = new Rectangle(left, top, width, height);
@@ -62,44 +89,54 @@ public sealed partial class DosWindow
         finally { bitmap.UnlockBits(data); }
         _glideWidth = width; _glideHeight = height;
         unchecked { _glideRevision++; }
+        TraceGlideDisplay("captured", fullContent, legacyFallback);
         return true;
     }
 
-    /// <summary>Finds only the renderer window owned by this emulator process.</summary>
-    private static nint FindOwnGlideWindow()
+    /// <summary>Optionally records bounded display metadata for a reported black screen; never saves guest RAM or images.</summary>
+    private void TraceGlideDisplay(string stage, bool fullContent, bool legacyFallback)
     {
-        nint found = 0;
-        EnumWindows((window, _) =>
+        if (string.IsNullOrWhiteSpace(_glideDisplayLogDirectory) || _glideDisplayLogRecords >= 240) return;
+        long now = Environment.TickCount64;
+        // Waiting at the desktop must not spend the game's diagnostic budget.
+        if (stage == "desktop" && stage == _glideDisplayLogStage) return;
+        if (stage == _glideDisplayLogStage && now < _glideDisplayLogNext) return;
+        _glideDisplayLogStage = stage; _glideDisplayLogNext = now + 1000;
+        try
         {
-            if (GetWindowThreadProcessId(window, out uint processId) == 0 || processId != Environment.ProcessId) return true;
-            var klass = new StringBuilder(32);
-            // Same-process title reads send WM_GETTEXT to the owning thread.
-            // Reject unrelated helper classes before that synchronous call.
-            if (GetClassNameW(window, klass, klass.Capacity) <= 0 ||
-                !string.Equals(klass.ToString(), "Static", StringComparison.OrdinalIgnoreCase)) return true;
-            var title = new StringBuilder(32);
-            if (GetWindowTextW(window, title, title.Capacity) > 0 && title.ToString() == "MiniGlide")
-            { found = window; return false; }
-            return true;
-        }, 0);
-        return found;
+            if (_glideDisplayLogPath is null)
+            {
+                Directory.CreateDirectory(_glideDisplayLogDirectory);
+                _glideDisplayLogPath = Path.Combine(_glideDisplayLogDirectory, $"display-{Environment.ProcessId}-{Guid.NewGuid():N}.jsonl");
+                using var fresh = new FileStream(_glideDisplayLogPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read);
+            }
+            uint rgbOr = 0; int nonBlack = 0;
+            if (stage == "captured") foreach (uint pixel in _glidePixels)
+            { uint rgb = pixel & 0xFFFFFF; rgbOr |= rgb; if (rgb != 0) nonBlack++; }
+            File.AppendAllText(_glideDisplayLogPath, JsonSerializer.Serialize(new
+            {
+                utc = DateTime.UtcNow, stage, fullContent, legacyFallback, focused = IsFocused,
+                window = (long)_glideWindow, generation = _glideGeneration,
+                width = _glideWidth, height = _glideHeight, revision = _glideRevision,
+                rendererVisible = _glideWindow != 0 && IsWindowVisible(_glideWindow),
+                rendererMinimized = _glideWindow != 0 && IsIconic(_glideWindow), rgbOr, nonBlack
+            }) + Environment.NewLine);
+            _glideDisplayLogRecords++;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        { _glideDisplayLogDirectory = null; }
     }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RectangleNative { public int Left, Top, Right, Bottom; }
     [StructLayout(LayoutKind.Sequential)]
     private struct PointNative { public int X, Y; }
-    private delegate bool EnumWindowCallback(nint window, nint parameter);
-    /// <summary>Enumerates top-level windows to find this process's renderer.</summary>
-    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowCallback callback, nint parameter);
-    /// <summary>Reads the class name of a possible renderer window.</summary>
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassNameW(nint window, StringBuilder buffer, int length);
-    /// <summary>Reads the title of a possible renderer window.</summary>
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextW(nint window, StringBuilder buffer, int length);
     /// <summary>Checks whether the renderer handle is still live.</summary>
     [DllImport("user32.dll")] private static extern bool IsWindow(nint window);
-    /// <summary>Matches a candidate renderer to the current emulator process.</summary>
-    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint window, out uint processId);
+    /// <summary>Reports only this own backing window's renderable state for optional local diagnostics.</summary>
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(nint window);
+    /// <summary>Reports whether this own renderer was minimized, without activating or restoring it.</summary>
+    [DllImport("user32.dll")] private static extern bool IsIconic(nint window);
     /// <summary>Reads outer window bounds for the provider image crop.</summary>
     [DllImport("user32.dll")] private static extern bool GetWindowRect(nint window, out RectangleNative rectangle);
     /// <summary>Reads the provider's drawable client area.</summary>

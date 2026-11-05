@@ -1,5 +1,21 @@
 # MiniGlide unter Windows 95 und Windows 98 mit der Host-GPU
 
+Der [GLQuake-Schritt vom 4. November](GLQUAKE-WINDOWS.md) ergänzt die
+begrenzten ABI-Pfade des originalen MiniGL-1.1.14-Clients. Die getrennten
+Quake-Maschinen verwenden eine eigene Renderer-Konfiguration mit SST-1 und
+2-MiB-Bildspeicher; der bisherige Provider-Standard mit 8 MiB passt nicht
+zur Größenprüfung dieses alten Clients. Originale Spiel-/MiniGL-Binärdateien
+und bisherige Unreal-/Motorhead-Renderer bleiben erhalten.
+
+Der [lokale Anzeigeschritt vom 4. November](OVERLAY-AND-VM-LIBRARY.md) bindet
+die aktive Rendererfläche jetzt direkt an das gemeinsame Overlay und hält
+ihre technische HWND-Fläche einschließlich späterer Modusänderungen außerhalb
+des Desktops. Eigene Win95-/Win98-Tests prüfen Spielstart, Menü und Rückkehr zum
+Desktop. Die getrennten lokalen Starter unter `local/launchers/`,
+`Start-Unreal-Win95-Unified-Overlay-Test.cmd`
+und `Start-Unreal-Win98-Unified-Overlay-Test.cmd` verwenden eigene saubere Kopien;
+die bisherigen Starter und Installationen werden dabei nicht umgestellt.
+
 Der anschließende [Desktop-Fix](GLIDE-DESKTOP-PERFORMANCE.md) beseitigt die
 blockierenden Titelabfragen während der erfolglosen Rendererfenstersuche.
 Der benannte Win98-Glide-Starter verwendet dafür eine getrennte GUI mit seinen
@@ -16,15 +32,15 @@ wird nicht automatisch umgestellt.
 ## Einrichtung und Start
 
 Die Starter funktionieren auch nach dem [Projektumzug](WORKSPACE-RELOCATION.md).
-`Start-Unreal-Win95-Glide-Host.cmd --inspect` und die entsprechende Win98-Variante
+`local\launchers\Start-Unreal-Win95-Glide-Host.cmd --inspect` und die entsprechende Win98-Variante
 prüfen ihre Pfade ohne Gaststart. Bereits archivierte absolute Pfade werden
 über den dokumentierten lokalen Kompatibilitätslink erhalten.
 
 Für die Installation **innerhalb von Windows 95 oder 98** gibt es jetzt [eigene Gastinstaller mit Komponentenauswahl](GUEST-INSTALLERS.md). Die passende CD-ISO einlegen und im Gast `SETUP.EXE` starten. Das folgende Host-Skript bleibt als Entwicklungswerkzeug für vorbereitete, getrennte Testmaschinen verfügbar.
 
-Im Projektverzeichnis `Setup-Glide-Bridge.cmd 95` oder `Setup-Glide-Bridge.cmd 98` ausführen. Ohne Argument fragt das Skript nach der Windows-Version. Es baut die 32-Bit-Gast-DLL und das aktuelle Frontend, legt beim ersten Lauf eine eigene beschreibbare Maschinenkopie an und installiert `C:\WINDOWS\SYSTEM\GLIDE2X.DLL` in deren FAT16- beziehungsweise FAT32-Overlay. Weitere Aufrufe aktualisieren nur die Brücken-Dateien. Die Originalmaschinen, ihre Installationen und ihre Spielstände bleiben erhalten.
+Im Projektverzeichnis `local\launchers\Setup-Glide-Bridge.cmd 95` oder `local\launchers\Setup-Glide-Bridge.cmd 98` ausführen. Ohne Argument fragt das Skript nach der Windows-Version. Es baut die 32-Bit-Gast-DLL und das aktuelle Frontend, legt beim ersten Lauf eine eigene beschreibbare Maschinenkopie an und installiert `C:\WINDOWS\SYSTEM\GLIDE2X.DLL` in deren FAT16- beziehungsweise FAT32-Overlay. Weitere Aufrufe aktualisieren nur die Brücken-Dateien. Die Originalmaschinen, ihre Installationen und ihre Spielstände bleiben erhalten.
 
-Danach startet [`Start-Unreal-Win95-Glide-Host.cmd`](../Start-Unreal-Win95-Glide-Host.cmd) beziehungsweise [`Start-Unreal-Win98-Glide-Host.cmd`](../Start-Unreal-Win98-Glide-Host.cmd) die vorbereitete Maschine. Im Gast lässt sich Unreal über *Start → Ausführen* mit `C:\MGLIDE.EXE` starten. Der direkte Start von `C:\UNREAL\SYSTEM\UNREAL.EXE` funktioniert ebenfalls. Das Glide-Spielbild erscheint im Emulatorfenster, zusammen mit dessen Statuszeile und Menü-Overlay. Tastatur und Maus bleiben dort beim Gast; ein Klick ins Spielbild fängt die Maus ein, `Strg+Alt` gibt sie frei und `Strg+Alt+F10` öffnet das Emulator-Menü. In den ausgelieferten Unreal-Tastenbelegungen ist **Pfeil nach oben** für Vorwärtsbewegung zuständig; `W` ist unbelegt.
+Danach startet `local/launchers/Start-Unreal-Win95-Glide-Host.cmd` beziehungsweise `local/launchers/Start-Unreal-Win98-Glide-Host.cmd` die vorbereitete Maschine. Im Gast lässt sich Unreal über *Start → Ausführen* mit `C:\MGLIDE.EXE` starten. Der direkte Start von `C:\UNREAL\SYSTEM\UNREAL.EXE` funktioniert ebenfalls. Das Glide-Spielbild erscheint im Emulatorfenster, zusammen mit dessen Statuszeile und Menü-Overlay. Tastatur und Maus bleiben dort beim Gast; ein Klick ins Spielbild fängt die Maus ein, `Strg+Alt` gibt sie frei und `Strg+Alt+F10` öffnet das Emulator-Menü. In den ausgelieferten Unreal-Tastenbelegungen ist **Pfeil nach oben** für Vorwärtsbewegung zuständig; `W` ist unbelegt.
 
 Für den Neubau werden Python 3, MSVC mit x86-Compiler, .NET 10 SDK und WHPX benötigt. Die private 64-Bit-Host-Bibliothek muss unter `artifacts/glide-bridge/host/Glide2x-dgVoodoo-x64.dll` liegen. Sie stammt aus dem [offiziellen dgVoodoo2-Release 2.87.6](https://github.com/dege-diosg/dgVoodoo2/releases/tag/2.87.6). Der Quellbuild der Gast-DLL liegt in `src/DOSEmulator.GlideGuest/`, ihr lokales Ergebnis in `artifacts/glide-bridge/guest/GLIDE2X.DLL`. `DOSE_GLIDE_HOST_DLL` kann eine andere ABI-kompatible 64-Bit-Glide-2-Bibliothek wählen.
 

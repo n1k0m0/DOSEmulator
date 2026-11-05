@@ -24,6 +24,7 @@ if (args.Length == 1 && args[0] == "--fst-mmio-checks") { NativeFpuConversionChe
 if (args.Length == 1 && args[0] == "--voodoo-bus-checks") { NativeVoodooBusChecks.Run(); return; }
 if (args.Length == 1 && args[0] == "--glide-transport-checks") { NativeGlideTransportChecks.Run(); return; }
 if (args.Length == 1 && args[0] == "--glide-swap-checks") { NativeGlideSwapChecks.Run(); return; }
+if (args.Length == 1 && args[0] == "--glide-presentation-checks") { NativeGlidePresentationChecks.Run(); return; }
 if (args.Length == 1 && args[0] == "--halt-catchup-checks")
 {
     try { NativeHaltCatchupChecks.Run(); }
@@ -51,6 +52,7 @@ NativeVoodooChecks.Run();
 NativeVoodooBusChecks.Run();
 NativeGlideTransportChecks.Run();
 NativeGlideSwapChecks.Run();
+NativeGlidePresentationChecks.Run();
 NativeHaltCatchupChecks.Run();
 NativeGlideAllocationChecks.Run();
 

@@ -42,7 +42,7 @@ dotnet artifacts/m1-build/Release/net10.0/DOSEmulator.Headless.dll `
 dotnet artifacts/m1-build/Release/net10.0/DOSEmulator.Headless.dll `
   --branch-media Stand.dosemedia --output Neuer-Zweig.dosebranch
 
-.\run.cmd -NoBuild -Machine Neuer-Zweig.dosebranch/branch.dospc.json
+.\scripts\run.ps1 -NoBuild -Machine Neuer-Zweig.dosebranch/branch.dospc.json
 ```
 
 Checkpoint und Zweig benötigen ein noch nicht vorhandenes Zielverzeichnis mit der angegebenen Endung; dessen Elternverzeichnis muss bereits existieren. Der erste Aufruf erfasst nach dem Headless-Lauf am Owner-Haltepunkt. Die beiden nächsten Aufrufe bereiten einen unabhängigen Medienzweig vor beziehungsweise starten ihn kalt.

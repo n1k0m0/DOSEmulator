@@ -1,9 +1,9 @@
 # Doom II selbst ausprobieren
 
-Im Projektordner `run-doom2.cmd` doppelklicken oder in PowerShell ausführen:
+Unter `local/launchers/` den Starter `run-doom2.cmd` doppelklicken oder in PowerShell ausführen:
 
 ```powershell
-.\run-doom2.cmd
+.\local\launchers\run-doom2.cmd
 ```
 
 Der Starter verwendet eine Kopie des bereits geprüften privaten MS-DOS-/Doom-II-Images mit HIMEM und 8 MiB RAM. Er legt beim ersten Start eine eigene Sitzung unter `artifacts/doom2-play` an. Bei weiteren Starts bleiben Einstellungen und Spielstände im selben privaten Overlay erhalten. Die ursprünglichen DOS-/Doom-Dateien und Abnahmemedien werden nicht verändert. Die privaten Medien müssen auf diesem Rechner bereits vorhanden sein; sie gehören nicht ins Repository.

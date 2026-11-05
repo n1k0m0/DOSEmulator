@@ -15,6 +15,10 @@ internal static class NativeGlideTransportChecks
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate ulong Triple(ulong a, ulong b, ulong c);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate ulong Four(ulong a, ulong b, ulong c, ulong d);
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate ulong Five(ulong a, ulong b, ulong c, ulong d, ulong e);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate ulong Single(ulong a);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void Output(nint buffer);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void FogOutput(nint buffer, float density);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)] private delegate void LinearOutput(nint buffer, float near, float far);
 
     /// <summary>Rejects any independently observed native ABI, byte, return-value or admission discrepancy.</summary>
     private static void Check(bool value, string message) { if (!value) throw new Exception(message); }
@@ -114,6 +118,66 @@ internal static class NativeGlideTransportChecks
             int before = calls; bool rejected = false;
             try { invalid(); } catch (TargetInvocationException error) when (error.InnerException is InvalidDataException) { rejected = true; }
             Check(rejected && calls == before, "Invalid Glide input reached the native callback"); cases++;
+        }
+        // Original MiniGL needs the scalar clip/cull/render/origin controls as well as opaque state and fog outputs.
+        Install(20, new Four((a, b, c, d) => { calls++; bad |= a != 3 || b != 5 || c != 639 || d != 479; return 0; }));
+        Call(20, 3, 5, 639, 479); Check(!bad, "MiniGL clipping rectangle changed across native ABI"); cases++;
+        foreach (uint id in new uint[] { 25, 59, 66 })
+        {
+            Install((int)id, new Single(value => { calls++; bad |= value != 0x12345678; return 0; }));
+            Call(id, 0x12345678); Check(!bad, "MiniGL scalar state word changed"); cases++;
+        }
+        Install(70, new Empty(() => { calls++; return 0; }));
+        Call(70); cases++;
+        foreach ((uint id, int length) in new[] { (44u, 312), (67u, 20) })
+        {
+            byte[] output = Enumerable.Range(0, length).Select(i => (byte)(i * 41 + 19)).ToArray();
+            Install((int)id, new Output(pointer => { calls++; Marshal.Copy(output, 0, pointer, length); }));
+            foreach (uint address in new uint[] { (uint)memory.Ram.Length - (uint)length, 0x3ff0, 0x8100 })
+            {
+                Word(argumentAddress, address); byte[] expected = memory.Ram.ToArray(); output.CopyTo(expected, (int)address);
+                invoke.Invoke(bridge, [id, argumentAddress, 0u]);
+                Check(memory.Ram.AsSpan().SequenceEqual(expected), "MiniGL opaque output size, complete bytes or guards changed"); cases++;
+            }
+            uint invalid = (uint)memory.Ram.Length - (uint)length + 1;
+            Word(argumentAddress, invalid); byte[] beforeRam = memory.Ram.ToArray(); int beforeCalls = calls; bool rejected = false;
+            try { invoke.Invoke(bridge, [id, argumentAddress, 0u]); }
+            catch (TargetInvocationException error) when (error.InnerException is InvalidDataException) { rejected = true; }
+            Check(rejected && calls == beforeCalls && memory.Ram.AsSpan().SequenceEqual(beforeRam), "Invalid MiniGL output ran provider or partially committed"); cases++;
+        }
+        foreach ((uint id, int length) in new[] { (47u, 312), (35u, 60) })
+        {
+            byte[] input = Enumerable.Range(0, length).Select(i => (byte)(i * 13 + 29)).ToArray();
+            Install((int)id, new Single(pointer => { calls++; bad |= !Bytes(pointer, length).AsSpan().SequenceEqual(input); return 0; }));
+            foreach (uint address in new uint[] { (uint)memory.Ram.Length - (uint)length, 0x3ff0 })
+            {
+                input.CopyTo(memory.Ram, (int)address); Call(id, address); Check(!bad, "MiniGL complete state/point input differs"); cases++;
+            }
+            int beforeCalls = calls; bool rejected = false;
+            try { Call(id, (uint)memory.Ram.Length - (uint)length + 1); }
+            catch (TargetInvocationException error) when (error.InnerException is InvalidDataException) { rejected = true; }
+            Check(rejected && calls == beforeCalls, "Invalid MiniGL input reached provider"); cases++;
+        }
+        byte[] fogBytes = Enumerable.Range(0, 64).Select(i => (byte)(i * 7 + 5)).ToArray();
+        uint expectedFloat = 0;
+        foreach (uint id in new uint[] { 113, 114, 115 })
+        {
+            if (id == 115) Install((int)id, new LinearOutput((pointer, near, far) =>
+            { calls++; bad |= (uint)BitConverter.SingleToInt32Bits(near) != expectedFloat || BitConverter.SingleToInt32Bits(far) != unchecked((int)0xc0200000); Marshal.Copy(fogBytes, 0, pointer, 64); }));
+            else Install((int)id, new FogOutput((pointer, density) =>
+            { calls++; bad |= (uint)BitConverter.SingleToInt32Bits(density) != expectedFloat; Marshal.Copy(fogBytes, 0, pointer, 64); }));
+            foreach (uint bits in new uint[] { 0, 0x80000000, 0x3f800000, 0x7f800000, 0x7fc12345 })
+            {
+                expectedFloat = bits; uint destination = (uint)memory.Ram.Length - 64;
+                Word(argumentAddress, destination); Word(argumentAddress + 4, bits); Word(argumentAddress + 8, 0xc0200000);
+                byte[] expected = memory.Ram.ToArray(); fogBytes.CopyTo(expected, (int)destination);
+                invoke.Invoke(bridge, [id, argumentAddress, 0u]);
+                Check(!bad && memory.Ram.AsSpan().SequenceEqual(expected), "MiniGL float ABI, complete fog bytes or guards differ"); cases++;
+            }
+            Word(argumentAddress, (uint)memory.Ram.Length - 63); byte[] beforeRam = memory.Ram.ToArray(); int beforeCalls = calls; bool rejected = false;
+            try { invoke.Invoke(bridge, [id, argumentAddress, 0u]); }
+            catch (TargetInvocationException error) when (error.InnerException is InvalidDataException) { rejected = true; }
+            Check(rejected && calls == beforeCalls && memory.Ram.AsSpan().SequenceEqual(beforeRam), "Invalid MiniGL fog output ran provider or partially committed"); cases++;
         }
         // A completed own worker needs no HWND or native message. Shutdown must retire
         // its presentation even when the caller omits an explicit grSstWinClose.
