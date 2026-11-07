@@ -24,6 +24,12 @@ NAT and the isolated Host-only gateway use libslirp 4.9.3 from the official MSYS
 
 Bridged networking optionally loads the user's separately installed Npcap/WinPcap-compatible library. Npcap is not bundled or installed by DOSE. Original Realtek/Microsoft guest drivers used for local validation stay in ignored private artifacts and are not DOSE source, firmware or repository downloads.
 
+## LTRData DiscUtils — offline disk tools
+
+The separate DOSE Disk Explorer and console disk tool reference `LTRData.DiscUtils.Fat`, `LTRData.DiscUtils.Core` and `LTRData.DiscUtils.Streams` 1.0.90 under MIT. Package metadata identifies the upstream repository as https://github.com/LTRData/DiscUtils and commit `414c7f7b2d82c42b07bc6fdfc18a763331334697`. The original notice, including Kenneth Bell and Quamotion copyright, is retained in [LICENSES/LicenseRef-DiscUtils-MIT.txt](LICENSES/LicenseRef-DiscUtils-MIT.txt) and copied into the local tool package. Other contributors retain their copyrights. This filesystem dependency is not referenced by the CPU/core/hardware/runtime/WHPX emulator projects. No upstream source is vendored or relicensed as DOSE.
+
+The disk-tool package also contains the transitive MIT dependency LTRData.Extensions 1.0.23 by Olof Lagerkvist/LTR Data, with package copyright 2011–2026 and upstream source commit 915cdf4eaac22bffd2623de0721f7e7d18c93268 in https://github.com/LTRData/Library. Its package copyright and MIT text are retained in LICENSES/LicenseRef-LTRData-Extensions-MIT.txt and accompany the published tool.
+
 ## Firmware, probes and font
 
 The development BIOS, demo boot-sector generator, VGA reference palettes, DOS COM probe sources and bitmap fonts are original project sources. No commercial BIOS ROM, IBM font ROM, DOS, Windows, driver or game media is included. The original small diagnostic font is limited; the later complete CP437 artwork at 8/14/16 rows is also original project work, not an IBM font ROM. Source headers identify Apache-2.0; `REUSE.toml` annotates the original profile/font data formats that cannot carry comments. Existing full SharpPixels notices are retained.

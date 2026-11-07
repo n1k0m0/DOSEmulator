@@ -1,0 +1,12 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Copyright 2026 Nils Kopal -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyTitle>DOSE Disk Explorer</AssemblyTitle>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../DOSEmulator.DiskTools/DOSEmulator.DiskTools.csproj" /></ItemGroup>
+</Project>

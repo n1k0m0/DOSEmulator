@@ -9,11 +9,15 @@
     <Project Path="src/DOSEmulator.Runtime/DOSEmulator.Runtime.csproj" />
     <Project Path="src/DOSEmulator.Whpx/DOSEmulator.Whpx.csproj" />
     <Project Path="src/DOSEmulator.Headless/DOSEmulator.Headless.csproj" />
+    <Project Path="src/DOSEmulator.DiskTools/DOSEmulator.DiskTools.csproj" />
+    <Project Path="src/DOSEmulator.DiskTool/DOSEmulator.DiskTool.csproj" />
+    <Project Path="src/DOSEmulator.DiskExplorer/DOSEmulator.DiskExplorer.csproj" />
     <Project Path="src/DOSEmulator/DOSEmulator.csproj" />
     <Project Path="src/SharpPixels/SharpPixels.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DOSEmulator.Tests/DOSEmulator.Tests.csproj" />
     <Project Path="tests/DOSEmulator.Whpx.Tests/DOSEmulator.Whpx.Tests.csproj" />
+    <Project Path="tests/DOSEmulator.DiskTools.Tests/DOSEmulator.DiskTools.Tests.csproj" />
   </Folder>
 </Solution>

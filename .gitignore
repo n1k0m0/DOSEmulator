@@ -3,6 +3,8 @@
 /media/
 /roms/
 /private/
+/VMs/
+/To Delete/
 /artifacts/
 # Machine-specific shortcuts and their local path catalog stay on this computer.
 /local/

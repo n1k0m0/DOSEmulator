@@ -1,5 +1,11 @@
 # DOSE – DosEmulator
 
+**Offline-Dateitransfer:** Der englische [DOSE Disk Explorer](docs/DISK-EXPLORER.md)
+öffnet IMG/COW-Platten und gespeicherte VMs, zeigt FAT12/16/32-Verzeichnisse und
+importiert/exportiert Dateien und Ordner samt langen Dateinamen. Start lokal über
+`VMs/Open-Disks.cmd`; die VM vorher beenden. Änderungen werden geprüft in das
+lokale COW-Journal übernommen, das Basisimage bleibt unverändert.
+
 **Aktuelle Starter:** Die normalen DOS-/Windows-Starter wählen den gemeinsamen
 geprüften C54-Stand mit WHPX. C58 und MiniGlide sind getrennte Entwicklungswege;
 ein Quellbuild ersetzt die ausgewählte Laufzeit nicht automatisch.

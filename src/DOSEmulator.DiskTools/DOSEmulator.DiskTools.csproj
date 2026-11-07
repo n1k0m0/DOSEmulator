@@ -1,0 +1,7 @@
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!-- Copyright 2026 Nils Kopal -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="LTRData.DiscUtils.Fat" Version="1.0.90" />
+  </ItemGroup>
+</Project>
