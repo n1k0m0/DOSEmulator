@@ -1,5 +1,12 @@
 # DOSE – DosEmulator
 
+**Aktueller Hauptzweig:** `main` enthält die WHPX-Beschleunigung, den
+Software-Fallback, die integrierte MiniGlide-Anzeige und den
+Glide-Hostpfad. Das [Windows-Setup](docs/INSTALLER-AND-UPDATES.md) wird aus
+diesem Stand gebaut. Der Glide-Hostpfad benötigt weiterhin eine separat
+bereitgestellte kompatible Glide-2-Bibliothek; Gastspiele und VM-Platten
+gehören zu den jeweiligen lokalen Maschinen.
+
 **Offline-Dateitransfer:** Der englische [DOSE Disk Explorer](docs/DISK-EXPLORER.md)
 öffnet IMG/COW-Platten und gespeicherte VMs, zeigt FAT12/16/32-Verzeichnisse und
 importiert/exportiert Dateien und Ordner samt langen Dateinamen. Start lokal über
