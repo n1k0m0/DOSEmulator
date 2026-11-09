@@ -996,7 +996,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
     {
         if (_diskCreation is { IsCompleted: false }) { _notice = "A DISK IMAGE IS ALREADY BEING CREATED"; return; }
         long? bytes = StorageDialogs.AskDiskSize(); if (bytes is null) return;
-        using var dialog = new SaveFileDialog { Title = "Neue leere Festplattendatei", Filter = "RAW-Festplatte (*.img)|*.img", DefaultExt = "img", OverwritePrompt = false };
+        using var dialog = new SaveFileDialog { Title = "Create blank hard disk image", Filter = "RAW hard disk (*.img)|*.img", DefaultExt = "img", OverwritePrompt = false };
         if (dialog.ShowDialog() != DialogResult.OK) return;
         string path = dialog.FileName;
         _notice = "CREATING BLANK IMAGE...";
@@ -1013,12 +1013,12 @@ public sealed partial class DosWindow : SharpPixelsWindow
     {
         if (Volatile.Read(ref _status)?.Configuration is { IsAtapi: true } p && p.AtapiSlot == slot)
         { OpenPage("OPTICAL DRIVE"); return; }
-        using var image = new OpenFileDialog { Title = "Festplatte fÃƒÆ’Ã‚Â¼r IDE " + slot, Filter = "RAW-Festplatten (*.img;*.raw;*.ima)|*.img;*.raw;*.ima" };
+        using var image = new OpenFileDialog { Title = "Select hard disk for IDE " + slot, Filter = "RAW hard disks (*.img;*.raw;*.ima)|*.img;*.raw;*.ima" };
         if (image.ShowDialog() != DialogResult.OK) return;
         string? overlayPath = null;
         if (writable)
         {
-            using var overlay = new SaveFileDialog { Title = "Privates Overlay anlegen oder fortsetzen", Filter = "Private Overlays (*.cow)|*.cow", DefaultExt = "cow", OverwritePrompt = false,
+            using var overlay = new SaveFileDialog { Title = "Create or resume private disk overlay", Filter = "Private overlays (*.cow)|*.cow", DefaultExt = "cow", OverwritePrompt = false,
                 FileName = Path.GetFileNameWithoutExtension(image.FileName) + "-ide" + slot + ".cow", InitialDirectory = Path.GetDirectoryName(_settingsPath) };
             if (overlay.ShowDialog() != DialogResult.OK) return;
             overlayPath = overlay.FileName;

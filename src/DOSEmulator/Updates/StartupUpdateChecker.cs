@@ -532,6 +532,7 @@ namespace DOSEmulator.Updates
             private bool _downloadRunning;
             private bool _downloadSucceeded;
 
+            /// <summary>Initializes download paths and progress controls for one release.</summary>
             public SetupDownloadForm(GitHubReleaseInfo release)
             {
                 _release = release;
@@ -543,16 +544,20 @@ namespace DOSEmulator.Updates
                 InitializeComponent();
             }
 
+            /// <summary>Gets the verified installer destination.</summary>
             public string InstallerPath { get; private set; }
 
+            /// <summary>Gets the latest download error shown to the user.</summary>
             public string ErrorMessage { get; private set; }
 
+            /// <summary>Starts downloading after the progress form is displayed.</summary>
             protected override void OnShown(EventArgs e)
             {
                 base.OnShown(e);
                 StartDownloadAttempt();
             }
 
+            /// <summary>Releases cancellation resources owned by the dialog.</summary>
             protected override void Dispose(bool disposing)
             {
                 if (disposing && _cancellation != null)
@@ -563,6 +568,7 @@ namespace DOSEmulator.Updates
                 base.Dispose(disposing);
             }
 
+            /// <summary>Cancels an active transfer before the dialog closes.</summary>
             protected override void OnFormClosing(FormClosingEventArgs e)
             {
                 if (_downloadRunning)
@@ -588,6 +594,7 @@ namespace DOSEmulator.Updates
                 base.OnFormClosing(e);
             }
 
+            /// <summary>Creates the download progress and action controls.</summary>
             private void InitializeComponent()
             {
                 Text = "DOSE Emulator Update";
@@ -711,6 +718,7 @@ namespace DOSEmulator.Updates
                 Controls.Add(_cancelButton);
             }
 
+            /// <summary>Starts or retries one cancellable installer download.</summary>
             private async void StartDownloadAttempt()
             {
                 ResetCancellation();
@@ -772,6 +780,7 @@ namespace DOSEmulator.Updates
                 }
             }
 
+            /// <summary>Replaces the cancellation token for a new attempt.</summary>
             private void ResetCancellation()
             {
                 if (_cancellation != null)
@@ -782,6 +791,7 @@ namespace DOSEmulator.Updates
                 _cancellation = new CancellationTokenSource();
             }
 
+            /// <summary>Downloads and verifies a release installer before publication.</summary>
             private async Task<string> DownloadInstallerAsync(CancellationToken cancellationToken)
             {
                 DeleteTempFile();
@@ -841,6 +851,7 @@ namespace DOSEmulator.Updates
                 return InstallerPath;
             }
 
+            /// <summary>Displays the received bytes and bounded percentage.</summary>
             private void UpdateDownloadProgress(long totalRead, long? contentLength)
             {
                 if (contentLength.HasValue && contentLength.Value > 0)
@@ -855,6 +866,7 @@ namespace DOSEmulator.Updates
                 _sizeLabel.Text = FormatByteCount(totalRead);
             }
 
+            /// <summary>Removes only an incomplete temporary download.</summary>
             private void DeleteTempFile()
             {
                 try
@@ -876,14 +888,19 @@ namespace DOSEmulator.Updates
         /// </summary>
         private sealed class GitHubReleaseInfo
         {
+            /// <summary>Gets the version parsed from the release tag.</summary>
             public Version Version { get; set; }
 
+            /// <summary>Gets the GitHub release page URL.</summary>
             public string HtmlUrl { get; set; }
 
+            /// <summary>Gets the installer asset file name.</summary>
             public string InstallerName { get; set; }
 
+            /// <summary>Gets the installer asset download URL.</summary>
             public string InstallerDownloadUrl { get; set; }
 
+            /// <summary>Gets the normalized SHA-256 asset digest.</summary>
             public string InstallerDigest { get; set; }
         }
     }

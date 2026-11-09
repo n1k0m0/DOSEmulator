@@ -1,0 +1,5 @@
+# DOSE branding
+
+`dose-logo.png` is a transparent raster logo generated for this project with the built-in OpenAI image generation tool. `dose.ico` contains 16, 32, 48, 64, 128, and 256 pixel icon sizes derived from that image. The can-shaped PC and DOSE lettering evoke the DOS era without copying an existing DOS trademark graphic.
+
+Final prompt: "Create an original, crisp logo for a PC/DOS-era emulator named DOSE. Icon: a stylized metal beverage can with subtle horizontal vent/grid lines, its silhouette cleverly suggesting a beige 1990s PC case. Exact large wordmark: DOSE (four letters, all caps, legible). A visual nod to early DOS-era blocky computer typography, but do not reproduce Microsoft's DOS/MS-DOS logo or trademark layout. Deep navy, electric cyan, restrained warm silver. Clean vector-friendly geometry, strong silhouette that remains readable as a 32px Windows app icon, no extra text, no background scene, no gradients or glow, transparent alpha background. Centered square composition with margin."

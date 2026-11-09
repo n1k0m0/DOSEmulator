@@ -24,6 +24,7 @@ PrivilegesRequired=lowest
 DisableProgramGroupPage=yes
 OutputDir={#OutputDir}
 OutputBaseFilename=DOSEmulator-{#AppVersion}-win-x64-setup
+SetupIconFile=..\assets\branding\dose.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
