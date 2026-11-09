@@ -4,7 +4,7 @@
 
 DOSE is a personal IBM PC emulator written in C# for exploring DOS-era hardware, Windows 95/98, and classic games. It combines a software x86 engine with optional Windows Hypervisor Platform (WHPX) acceleration, a configurable PC, sound and video devices, snapshots, and a single-window settings overlay. Like my [C64Emulator](https://github.com/n1k0m0/C64Emulator), it is a hands-on emulator project and an opportunity to learn from real software and hardware behavior.
 
-**Latest Windows release:** [DOSE Emulator 0.1.1](https://github.com/n1k0m0/DOSEmulator-Releases/releases/tag/v0.1.1) provides a self-contained x64 setup. Installed copies check GitHub Releases at startup and ask before downloading an update. The [installer and update notes](docs/INSTALLER-AND-UPDATES.md) describe what is included.
+**Latest Windows release:** [DOSE Emulator 0.1.2](https://github.com/n1k0m0/DOSEmulator/releases/tag/v0.1.2) provides a self-contained x64 setup. Installed copies check this repository's GitHub Releases at startup and ask before downloading an update. The [installer and update notes](docs/INSTALLER-AND-UPDATES.md) describe what is included.
 
 **Highlights**
 
@@ -18,11 +18,11 @@ DOSE is a personal IBM PC emulator written in C# for exploring DOS-era hardware,
 
 ## Screenshots
 
-These are captures of actual DOSE guests and games, not generated mockups. The Windows 95 image shows a guest display-change prompt; the Unreal, GLQuake, and Motorhead frames come from a recorded run on separate VM safety copies. Games and operating-system images are **not** distributed with DOSE.
+The Windows and game images were captured directly from the DOSE emulator window on separate VM safety copies. None of the screenshots below were extracted from a video or presentation. Games and operating-system images are **not** distributed with DOSE.
 
 | FreeDOS | Windows 95 | Windows 98 |
 | --- | --- | --- |
-| <img src="docs/screenshots/freedos-prompt.png" alt="FreeDOS prompt in DOSE" width="300"> | <img src="docs/screenshots/win95-settings-prompt.png" alt="Windows 95 desktop and display-change prompt" width="300"> | <img src="docs/screenshots/win98-desktop.png" alt="Windows 98 desktop in DOSE" width="300"> |
+| <img src="docs/screenshots/freedos-prompt.png" alt="FreeDOS prompt in DOSE" width="300"> | <img src="docs/screenshots/win95-desktop.png" alt="Windows 95 desktop in DOSE" width="300"> | <img src="docs/screenshots/win98-desktop.png" alt="Windows 98 desktop in DOSE" width="300"> |
 
 | Unreal with MiniGlide | GLQuake | Motorhead |
 | --- | --- | --- |
@@ -34,7 +34,7 @@ These are captures of actual DOSE guests and games, not generated mockups. The W
 
 ## Getting started
 
-1. Download and run the [Windows x64 setup](https://github.com/n1k0m0/DOSEmulator-Releases/releases/latest). The installer contains DOSE, its own firmware, and the pinned native libraries used for NAT and Host-only networking. It contains no commercial OS, game, or driver media.
+1. Download and run the [Windows x64 setup](https://github.com/n1k0m0/DOSEmulator/releases/latest). The installer contains DOSE, its own firmware, and the pinned native libraries used for NAT and Host-only networking. It contains no commercial OS, game, or driver media.
 2. Start DOSE and open the menu with **Ctrl+Alt+F10**. Configure a machine and attach your own bootable floppy, hard disk, or ISO image. Use **Ctrl+Alt+F11** for fullscreen.
 3. Save the machine definition and keep its disk image and `.cow` journal together. After shutting down the guest, the optional Disk Explorer can import or export files offline.
 
@@ -67,6 +67,6 @@ Build a self-contained setup with Inno Setup 6:
 ./scripts/build-installer.ps1
 ```
 
-The source repository and its release assets do not include personal VMs, Windows or DOS installation media, games, proprietary guest drivers, or a Glide-2 host library. Existing portable VM folders retain their pinned runtime until deliberately upgraded. The public setup releases live in [DOSEmulator-Releases](https://github.com/n1k0m0/DOSEmulator-Releases).
+The source repository and its release assets do not include personal VMs, Windows or DOS installation media, games, proprietary guest drivers, or a Glide-2 host library. Existing portable VM folders retain their pinned runtime until deliberately upgraded. Setup releases live in this repository's [Releases](https://github.com/n1k0m0/DOSEmulator/releases).
 
 DOSE source is licensed under [Apache 2.0](LICENSES/Apache-2.0.txt). Bundled dependency provenance and license notices are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

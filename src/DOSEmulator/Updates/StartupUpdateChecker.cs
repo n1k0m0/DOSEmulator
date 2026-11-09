@@ -37,7 +37,7 @@ namespace DOSEmulator.Updates
     /// </summary>
     public static class StartupUpdateChecker
     {
-        private const string LatestReleaseApiUrl = "https://api.github.com/repos/n1k0m0/DOSEmulator-Releases/releases/latest";
+        private const string LatestReleaseApiUrl = "https://api.github.com/repos/n1k0m0/DOSEmulator/releases/latest";
         private const string UserAgent = "DOSEmulator-UpdateChecker";
         private const int StartupDelayMilliseconds = 2500;
         private const int DownloadBufferSize = 81920;
