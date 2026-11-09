@@ -65,6 +65,9 @@ internal static class Program
                 acceptance is not null, Value("--type-file") is { } typePath ? File.ReadAllText(typePath) : null, Value("--capture-after"),
                 Value("--audio-out"), args.Contains("--audio-acceptance"), Value("--scenario") is { } scenarioPath ? GuestTestScenario.Load(scenarioPath) : null,
                 args.Contains("--sb2-resource-acceptance"), args.Contains("--mouse-native-acceptance"), storage is not null, machinePath, engine, upgraded is null ? null : "WHPX: PENTIUM 90 MHZ / ORIGINAL 486 CONFIGURATION RETAINED", enableHostAudio: !args.Contains("--no-host-audio"));
+            if (File.Exists(Path.Combine(AppContext.BaseDirectory, "dose-installed.txt")) &&
+                !args.Any(arg => arg.Contains("acceptance", StringComparison.OrdinalIgnoreCase) || arg is "--smoke-test" or "--scenario"))
+                Updates.StartupUpdateChecker.CheckForUpdatesOnStartup(window.RequestClose);
             window.Run();
             return 0;
         }

@@ -25,6 +25,9 @@ public sealed partial class DosWindow : SharpPixelsWindow
     private readonly IpcServer _ipc;
     private readonly object _gate = new();
     private readonly CancellationTokenSource _stop = new();
+    private int _closeRequested;
+    /// <summary>Schedules a clean close on the window owner after an update is ready.</summary>
+    public void RequestClose() => Interlocked.Exchange(ref _closeRequested, 1);
     private readonly string _settingsPath;
     private readonly string? _smokeDirectory;
     private readonly bool _enableHostAudio;
@@ -227,6 +230,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
     /// <summary>Presents the most recent leased guest frame and handles UI-only overlays/settings.</summary>
     public override void OnUserUpdate(double time)
     {
+        if (Interlocked.Exchange(ref _closeRequested, 0) != 0) { Close(); return; }
         CompleteConfiguration();
         if (_settings.CpuEngine != _session.CpuEngine) { _settings = _settings with { CpuEngine = _session.CpuEngine }; SaveSettings(); }
         if (_frames.AcquireLatest() is { } nextFrame)
