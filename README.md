@@ -1,12 +1,14 @@
 # DOSE Emulator
 
-![DOSE logo](assets/branding/dose-logo.png)
+<img src="assets/branding/dose-logo.png" alt="DOSE logo" width="250" align="left">
 
 DOSE is a personal IBM PC emulator written in C# for exploring DOS-era hardware, Windows 95/98, and classic games. It combines a software x86 engine with optional Windows Hypervisor Platform (WHPX) acceleration, a configurable PC, sound and video devices, snapshots, and a single-window settings overlay. Like my [C64Emulator](https://github.com/n1k0m0/C64Emulator), it is a hands-on emulator project and an opportunity to learn from real software and hardware behavior.
 
 **Latest Windows release:** [DOSE Emulator 0.1.2](https://github.com/n1k0m0/DOSEmulator/releases/tag/v0.1.2) provides a self-contained x64 setup. Installed copies check this repository's GitHub Releases at startup and ask before downloading an update. The [installer and update notes](docs/INSTALLER-AND-UPDATES.md) describe what is included.
 
-**Highlights**
+<br clear="left">
+
+## Highlights
 
 - Boot MS-DOS, FreeDOS, Windows 95, and Windows 98 from your own legal installation media and disk images.
 - Choose a 486 or Pentium-family configuration, RAM, IDE disks, ATAPI CD-ROM, floppy drives, and supported video, audio, and network devices.
