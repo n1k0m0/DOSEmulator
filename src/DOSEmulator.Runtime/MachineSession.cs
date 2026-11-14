@@ -18,6 +18,11 @@ public sealed class MachineSession : IDisposable
     private long _inputGeneration = 1;
     private long _resumeGeneration;
     private long _networkGeneration = 1;
+    private readonly object _transferGate = new();
+    private CancellationTokenSource _transferEpoch = new();
+    private long _transferGeneration = 1;
+    // 0 = idle, 1 = awaiting a guest, 2 = payload may already be in guest RAM.
+    private int _transferSnapshotState;
     private string _definitionId = Guid.NewGuid().ToString("N");
     private string? _definitionName;
     private MachineDefinitionBinding? _definitionBinding;
@@ -51,6 +56,47 @@ public sealed class MachineSession : IDisposable
     public long Revision => _revision;
     /// <summary>Current input ownership epoch; frontends acknowledge it only after discarding their retired held input.</summary>
     public long InputGeneration => Interlocked.Read(ref _inputGeneration);
+    /// <summary>One host import lease, invalidated by a reset, replacement or network connection change.</summary>
+    public (long Generation, CancellationToken Token) GetTransferLease()
+    {
+        lock (_transferGate) return (_transferGeneration, _transferEpoch.Token);
+    }
+    /// <summary>Blocks capture before a GUI import can deliver bytes to the current guest.</summary>
+    public bool BeginTransfer(long generation)
+    {
+        lock (_transferGate)
+        {
+            if (_disposed || generation != _transferGeneration || _transferSnapshotState != 0) return false;
+            _transferSnapshotState = 1;
+            return true;
+        }
+    }
+    /// <summary>Retains the capture block if the guest may have received bytes without a final reply.</summary>
+    public void MarkTransferPayload(long generation)
+    {
+        lock (_transferGate)
+            if (generation == _transferGeneration && _transferSnapshotState == 1) _transferSnapshotState = 2;
+    }
+    /// <summary>Releases capture only after a terminal guest reply or before any payload could arrive.</summary>
+    public void EndTransfer(long generation, bool terminalReply)
+    {
+        lock (_transferGate)
+            if (generation == _transferGeneration && (terminalReply || _transferSnapshotState == 1)) _transferSnapshotState = 0;
+    }
+    /// <summary>Rejects a host import that belongs to a retired guest or network configuration.</summary>
+    private void InvalidateTransferLease(bool guestExecutionReset = false)
+    {
+        CancellationTokenSource previous;
+        lock (_transferGate)
+        {
+            previous = _transferEpoch;
+            _transferEpoch = new CancellationTokenSource();
+            _transferGeneration++;
+            if (guestExecutionReset || _transferSnapshotState == 1) _transferSnapshotState = 0;
+        }
+        previous.Cancel();
+        previous.Dispose();
+    }
     /// <summary>Successful paused-to-running Resume commands, allowing frontend policy to observe transitions coalesced in one pump.</summary>
     public long ResumeGeneration => Interlocked.Read(ref _resumeGeneration);
     /// <summary>Explicit frontend configuration destination; snapshots and ordinary headless sessions remain unbound.</summary>
@@ -78,6 +124,7 @@ public sealed class MachineSession : IDisposable
     private void TrackReset()
     {
         _revision++;
+        InvalidateTransferLease(guestExecutionReset: true);
         if (Machine.LastResetSource == "cf9-hard")
         {
             Interlocked.Increment(ref _networkGeneration);
@@ -123,6 +170,7 @@ public sealed class MachineSession : IDisposable
         _execution = next; _executionFactory = selected;
         Machine.HardwareResetOccurred += TrackReset; _revision++; Interlocked.Increment(ref _inputGeneration);
         Interlocked.Increment(ref _networkGeneration);
+        InvalidateTransferLease(guestExecutionReset: true);
         _network = new(Machine, _enableHostNetworking);
     }
 
@@ -213,7 +261,7 @@ public sealed class MachineSession : IDisposable
                 if (!request.Payload.TryGetProperty("connected", out var connected) || connected.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
                     throw new ArgumentException("Property 'connected' must be a JSON boolean.");
                 try { _network.SetConnected(slot, connected.GetBoolean()); }
-                finally { _revision++; }
+                finally { _revision++; InvalidateTransferLease(); }
                 if (connected.GetBoolean() && !_network.IsConnected(slot))
                     return new(1, request.RequestId, false, "NetworkUnavailable", new { message = _network.ConnectionError(slot) ?? "The network cable could not connect.", network = _network.GetStatus() });
                 result = _network.GetStatus(); break;
@@ -266,8 +314,14 @@ public sealed class MachineSession : IDisposable
             case "CreateSnapshot":
             {
                 string path = request.Payload.GetProperty("path").GetString() ?? throw new ArgumentException("Missing new snapshot directory.");
-                object snapshot = _execution?.CaptureSnapshot(path) ?? (object)SnapshotStore.Capture(Machine, path);
-                result = new { path = Path.GetFullPath(path), snapshot, runningStateSnapshot = true }; break;
+                lock (_transferGate)
+                {
+                    if (_transferSnapshotState != 0)
+                        return new(1, request.RequestId, false, "TransferSnapshotBlocked", new { message = "Finish the DOSE import or reset the guest before saving a snapshot." });
+                    object snapshot = _execution?.CaptureSnapshot(path) ?? (object)SnapshotStore.Capture(Machine, path);
+                    result = new { path = Path.GetFullPath(path), snapshot, runningStateSnapshot = true };
+                }
+                break;
             }
             case "LoadSnapshot":
             {
@@ -283,8 +337,14 @@ public sealed class MachineSession : IDisposable
             case "CreateMediaCheckpoint":
             {
                 string path = request.Payload.GetProperty("path").GetString() ?? throw new ArgumentException("Missing checkpoint directory.");
-                var checkpoint = MediaCheckpointStore.Capture(Machine, path);
-                result = new { path = Path.GetFullPath(path), checkpoint, runningStateSnapshot = false }; break;
+                lock (_transferGate)
+                {
+                    if (_transferSnapshotState != 0)
+                        return new(1, request.RequestId, false, "TransferSnapshotBlocked", new { message = "Finish the DOSE import or reset the guest before saving a media checkpoint." });
+                    var checkpoint = MediaCheckpointStore.Capture(Machine, path);
+                    result = new { path = Path.GetFullPath(path), checkpoint, runningStateSnapshot = false };
+                }
+                break;
             }
             case "CreateMediaBranch":
             {
@@ -483,11 +543,15 @@ public sealed class MachineSession : IDisposable
     {
         lock (_queueGate)
         {
+            if (_disposed) return;
             _disposed = true;
             _pendingMouse.Clear();
             while (_commands.TryDequeue(out var item)) item.Result.TrySetResult(new(1, item.Request.RequestId, false, "SessionStopped", null));
         }
         Machine.HardwareResetOccurred -= TrackReset;
+        CancellationTokenSource transfer;
+        lock (_transferGate) transfer = _transferEpoch;
+        transfer.Cancel(); transfer.Dispose();
         try { _network.Dispose(); }
         finally { try { _execution?.Dispose(); } finally { Machine.Dispose(); } }
     }

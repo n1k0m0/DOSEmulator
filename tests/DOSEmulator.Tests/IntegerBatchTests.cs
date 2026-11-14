@@ -216,6 +216,19 @@ internal static class IntegerBatchTests
     /// <summary>Registers full-state positives and exact no-effect admission/future-fault negatives.</summary>
     public static void AddTo(Action<string, Action> test)
     {
+        test("integer decoder and scalar immediate reads do not announce RAM writes", () =>
+        {
+            var batch = Fixture(0, [0x40, 0x48, 0xf4]);
+            int batchWrites = 0;
+            batch.Memory.PhysicalRamWrite += (_, _) => batchWrites++;
+            Check(batch.Cpu.TryRunIntegerBatch(2) == 2 && batchWrites == 0,
+                "Register-only batch invalidated native RAM translations.");
+            var scalar = Fixture(0, [0xb8, 0x34, 0x12, 0xf4]);
+            int scalarWrites = 0;
+            scalar.Memory.PhysicalRamWrite += (_, _) => scalarWrites++;
+            Check(scalar.Cpu.Step() == 4 && (scalar.Cpu.GetRegister(Register.Ax) & 0xffff) == 0x1234 && scalarWrites == 0,
+                "Immediate instruction fetch invalidated native RAM translations.");
+        });
         for (int value = 0; value < 7; value++)
         foreach (int size in new[] { -1, 0, 1, 2, 3, 7, 31, 1000 })
         {

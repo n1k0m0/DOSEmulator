@@ -205,6 +205,8 @@ static int Install(void)
         if(!Put("Installed","Time","1") || !Put("Installed","Startup",StartupSelected?"1":"0") ||
            !Shortcut("Start Clock Synchronization",HOME "\\DOSETIME.EXE","/background","SHCLOCK") ||
            !Shortcut("Share Folder","C:\\Share",0,"SHSHARE")) return 0;
+        if(!Extract(17,HOME "\\DOSEIMPORT.EXE","IMPORT") || !Put("Installed","Import","1") ||
+           !Shortcut("Import File from DOSE","C:\\DOSETOOLS\\DOSEIMPORT.EXE",0,"SHIMPORT")) return 0;
     }
     if(GlideSelected) {
         Status("Installing MiniGlide..."); Path(file,System,"\\GLIDE2X.DLL");
@@ -259,11 +261,13 @@ static int Remove(void)
     Get("Package","Menu",Menu,sizeof(Menu));
     Path(file,System,"\\GLIDE2X.DLL");
     if(!Restore(file,"GLIDE") || !Restore(HOME "\\MGLIDE.EXE","LAUNCH") ||
-       !Restore(HOME "\\DOSETIME.EXE","TIME") || !Restore(HOME "\\APM\\APM" TARGET_TEXT ".INF","APM") ||
+       !Restore(HOME "\\DOSETIME.EXE","TIME") || !Restore(HOME "\\DOSEIMPORT.EXE","IMPORT") ||
+       !Restore(HOME "\\APM\\APM" TARGET_TEXT ".INF","APM") ||
        !Restore(HOME "\\APM\\README.TXT","APMHELP") || !Restore(HOME "\\DOSEHELP.TXT","HELP") ||
        !Restore(HOME "\\LICENSE.TXT","LICENSE")) return 0;
     if(!RestoreShortcut("Read Me","SHHELP") || !RestoreShortcut("Uninstall","SHREMOVE") ||
        !RestoreShortcut("Start Clock Synchronization","SHCLOCK") || !RestoreShortcut("Share Folder","SHSHARE") ||
+       !RestoreShortcut("Import File from DOSE","SHIMPORT") ||
        !RestoreShortcut("MiniGlide Preview","SHPREVIEW") || !RestoreShortcut("Unreal with MiniGlide","SHUNREAL") ||
        !RestoreShortcut("APM Installation Guide","SHAPM") || !RestoreShortcut("Launch Glide Program","SHCHOOSE") ||
        !RestoreShortcut("Motorhead with MiniGlide","SHMOTOR")) return 0;
@@ -294,7 +298,12 @@ static int HasSwitch(const char *value)
     const char *text=GetCommandLineA(); int n=lstrlenA(value),i;
     while(*text) {
         if(*text==' ' || *text=='\t') {
-            ++text; for(i=0;i<n && text[i]==value[i];i++);
+            ++text; for(i=0;i<n && text[i];i++) {
+                char actual=text[i],expected=value[i];
+                if(actual>='a' && actual<='z') actual=(char)(actual-('a'-'A'));
+                if(expected>='a' && expected<='z') expected=(char)(expected-('a'-'A'));
+                if(actual!=expected) break;
+            }
             if(i==n && (text[i]==0 || text[i]==' ' || text[i]=='\t')) return 1;
         } else ++text;
     }

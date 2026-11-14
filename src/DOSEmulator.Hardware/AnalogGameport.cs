@@ -47,7 +47,9 @@ public sealed partial class AnalogGameport(DeviceScheduler scheduler) : IIoPortD
         uint value = (uint)((~Input.Buttons & 15) << 4);
         if (ConversionStarted)
         {
-            ulong elapsed = scheduler.Now - TriggerTime;
+            // A restored or directly supplied component state must not turn a
+            // future trigger into a huge expired interval through ulong wrap.
+            ulong elapsed = scheduler.Now >= TriggerTime ? scheduler.Now - TriggerTime : 0;
             for (int axis = 0; axis < 4; axis++)
                 if (_sampled.Axis(axis) is not { } resistance || elapsed < 24200UL + (ulong)resistance * 11)
                     value |= 1u << axis;

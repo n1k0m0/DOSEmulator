@@ -141,9 +141,17 @@ internal static class NativeGlideTransportChecks
             }
             uint invalid = (uint)memory.Ram.Length - (uint)length + 1;
             Word(argumentAddress, invalid); byte[] beforeRam = memory.Ram.ToArray(); int beforeCalls = calls; bool rejected = false;
-            try { invoke.Invoke(bridge, [id, argumentAddress, 0u]); }
-            catch (TargetInvocationException error) when (error.InnerException is InvalidDataException) { rejected = true; }
-            Check(rejected && calls == beforeCalls && memory.Ram.AsSpan().SequenceEqual(beforeRam), "Invalid MiniGL output ran provider or partially committed"); cases++;
+            int announcedWrites = 0;
+            Action<uint, int> observeWrite = (_, _) => announcedWrites++;
+            memory.PhysicalRamWrite += observeWrite;
+            try
+            {
+                try { invoke.Invoke(bridge, [id, argumentAddress, 0u]); }
+                catch (TargetInvocationException error) when (error.InnerException is InvalidDataException) { rejected = true; }
+            }
+            finally { memory.PhysicalRamWrite -= observeWrite; }
+            Check(rejected && calls == beforeCalls && announcedWrites == 0 && memory.Ram.AsSpan().SequenceEqual(beforeRam),
+                "Invalid MiniGL output ran provider, announced a write or partially committed"); cases++;
         }
         foreach ((uint id, int length) in new[] { (47u, 312), (35u, 60) })
         {

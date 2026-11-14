@@ -12,8 +12,15 @@ Win32 programs and need no additional runtime. They refuse the wrong version.
 DOSE Tools: installs C:\DOSETOOLS\DOSETIME.EXE and creates C:\Share if needed.
 The background helper synchronizes the Windows clock with the emulated RTC.
 Select "Start clock synchronization with Windows" for automatic startup.
-This package currently provides time synchronization, not host file transfer,
-shared host folders or clipboard sharing. Existing C:\Share files are retained.
+The package also installs DOSEIMPORT.EXE and a Start menu shortcut for an
+explicit one-file import from DOSE into C:\Share. Select the host file in
+DOSE's Network menu, then enter its displayed one-time code in the guest
+helper's window. You can also run DOSEIMPORT.EXE <16-hex-code> directly. It
+needs a configured NAT network card and Windows TCP/IP. Each invocation
+imports at most one new file (up to 60000 bytes),
+checks CRC-32 and never overwrites an existing file. Guest-to-host export,
+automatic synchronization, shared host folders and clipboard are not yet
+included. Existing C:\Share files are retained.
 
 MiniGlide DLL: installs GLIDE2X.DLL in the actual Windows System directory.
 This component needs the DOSE host bridge and its host rendering library.

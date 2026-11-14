@@ -50,6 +50,30 @@ internal static class PciMasterMemoryTests
     /// <summary>Registers physical address, complete-range and host target-selection cases without starting a guest or touching media.</summary>
     public static void AddTo(Action<string, Action> test)
     {
+        test("PCI read-only DMA grants preserve MAE, PAM and RAM write notifications", () =>
+        {
+            var rig = new HostRig();
+            int writes = 0;
+            rig.Memory.PhysicalRamWrite += (_, _) => writes++;
+            rig.Memory.Ram[0x101234] = 0x72;
+            Check(rig.Host.TryGetPciMemoryReadSpan(0x101234, 1, out var source) && source[0] == 0x72 && writes == 0);
+            rig.Host.WriteConfiguration(4, 4, 1);
+            Check(!rig.Host.TryGetPciMemoryReadSpan(0x101234, 1, out source) && source.IsEmpty && writes == 0);
+            rig.Host.WriteConfiguration(4, 6, 1);
+            for (int bank = 0; bank < 13; bank++)
+            {
+                uint address = bank == 12 ? 0xf0000u : 0xc0000u + (uint)bank * 0x4000;
+                rig.Memory.Ram[address] = (byte)bank;
+                foreach (byte attributes in new byte[] { 0, 1, 2, 3 })
+                {
+                    Pam(rig.Host, bank, attributes);
+                    bool admitted = rig.Host.TryGetPciMemoryReadSpan(address, 1, out source);
+                    Check(admitted == ((attributes & 1) != 0) &&
+                        (admitted ? source[0] == bank : source.IsEmpty) && writes == 0);
+                }
+                Pam(rig.Host, bank, 0);
+            }
+        });
         test("M4 PCI physical span preserves A20 while the old CPU and ISA RAM APIs still fold it", () =>
         {
             var memory = new MemoryBus(4 * 1048576) { A20Enabled = false };

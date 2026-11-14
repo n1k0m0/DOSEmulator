@@ -166,7 +166,7 @@ public sealed partial class X86Cpu
                 uint physical = TranslateLinear(linear);
                 // A page-table device may have changed CPU state in a callback.
                 // Its checkpoint also forces the sequential remainder below.
-                if (!_controlCheckpointSaved && _memory.TryGetRamSpan(physical, width, out var bytes))
+                if (!_controlCheckpointSaved && _memory.TryGetReadOnlyRamSpan(physical, width, out var bytes))
                 {
                     uint value = width == 2 ? BinaryPrimitives.ReadUInt16LittleEndian(bytes) : BinaryPrimitives.ReadUInt32LittleEndian(bytes);
                     _instructionBytes += width - 1; Eip = unchecked(Eip + (uint)width);

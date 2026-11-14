@@ -29,6 +29,45 @@ internal static class RomRepBatchTests
     /// <summary>Registers safe ROM inspection plus real decoded REP/page/deadline comparisons.</summary>
     public static void AddTo(Action<string, Action> test)
     {
+        test("read-only RAM code inspection does not publish a physical write", () =>
+        {
+            var m = new MemoryBus(2 * 1048576);
+            m.Ram[0x2000] = 0xf3;
+            m.Ram[0x2001] = 0xa4;
+            int notifications = 0;
+            m.PhysicalRamWrite += (_, _) => notifications++;
+            Check(m.TryGetCodeSpan(0x2000, 2, out var code) && code.SequenceEqual(new byte[] { 0xf3, 0xa4 }));
+            Check(m.TryGetReadOnlyRamSpan(0x2000, 2, out code) && code.SequenceEqual(new byte[] { 0xf3, 0xa4 }));
+            Check(notifications == 0, "Instruction inspection invalidated native RAM translations.");
+            Check(m.TryGetRamSpan(0x2000, 2, out _) && notifications == 1,
+                "Writable RAM lease stopped announcing possible writes.");
+            m.WriteByte(0x2000, 0x90);
+            Check(notifications == 2 && m.Ram[0x2000] == 0x90, "A real RAM write was not announced.");
+            m.A20Enabled = false;
+            Check(m.TryGetReadOnlyRamSpan(0x102000, 2, out code) && code[0] == 0x90 && notifications == 2,
+                "A20-folded read-only RAM changed address or write notifications.");
+            Check(!m.TryGetReadOnlyRamSpan(0xfffff, 2, out _) && notifications == 2,
+                "Read-only RAM inspection crossed an A20 boundary.");
+        });
+        test("REP MOVS announces only destination RAM writes", () =>
+        {
+            using var machine = RepBatchTests.Machine([0xf3, 0xa4, 0xf4]);
+            machine.Cpu.SetRegister(Register.Si, 0x30000);
+            machine.Cpu.SetRegister(Register.Di, 0x40000);
+            machine.Cpu.SetRegister(Register.Cx, 128);
+            for (int i = 0; i < 128; i++) machine.Memory.Ram[0x30000 + i] = (byte)i;
+            int sourceWrites = 0, codeWrites = 0, destinationWrites = 0;
+            machine.Memory.PhysicalRamWrite += (address, _) =>
+            {
+                if (address is >= 0x30000 and < 0x30100) sourceWrites++;
+                if (address is >= 0x2000 and < 0x2100) codeWrites++;
+                if (address is >= 0x40000 and < 0x40100) destinationWrites++;
+            };
+            Check(machine.Cpu.Step() == 4, "First REP element was not executed.");
+            Check(machine.Cpu.TryRunRepBatch(127) > 0, "REP continuation did not use the admitted fast path.");
+            Check(sourceWrites == 0 && codeWrites == 0 && destinationWrites > 0,
+                "REP source or code inspection announced a RAM write.");
+        });
         test("read-only code spans accept copied ROM while excluding MMIO, gaps, backing-image ends and A20 boundaries", () =>
         {
             var m = new MemoryBus(2 * 1048576); byte[] source = [0xf3, 0xa4, 0x90];

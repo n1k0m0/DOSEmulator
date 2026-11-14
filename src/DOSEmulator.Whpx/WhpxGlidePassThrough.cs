@@ -246,7 +246,7 @@ internal sealed unsafe class WhpxGlidePassThrough : IDisposable
             uint current = checked(address + (uint)checkedBytes);
             int amount = Math.Min(length - checkedBytes, 4096 - (int)(current & 4095));
             uint physical = Translate(current, true);
-            if (!_bus.TryGetPhysicalRamSpan(physical, amount, null, out _))
+            if (!_bus.TryGetReadOnlyPhysicalRamSpan(physical, amount, null, out _))
                 throw new InvalidDataException("Glide output does not refer to writable guest RAM.");
             checkedBytes += amount;
         }

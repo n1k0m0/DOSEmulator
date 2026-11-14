@@ -162,6 +162,15 @@ def main():
             assert section in report,(section,data)
             assert all(value=='1' for key,value in report[section].items() if key not in ('failures','exitcode','commandline')),(section,dict(report[section]))
             assert report[section].get('failures','0')=='0',(section,dict(report[section]))
+        if phase=='install':
+            # The guest probe checks APM presence; independently compare every byte
+            # after shutdown so a stale or truncated package cannot pass.
+            for guest_name,source_name in [('APM'+version+'.INF','APM'+version+'.INF'),
+                                           ('APMHELP.TXT','APM-README.txt')]:
+                actual=read_guest_file(branch,'DOSETOOLS/APM/'+guest_name)
+                expected_bytes=(ROOT/'guest-tools/windows95'/source_name).read_bytes()
+                if actual!=expected_bytes:
+                    raise RuntimeError('Installed APM package differs from source: '+guest_name)
         print(version+' '+phase+' PASSED '+str({s:dict(report[s]) for s in sections}),flush=True)
     (work/'result.json').write_text(json.dumps(dict(passed=True,windows=version,work=str(work),
         installerSha256=built['installerSha256'],upgradeFixture=str(args.upgrade_from) if args.upgrade_from else None),indent=2))

@@ -105,7 +105,7 @@ public sealed partial class X86Cpu
         if (move)
         {
             if (!CachedRamTranslation(source, false, out uint sourcePhysical, out sourceSlot) ||
-                !_memory.TryGetRamSpan(sourcePhysical - back, bytes, out var input)) return 0;
+                !_memory.TryGetReadOnlyRamSpan(sourcePhysical - back, bytes, out var input)) return 0;
             if (!input.Overlaps(target)) input.CopyTo(target);
             else for (int e = 0; e < amount; e++)
             {

@@ -41,6 +41,21 @@ public sealed partial class Intel82437Fx : IPciConfigurationFunction, IPciConfig
     public bool TryGetPciMemorySpan(uint address, int length, bool write, out Span<byte> bytes)
     {
         bytes = default;
+        if (!PermitsPciMemory(address, length, write)) return false;
+        return _memory.TryGetPhysicalRamSpan(address, length, this, out bytes);
+    }
+
+    /// <summary>Grants a PCI-master source read without announcing a RAM write to the native translation cache.</summary>
+    public bool TryGetPciMemoryReadSpan(uint address, int length, out ReadOnlySpan<byte> bytes)
+    {
+        bytes = default;
+        if (!PermitsPciMemory(address, length, false)) return false;
+        return _memory.TryGetReadOnlyPhysicalRamSpan(address, length, this, out bytes);
+    }
+
+    /// <summary>Checks MAE, complete physical bounds and every covered PAM bank before either kind of memory grant.</summary>
+    private bool PermitsPciMemory(uint address, int length, bool write)
+    {
         if (!MemoryAccessEnabled || length <= 0) return false;
         ulong end = (ulong)address + (uint)length;
         if (end > 0x1_0000_0000UL) return false;
@@ -52,7 +67,7 @@ public sealed partial class Intel82437Fx : IPciConfigurationFunction, IPciConfig
             if ((Attributes((uint)at - 0x000c0000u) & required) == 0) return false;
             at = at >= 0x000f0000UL ? 0x00100000UL : (at + 0x4000UL) & ~0x3fffUL;
         }
-        return _memory.TryGetPhysicalRamSpan(address, length, this, out bytes);
+        return true;
     }
 
     /// <summary>Checks the fixed memory peer and the exact DRB4/DRAMC decoding derived from this controller.</summary>

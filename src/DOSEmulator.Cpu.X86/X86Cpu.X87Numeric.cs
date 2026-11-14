@@ -34,10 +34,15 @@ public sealed partial class X86Cpu
             bool pop = group is 3 or 7;
             int size = opcode switch { 0xd9 => 4, 0xdd => 8, 0xdb => 4, _ => group is 5 or 7 ? 8 : 2 };
             Operand operand = DecodeOperand(modrm);
-            uint[] physical = FpuMemory(operand, size, !load, size);
+            Span<uint> physicalStorage = stackalloc uint[8];
+            Span<uint> physical = physicalStorage[..size];
+            FpuMemory(operand, !load, size, physical);
             if (load)
             {
-                ulong bits = FpuBits(FpuReadBytes(operand, physical));
+                Span<byte> inputStorage = stackalloc byte[8];
+                Span<byte> input = inputStorage[..size];
+                FpuReadBytes(operand, physical, input);
+                ulong bits = FpuBits(input);
                 RecordFpuInstruction(opcode, modrm, operand);
                 int target = (FpuTop - 1) & 7;
                 if (!EmptyFpu(target)) { FpuPush(Float80Value.Indefinite); return true; }
@@ -72,8 +77,14 @@ public sealed partial class X86Cpu
         {
             bool integer = opcode is 0xda or 0xde;
             int size = opcode == 0xdc ? 8 : opcode == 0xde ? 2 : 4;
-            Operand operand = DecodeOperand(modrm); uint[] physical = FpuMemory(operand, size, false, size);
-            ulong bits = FpuBits(FpuReadBytes(operand, physical));
+            Operand operand = DecodeOperand(modrm);
+            Span<uint> physicalStorage = stackalloc uint[8];
+            Span<uint> physical = physicalStorage[..size];
+            FpuMemory(operand, false, size, physical);
+            Span<byte> inputStorage = stackalloc byte[8];
+            Span<byte> input = inputStorage[..size];
+            FpuReadBytes(operand, physical, input);
+            ulong bits = FpuBits(input);
             RecordFpuInstruction(opcode, modrm, operand);
             if (EmptyFpu(destination))
             { if (FpuStackFault(false)) FpuSet(destination, Float80Value.Indefinite); return true; }

@@ -78,6 +78,8 @@ internal static partial class SnapshotValidation
         {
             (StateValues.Read<GameportInput>(gameport.Fields["Input"]) ?? throw new InvalidDataException("Null gameport input.")).Validate();
             (StateValues.Read<GameportInput>(gameport.Fields["_sampled"]) ?? throw new InvalidDataException("Null sampled gameport input.")).Validate();
+            if (gameport.Fields["TriggerTime"].GetUInt64() > state.Scheduler.Now)
+                throw new InvalidDataException("Gameport trigger is later than virtual time.");
         }
     }
 

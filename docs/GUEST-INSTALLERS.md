@@ -2,6 +2,12 @@
 
 Es gibt zwei eigenständige, englischsprachige Win32-Installer. Sie laufen direkt unter Windows 95 beziehungsweise Windows 98. Ein zusätzlicher Gast-Runtime oder ein Host-Installationsskript wird dafür nicht benötigt.
 
+Die Installer liefern unsere Zeit- und MiniGlide-Komponenten sowie APM-INF und
+Anleitung. Sie installieren keine vollständige Sammlung originaler S3-, SB16-,
+RTL8029- oder 3dfx-Treiber. Welche Originaltreiber auf einer bestimmten VM
+tatsächlich eingerichtet und geprüft sind, steht in der
+[Treiber-Abnahmematrix](DRIVER-INSTALLATION-STATUS.md).
+
 Die folgenden Paketdateien liegen lokal nach dem [Neubau](#neubau) unter `artifacts/guest-installers/`. Generierte EXEs, CD-Images und private Prüfnachweise werden nicht im Git-Repository veröffentlicht.
 
 | Gast | CD-Image | Eigenständiger Installer |
@@ -17,7 +23,7 @@ Die gewünschten Komponenten auswählen und **Install** anklicken:
 
 | Auswahl | Wirkung im Gast |
 | --- | --- |
-| DOSE Tools | Installiert `C:\DOSETOOLS\DOSETIME.EXE`, startet die Zeitsynchronisierung und legt `C:\Share` bei Bedarf an. Bestehende Dateien im Share bleiben erhalten. Der derzeit vorhandene Helfer bietet Zeitsynchronisierung; Dateitransfer und Zwischenablage sind noch nicht enthalten. |
+| DOSE Tools | Installiert `C:\DOSETOOLS\DOSETIME.EXE` und `DOSEIMPORT.EXE`, startet die Zeitsynchronisierung und legt `C:\Share` bei Bedarf an. Bestehende Dateien im Share bleiben erhalten. `DOSEIMPORT.EXE` ist ein erster manueller Import für genau eine neue Hostdatei bis 60.000 Byte über eine ausdrücklich gestartete lokale Gegenstelle; Export, Synchronisierung und Zwischenablage fehlen noch. Die Installation und ein echter Import sind auf frischen Win95-/Win98-Kopien geprüft. |
 | Start DOSE Tools with Windows | Registriert den Zeithelfer für den automatischen Windows-Start. Lässt sich für die Installation abwählen. |
 | MiniGlide - Glide 2 DLL | Installiert `GLIDE2X.DLL` in das tatsächliche Windows-Systemverzeichnis für die konfigurierte Host-GPU-Brücke. |
 | MiniGlide logo and launcher | Installiert `C:\DOSETOOLS\MGLIDE.EXE`, eine Logo-Vorschau und **Launch Glide Program** zur freien EXE-Auswahl. Für vorhandene Unreal- und Motorhead-Installationen an den bekannten Pfaden entstehen Spielverknüpfungen. Funktioniert mit beiden Grafikpfaden. |

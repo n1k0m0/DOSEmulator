@@ -42,7 +42,7 @@ public sealed partial class X86Cpu
         // The bus span applies A20, decoded DRAM and the CURRENT fixed mapping/hole classification.
         // Dynamic decoders have lower priority than installed RAM and cannot override this span.
         if (!CachedRamTranslation(linear, false, out uint physical, out int codeSlot) ||
-            !_memory.TryGetRamSpan(physical & ~4095u, 4096, out var codeBytes)) return 0;
+            !_memory.TryGetReadOnlyRamSpan(physical & ~4095u, 4096, out var codeBytes)) return 0;
 
         bool protectedStart = ProtectedMode, vmStart = Virtual8086, code32 = CodeDefault32;
         int completed = 0;

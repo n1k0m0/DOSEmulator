@@ -115,22 +115,33 @@ public sealed partial class X86Cpu
     /// <summary>Preflights segmentation, alignment and paging before collecting every physical byte address for an x87 operand.</summary>
     private uint[] FpuMemory(Operand operand, int size, bool write, int alignment)
     {
+        var physical = new uint[size];
+        FpuMemory(operand, write, alignment, physical);
+        return physical;
+    }
+    /// <summary>Preflights an x87 operand into caller storage without allocating per instruction.</summary>
+    private void FpuMemory(Operand operand, bool write, int alignment, Span<uint> physical)
+    {
+        int size = physical.Length;
         CheckOperand(operand, size, write); CheckAlignment(operand.Address, alignment);
         ProbeMemory(operand.Address, size, write);
-        var physical = new uint[size];
         for (int i = 0; i < size; i++) { physical[i] = TranslateLinear(unchecked(operand.Address + (uint)i), write); EnsureDeviceCheckpoint(physical[i]); }
-        return physical;
     }
     /// <summary>Reads prevalidated physical bytes and records one eligible debug-data observation.</summary>
     private byte[] FpuReadBytes(Operand operand, uint[] physical)
     {
-        ObserveDebugData(operand.Address, physical.Length, false, false);
         var bytes = new byte[physical.Length];
-        for (int i = 0; i < bytes.Length; i++) bytes[i] = _memory.ReadByte(physical[i]);
+        FpuReadBytes(operand, physical, bytes);
         return bytes;
     }
+    /// <summary>Reads prevalidated x87 bytes into caller storage with the original debug observation.</summary>
+    private void FpuReadBytes(Operand operand, ReadOnlySpan<uint> physical, Span<byte> bytes)
+    {
+        ObserveDebugData(operand.Address, physical.Length, false, false);
+        for (int i = 0; i < bytes.Length; i++) bytes[i] = _memory.ReadByte(physical[i]);
+    }
     /// <summary>Stores prevalidated physical bytes and records one eligible debug-data observation.</summary>
-    private void FpuWriteBytes(Operand operand, uint[] physical, ReadOnlySpan<byte> bytes)
+    private void FpuWriteBytes(Operand operand, ReadOnlySpan<uint> physical, ReadOnlySpan<byte> bytes)
     {
         ObserveDebugData(operand.Address, physical.Length, true, false);
         for (int i = 0; i < bytes.Length; i++) _memory.WriteByte(physical[i], bytes[i]);

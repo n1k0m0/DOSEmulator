@@ -300,6 +300,11 @@ public sealed partial class DosWindow : SharpPixelsWindow
             DrawFilledRectangleWithAlpha(16, y, PixelsWidth - 32, 28, 12, 15, 29, 235);
             Text(24, y + 9, message.Length > 135 ? message[..132] + "..." : message, 1, Color.LightSteelBlue);
         }
+        else if (_transferTask is { IsCompleted: false } && Volatile.Read(ref _transferInstruction) is { } instruction)
+        {
+            DrawFilledRectangleWithAlpha(16, 12, PixelsWidth - 32, 28, 12, 15, 29, 235);
+            Text(24, 21, instruction, 1, Color.LightSteelBlue);
+        }
         else if (_notice.Length > 0)
         {
             int footer = _showDebugOverlay ? 38 : 0;
@@ -331,7 +336,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
         Text(x + 22, y + height - 100, $"ROWS {first + 1}-{Math.Min(_items.Length, first + SettingsMenuLayout.VisibleRows)} / {_items.Length}   " +
             (_configurationDraft?.HasChanges == true ? "PENDING CHANGES / APPLY TO RESTART" : ""), 1, Color.Gray);
         if (_selected >= 0 && _selected < _items.Length) Text(x + 22, y + height - 81, _items[_selected].Length > 135 ? _items[_selected][..132] + "..." : _items[_selected], 1, Color.LightSteelBlue);
-        Text(x + 22, y + height - 61, _notice.Length > 135 ? _notice[..132] + "..." : _notice, 1, Color.Khaki);
+        string menuNotice = _transferTask is { IsCompleted: false } ? Volatile.Read(ref _transferInstruction) ?? _notice : _notice;
+        Text(x + 22, y + height - 61, menuNotice.Length > 135 ? menuNotice[..132] + "..." : menuNotice, 1, Color.Khaki);
         int? selectedSlot = _page == "HARD DISKS" && _selected < 4 ? _selected :
             _page.StartsWith("IDE ", StringComparison.Ordinal) && _page.Length == 5 ? _page[^1] - '0' : null;
         string media = selectedSlot is { } slot ? $"IDE {slot}: {status?.HardDisks?.FirstOrDefault(d => d.Slot == slot)?.Name ?? "EMPTY"}" : $"IDE: {status?.MediaName ?? "NONE"}";
@@ -714,7 +720,8 @@ public sealed partial class DosWindow : SharpPixelsWindow
             else if (_selected == 4) OpenPage("NETWORK HELP");
             else if (_selected == 5) ApplyConfiguration();
             else if (_selected == 6) DiscardConfiguration();
-            else if (_selected == 7) OpenPage("MAIN MENU");
+            else if (_selected == 7) BeginGuestFileImport();
+            else if (_selected == 8) OpenPage("MAIN MENU");
         }
         else if (_page == "NETWORK HELP")
         {
@@ -839,7 +846,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         var status = NetworkStatus();
         return [Slot(0), Slot(1), "REFRESH NETWORK STATUS", status.ValueKind == JsonValueKind.Undefined ? "BRIDGED: CHECKING AVAILABILITY" :
             NetworkFlag(status, "bridgeAvailable") ? "BRIDGED: AVAILABLE" : "BRIDGED: UNAVAILABLE / NPCAP REQUIRED", "GUEST: INSTALL NIC DRIVER + TCP/IP / DHCP",
-            "APPLY CHANGES / COLD RESTART", "DISCARD CHANGES", "BACK"];
+            "APPLY CHANGES / COLD RESTART", "DISCARD CHANGES", "IMPORT ONE FILE TO C:\\SHARE...", "BACK"];
     }
 
     /// <summary>Shows editable persisted resources and separately reported live cable/backend outcomes.</summary>
@@ -1321,6 +1328,7 @@ public sealed partial class DosWindow : SharpPixelsWindow
         _stop.Cancel(); _worker?.GetAwaiter().GetResult(); ShutdownStage("worker-stopped");
         _videoWorker?.Dispose(); _videoWorker = null; ShutdownStage("video-worker-stopped");
         _diskCreationStop.Cancel(); _diskCreation?.GetAwaiter().GetResult(); _diskCreationStop.Dispose();
+        _transferStop?.Cancel(); _transferTask?.GetAwaiter().GetResult(); _transferStop?.Dispose();
         _audio?.Dispose(stage => ShutdownStage("audio-" + stage)); ShutdownStage("audio-stopped");
         _ipc.DisposeAsync().AsTask().GetAwaiter().GetResult(); ShutdownStage("ipc-stopped");
         _displayFrame?.Dispose(); _displayFrame = null;

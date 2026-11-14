@@ -198,17 +198,35 @@ public sealed partial class MemoryBus
             !_mappedRamPages[physical >> 12] && !_mappedRamPages[(physical + (uint)width - 1) >> 12];
     }
 
-    /// <summary>Owner-thread RAM access only; refuses devices, A20 folds and range boundaries.</summary>
-    public bool TryGetRamSpan(uint address, int length, out Span<byte> bytes)
+    /// <summary>Checks an owner-thread RAM span without announcing a write or touching a mapped device.</summary>
+    private bool TryPlainRamSpan(uint address, int length, out int offset)
     {
-        bytes = default;
+        offset = 0;
         if (length <= 0) return false;
         uint physical = Translate(address);
         if ((ulong)physical + (uint)length > DecodedRamBytes ||
             !A20Enabled && (address >> 20) != (unchecked(address + (uint)length - 1) >> 20)) return false;
         for (uint page = physical >> 12; page <= (physical + (uint)length - 1) >> 12; page++)
             if (_mappedRamPages[page]) return false;
-        bytes = PhysicalRam.Slice((int)physical, length); PhysicalRamWrite?.Invoke(physical, length); return true;
+        offset = (int)physical;
+        return true;
+    }
+
+    /// <summary>Owner-thread writable RAM access only; refuses devices, A20 folds and range boundaries.</summary>
+    public bool TryGetRamSpan(uint address, int length, out Span<byte> bytes)
+    {
+        bytes = default;
+        if (!TryPlainRamSpan(address, length, out int offset)) return false;
+        bytes = PhysicalRam.Slice(offset, length); PhysicalRamWrite?.Invoke((uint)offset, length); return true;
+    }
+
+    /// <summary>Reads ordinary RAM with the same A20 and mapping guards, without invalidating native write translations.</summary>
+    public bool TryGetReadOnlyRamSpan(uint address, int length, out ReadOnlySpan<byte> bytes)
+    {
+        bytes = default;
+        if (!TryPlainRamSpan(address, length, out int offset)) return false;
+        bytes = PhysicalRam.Slice(offset, length);
+        return true;
     }
 
     /// <summary>Grants owner-thread physical DRAM without CPU A20 folding or device callbacks; only the named mapping may expose its own RAM backing.</summary>
@@ -239,7 +257,7 @@ public sealed partial class MemoryBus
     public bool TryGetCodeSpan(uint address, int length, out ReadOnlySpan<byte> bytes)
     {
         bytes = default;
-        if (TryGetRamSpan(address, length, out var ram)) { bytes = ram; return true; }
+        if (TryGetReadOnlyRamSpan(address, length, out bytes)) return true;
         if (length <= 0 || (ulong)address + (uint)length > 0x1_0000_0000UL) return false;
         uint physical = Translate(address);
         if (!A20Enabled && (address >> 20) != ((address + (uint)length - 1) >> 20)) return false;

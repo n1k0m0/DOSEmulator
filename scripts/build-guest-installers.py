@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -17,6 +18,28 @@ import uuid
 import pycdlib
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def build_importer(work: Path, executable: Path):
+    """Compile the bounded Win9x Winsock import client without a guest CRT."""
+    vswhere = Path(os.environ['ProgramFiles(x86)'])/'Microsoft Visual Studio/Installer/vswhere.exe'
+    vs = subprocess.check_output([str(vswhere), '-latest', '-products', '*',
+                                  '-property', 'installationPath'], text=True).strip()
+    if not vs:
+        raise RuntimeError('MSVC x86 installation is required for DOSE Import')
+    vcvars = Path(vs)/'VC/Auxiliary/Build/vcvarsall.bat'
+    source = ROOT/'guest-tools/windows95/dose-import.c'
+    obj = work/'dose-import.obj'
+    batch = work/'build-import.cmd'
+    batch.write_text('@echo off\n' +
+        f'call "{vcvars}" x86 >nul\nif errorlevel 1 exit /b 1\n' +
+        f'cl /nologo /c /O2 /arch:IA32 /GS- /Zl /Fo"{obj}" "{source}"\nif errorlevel 1 exit /b 1\n' +
+        f'link /nologo /Brepro /NODEFAULTLIB /ENTRY:TransferEntry /MACHINE:X86 '
+        f'/DYNAMICBASE:NO /NXCOMPAT:NO /SUBSYSTEM:WINDOWS /OUT:"{executable}" '
+        f'"{obj}" kernel32.lib user32.lib wsock32.lib\n', encoding='ascii')
+    subprocess.run(['cmd', '/c', str(batch)], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, str(ROOT/'scripts/glide-bridge/patch_pe_version.py'),
+                    str(executable)], cwd=ROOT, check=True)
 
 
 def main():
@@ -45,6 +68,8 @@ def main():
             cwd=ROOT, check=True)
         payload = work / ('payload' + os_version)
         payload.mkdir()
+        importer = payload/'DOSEIMPORT.EXE'
+        build_importer(payload, importer)
         for source, name in (
             (clock/'DOSETIME.EXE', 'DOSETIME.EXE'),
             (ROOT/'artifacts/glide-bridge/guest/GLIDE2X.DLL', 'GLIDE2X.DLL'),
@@ -59,7 +84,7 @@ def main():
         resource = payload/'installer.rc'
         source_rc = (ROOT/'guest-tools/installer/installer.rc').as_posix()
         resources = {10:'DOSETIME.EXE',11:'GLIDE2X.DLL',12:'MGLIDE.EXE',13:'README.TXT',
-                     14:'APM'+os_version+'.INF',15:'APMHELP.TXT',16:'LICENSE.TXT'}
+                     14:'APM'+os_version+'.INF',15:'APMHELP.TXT',16:'LICENSE.TXT',17:'DOSEIMPORT.EXE'}
         resource.write_text('#include "'+source_rc+'"\n' + ''.join(
             f'{number} RCDATA "{(payload/name).as_posix()}"\n' for number,name in resources.items()),encoding='ascii')
         command = ['cmd','/c',r'scripts\build-win9x-installer.cmd',str(resource),str(payload),

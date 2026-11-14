@@ -246,7 +246,7 @@ public sealed partial class Intel82371FbIde : IPciConfigurationFunction, IIoPort
         var c = _channels[channel];
         if ((c.DescriptorAddress & 0xfffff000) != (c.Prdt & 0xfffff000) || (c.DescriptorAddress & 4095) > 4088 || c.DescriptorIndex >= 512)
         { StopWithoutPciError(channel); return false; }
-        if (!_host.TryGetPciMemorySpan(c.DescriptorAddress, 8, false, out var bytes)) { PciAbort(channel); return false; }
+        if (!_host.TryGetPciMemoryReadSpan(c.DescriptorAddress, 8, out var bytes)) { PciAbort(channel); return false; }
         uint address = BinaryPrimitives.ReadUInt32LittleEndian(bytes) & 0xfffffffe;
         int count = BinaryPrimitives.ReadUInt16LittleEndian(bytes[4..]) & 0xfffe; if (count == 0) count = 65536;
         if ((address & 65535) + count > 65536) { StopWithoutPciError(channel); return false; }
@@ -264,8 +264,17 @@ public sealed partial class Intel82371FbIde : IPciConfigurationFunction, IIoPort
         int count = Math.Min(32, Math.Min(c.RegionLength - c.RegionOffset, 512 - ata.DmaOffset));
         ulong address = (ulong)c.RegionAddress + (uint)c.RegionOffset;
         if (count <= 0 || (count & 1) != 0 || address > uint.MaxValue) { StopWithoutPciError(channel); return; }
-        if (!_host.TryGetPciMemorySpan((uint)address, count, read, out var bytes)) { PciAbort(channel); return; }
-        int copied = read ? ata.ReadDma(bytes) : ata.WriteDma(bytes);
+        int copied;
+        if (read)
+        {
+            if (!_host.TryGetPciMemorySpan((uint)address, count, true, out var bytes)) { PciAbort(channel); return; }
+            copied = ata.ReadDma(bytes);
+        }
+        else
+        {
+            if (!_host.TryGetPciMemoryReadSpan((uint)address, count, out var bytes)) { PciAbort(channel); return; }
+            copied = ata.WriteDma(bytes);
+        }
         if (copied != count) throw new InvalidOperationException("ATA DMA grant changed after its complete target preflight.");
         c.RegionOffset += copied; c.BytesTransferred += copied;
         if (c.RegionOffset == c.RegionLength)

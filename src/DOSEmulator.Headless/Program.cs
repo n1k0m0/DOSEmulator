@@ -6,6 +6,7 @@ using DOSEmulator.Contracts;
 using DOSEmulator.Core;
 using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
+using DOSEmulator.Runtime.Networking;
 
 try
 {
@@ -17,8 +18,17 @@ try
         if (index + 1 >= args.Length) throw new ArgumentException($"Missing value for {option}.");
         return args[index + 1];
     }
+    if (Get("--serve-dose-import") is { } importFile)
+    {
+        string code = DoseTransferGateway.CreateCode();
+        bool acknowledged = await DoseTransferGateway.ServeOneAsync(importFile, code, onReady: () =>
+            Console.WriteLine("Run C:\\DOSETOOLS\\DOSEIMPORT.EXE " + code + " in the Windows guest."));
+        Console.WriteLine(acknowledged ? "DOSE Tools import acknowledged." : "DOSE Tools import aborted.");
+        return acknowledged ? 0 : 1;
+    }
     if (args.Contains("--help"))
     {
+        Console.WriteLine("  --serve-dose-import <host file> serves one explicit authenticated DOSE Tools import on host loopback port 28595; enter the displayed code in the Win95/98 guest helper.");
         Console.WriteLine(DOSEIdentity.DisplayName + " development runner\n  --steps <count> --disk <raw IDE image> [--overlay <private .cow file>] --report <json> --frame <ppm>\n  --floppy-a <image> [--floppy-a-overlay <cow>] --floppy-b <image> [--floppy-b-overlay <cow>] --boot ide|floppy-a\n  --trace <jsonl> --trace-tail <json> --type-file <text> --type-after <guest text> --stop-text <guest text>\n  --swap-floppy a|b --swap-image <image> [--swap-overlay <cow>] --swap-after <guest text>\n  --write-demo <path> writes our built-in test-sector image to a NEW file.\n  --prepare-freedos / --prepare-freedos-floppy <official image> --output <new private image>\nBase images always stay read-only. Writes require an exclusive overlay. With only floppy A attached it becomes the boot device. Default boots our own test sector. FreeDOS minimal IDE/FDC paths and PE/TSS and 4-KiB paging/V86 reference guests are tested. Original local EMM386 NOEMS boots with basic VCPI memory calls; 16/32-bit call gates with privilege/parameter/RETF paths are tested. Controlled 16/32-bit hardware tasks, task gates, task-IRET, LOCK/CMPXCHG/XADD and alignment-check retries are guest-tested; MOV-DR/breakpoint/TF reference guests, raw 80-bit x87 state and elementary numeric operations are tested. Full x87, task/fault/debug/bus precision and Windows remain pending.");
         Console.WriteLine("PC files: --machine <pc.dospc.json> loads a complete hardware/media configuration. --save-machine <new.json> [--machine-name <name>] saves the selected configuration without running it. --disk1/--overlay1, --disk2/--overlay2, --disk3/--overlay3 attach the other IDE slots; --disk remains primary master. --create-disk <new.img> --size <number> --unit MiB|GiB creates a blank zeroed image (1 MiB..128 GiB), never overwriting an existing file.");
         Console.WriteLine("Audio: --audio-out <new.wav> captures mixed guest audio as 48-kHz stereo PCM16. --audio-io-trace <new.jsonl> logs DSP/FM reads/writes plus DMA1/control, speaker and diagnostic writes at access completion. Profile soundCard=sb2-dsp-development adds 220h/IRQ5/DMA1 normal/high-speed output PCM; adlib-opl2-development or sb2-opl2-development add melodic FM and development CSM keying (rhythm, CSM pipeline/TL latching and full chip accuracy pending). ADPCM/MIDI remain pending; ADC uses a virtual input without a host microphone.\nProbe tools: --prepare-test-programs <verified minimal IDE image> --program-dir <own COM probes> --output <new image>");

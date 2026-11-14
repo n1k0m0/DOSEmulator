@@ -11,6 +11,7 @@ using DOSEmulator.Hardware;
 using DOSEmulator.Runtime;
 
 if (args.Length == 3 && args[0] == "--network-native-check") return NetworkBackendNativeTests.Run(args[1], args[2]);
+if (args.Length == 1 && args[0] == "--dose-transfer-native-check") return DoseTransferNativeTests.Run();
 if (args.Length == 4 && args[0] == "--network-native-peer") return NetworkBackendNativeTests.RunPeer(args[1], args[2], args[3]);
 if (args.Length == 2 && args[0] == "--opl-audit-benchmark") return OplAuditTests.Run(args[1]);
 if (args.Length == 2 && args[0] == "--cow-audit-benchmark") return CowAuditPerformanceTests.Run(args[1]);
@@ -414,6 +415,7 @@ JoinedWorkerTests.AddTo(Test);
 Et4000Tests.AddTo(Test);
 VbeTests.AddTo(Test);
 GameportTests.AddTo(Test);
+AnalogGameportClockTests.AddTo(Test);
 SerialTests.AddTo(Test);
 ParallelTests.AddTo(Test);
 MidiTests.AddTo(Test);

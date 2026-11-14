@@ -207,6 +207,21 @@ internal static class PiixIdeTests
                 }
                 Check(r.Disks.Where((_, slot) => slot != channel * 2 + drive).All(d => d.Writes.Count == 0));
             });
+        test("PIIX IDE memory-to-device DMA reads do not announce guest RAM writes", () =>
+        {
+            var r = new Rig(); r.Enable();
+            byte[] payload = Pattern(0x6b, 3);
+            r.Prd(0x10000, 0x20000, 512, true);
+            payload.CopyTo(r.Memory.Ram, 0x20000);
+            int announcedWrites = 0;
+            r.Memory.PhysicalRamWrite += (_, _) => announcedWrites++;
+            r.Command(0, 0, 0xca);
+            r.Start(0, false);
+            r.Complete(0);
+            Check(r.Disks[0].Writes.TryGetValue(3, out var committed) && committed.AsSpan().SequenceEqual(payload),
+                "The actual DMA write did not commit the source sector.");
+            Check(announcedWrites == 0, "Reading a PRD or DMA source invalidated native RAM translations.");
+        });
         foreach (int channel in new[] { 0, 1 })
             test("PIIX IDE PRD2 plus510 is one actual ATA sector " + channel, () =>
             {

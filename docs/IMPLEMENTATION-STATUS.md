@@ -1,5 +1,62 @@
 # DOSE – Implementierungsstand
 
+**Lokaler Entwicklungsstand, 14. November 2026:** Ein begrenzter erster
+DOSE-Tools-Import ist für Windows 95/98 als eigener Win32-Helfer und Bestandteil
+beider Gastinstaller gebaut: eine neue Datei bis 60.000 Byte über die bereits
+emulierte RTL8029-/TCP/IP-Verbindung nach `C:\Share`. Die lokale Host-Gegenstelle
+wird nur ausdrücklich für einen gewählten Dateipfad gestartet. Ein kontrollierter
+Loopback-Protokolltest belegt 1.027 Bytes, CRC und ACK; ein separater
+permanenter nativer Test belegt zusätzlich ACK/ABORT, die unabhängige
+CRC32-Oracle und ungültige Dateinamen. Beide Gastpakete/ISOs
+bauen. Tatsächliche frische Windows-95- und Windows-98-WHPX-Kaltstarts mit
+verbundenem NAT importierten je 2.536 Bytes; Win98 bestand zusätzlich eine
+100-Byte-Kontrolle. Danach installierten beide Gäste den Helfer mit ihrem
+eigenen SETUP.EXE tatsächlich von der ISO und wiederholten den 2.536-Byte-Import.
+Die installierten EXE-/APM-Bytes, Helfer-ACKs und unabhängigen FAT-/COW-Bytes
+sind belegt. Je ein weiterer Win95-/Win98-Zweig aktualisiert die zuvor
+installierten DOSE Tools tatsächlich im laufenden Gast von einer neuen ISO:
+neue Paketbytes, zweiter bestätigter NAT-Import und beide unabhängig aus
+FAT/COW gelesenen Share-Dateien bestehen; die vorherigen Test-COWs bleiben
+erhalten. Die ersten fehlgeschlagenen Win98-Versuche fanden eine fehlende
+libslirp-Runtime im isolierten Testprodukt; mit der gepinnten Runtime gelang
+der Transfer ohne Änderung an NAT oder RTL8029. Der erste Win95-Installerlauf
+benutzte den falschen CD-Buchstaben D: statt des dort tatsächlichen R:; der
+korrigierte Lauf besteht. Der Installer erkennt `/S` jetzt unabhängig von der
+ASCII-Schreibweise. Zwei weitere frische Gastzweige bestehen die stille
+Deinstallation nach tatsächlichem Import: Share-Datei unverändert,
+Paketdateien gemäß Originalzustand entfernt oder restauriert, Wartungsdatei
+und `.LAST`-Sicherungen erhalten. Ein manueller Import-Menüpunkt ist in der
+GUI gebaut, aber noch nicht nativ bedient. Der wartende GUI-Import wird bei
+Reset, PC-Wechsel oder Netzwerkänderung abgebrochen; die Anleitung erscheint
+erst nach dem tatsächlichen Listener-Bind. Neue eigene Teildateinamen lassen
+einen späteren Import trotz einer liegengebliebenen Teildatei zu. **Export,
+Zwischenablage, automatischer Abgleich und VxD-Kanal bleiben offen.**
+[Der lokale DOSETF02-Stand](GUEST-TOOLS-TRANSFER.md) verlangt nun einen
+einmaligen 16-stelligen Gastcode. Ein falscher Code erhält keine Nutzbytes und
+verbraucht den wartenden Listener nicht. Die GUI-Session verweigert Snapshots
+und Medien-Checkpoints während des Imports; nach möglichem Payload ohne
+Gastabschluss bleibt diese Sperre bis zum Gastreset bestehen. Der native
+Loopback-/Reset-/Snapshot-Gate-Test besteht. Direkte externe SnapshotStore-
+Aufrufe und ein gezielter Win9x-Snapshot mitten im Transfer bleiben offen.
+Frische private Windows-95- und Windows-98-Zweige aktualisierten den installierten
+Helfer auf DOSETF02: falscher Code ohne Dateiweitergabe, danach bestätigter
+2.536-Byte-Import mit unabhängigem FAT-/COW-Readback und unveränderter
+vorheriger Share-Datei. Auf beiden Windows-Versionen bestand zudem der Aufruf
+ohne Parameter mit Gast-Codefenster, Eingabe über den virtuellen KBC und
+unabhängigem FAT-/COW-Readback. Der Startmenü-Klick selbst wurde nicht nativ
+bedient.
+[Vertrag und Grenzen](GUEST-TOOLS-TRANSFER.md).
+
+Ein Gameport-Zeitunterlauf bei einem zukünftigen Triggerzustand ist eng
+korrigiert; der gezielte Test besteht und die Snapshotprüfung weist den
+widersprüchlichen Zustand ab. Isolierter Release-Build 0 Warnungen/Fehler,
+gemeinsame Regressionen 18.249/18.249; separater Gateway-Loopbacktest und
+Quellqualität bestehen. Die
+[Treiberinstallationsmatrix](DRIVER-INSTALLATION-STATUS.md) trennt eigene
+Installerbestandteile von Originaltreibern und konkreten Windows-PC-Kopien.
+Die erweiterte APM-Dateiprüfung braucht noch einen frischen echten Gastlauf.
+Weitere Hardware, vollständiges M0–M8 und universelle Echtzeit bleiben offen.
+
 **Quellcheckpoint und lokale Starter, 5. November 2026:**
 Alle 24 rechnerbezogenen CMD-Start-/Komfortskripte liegen jetzt in
 `local/launchers/` außerhalb der Versionskontrolle. Die relativen Pfade
